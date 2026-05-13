@@ -1,1 +1,56 @@
 Aqui agregaremos todos los modulos del sistema
+
+Este es un ejemplo de como definiremos
+src/
+├── modules/
+│   └── users/                          ← Un módulo por contexto de negocio
+│       ├── domain/
+│       │   ├── entities/
+│       │   │   └── user.entity.ts
+│       │   ├── value-objects/
+│       │   │   └── email.vo.ts
+│       │   ├── repositories/
+│       │   │   └── user.repository.interface.ts
+│       │   └── errors/
+│       │       └── user-not-found.error.ts
+│       │
+│       ├── application/
+│       │   ├── use-cases/
+│       │   │   ├── create-user.use-case.ts
+│       │   │   └── get-user.use-case.ts
+│       │   ├── dtos/
+│       │   │   ├── create-user.dto.ts
+│       │   │   └── user-response.dto.ts
+│       │   ├── mappers/
+│       │   │   └── user.mapper.ts
+│       │   └── ports/
+│       │       └── email-service.port.ts
+│       │
+│       ├── infrastructure/
+│       │   ├── repositories/
+│       │   │   └── prisma-user.repository.ts
+│       │   ├── services/
+│       │   │   └── sendgrid-email.service.ts
+│       │   └── mappers/
+│       │       └── prisma-user.mapper.ts
+│       │
+│       ├── presentation/
+│       │   ├── controllers/
+│       │   │   └── user.controller.ts
+│       │   ├── guards/
+│       │   │   └── auth.guard.ts
+│       │   └── interceptors/
+│       │       └── transform.interceptor.ts
+│       │
+│       └── users.module.ts
+│
+├── shared/
+│   ├── database/
+│   │   └── prisma.service.ts           ← Singleton de Prisma
+│   ├── exceptions/
+│   │   └── domain-exception.filter.ts
+│   └── decorators/
+│       └── current-user.decorator.ts
+│
+├── app.module.ts
+└── main.ts
