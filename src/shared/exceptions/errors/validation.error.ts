@@ -9,10 +9,10 @@ Crear una votación con 0 opciones
 import { DomainError } from './domain.error';
 
 export class ValidationError extends DomainError {
-   readonly statusCode = 422;
-   readonly errorCode = 'VALIDATION_ERROR';
+  readonly statusCode = 422;
+  readonly errorCode = 'VALIDATION_ERROR';
 
-   constructor(message: string) {
-      super(message);
-   }
+  constructor(message: string) {
+    super(message);
+  }
 }

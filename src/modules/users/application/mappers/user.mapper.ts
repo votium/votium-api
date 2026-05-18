@@ -1,5 +1,5 @@
-import { UserEntity } from "../../domain/entities/user.entity";
-import { UserResponseDto } from "../dtos/user-response.dto";
+import { UserEntity } from '../../domain/entities/user.entity';
+import { UserResponseDto } from '../dtos/user-response.dto';
 
 export class UserMapper {
   static toResponse(entity: UserEntity): UserResponseDto {

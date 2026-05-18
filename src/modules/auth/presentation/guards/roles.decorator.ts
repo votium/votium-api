@@ -19,8 +19,8 @@ Puedes pasar varios roles:
   → cualquiera de ellos puede acceder.
 */
 
-import { SetMetadata } from "@nestjs/common";
-import { RoleName } from "src/modules/users/domain/value-objects/role-name.vo";
+import { SetMetadata } from '@nestjs/common';
+import { RoleName } from 'src/modules/users/domain/value-objects/role-name.vo';
 
-export const ROLES_KEY = "roles";
+export const ROLES_KEY = 'roles';
 export const Roles = (...roles: RoleName[]) => SetMetadata(ROLES_KEY, roles);

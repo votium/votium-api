@@ -1,10 +1,10 @@
-import { Injectable } from "@nestjs/common";
-import { PrismaService } from "src/shared/database/prisma.service";
-import { UserRepository } from "../../domain/repositories/user.repository.interface";
-import { UserEntity } from "../../domain/entities/user.entity";
-import { RoleName } from "../../domain/value-objects/role-name.vo";
-import { PrismaUserMapper } from "../mappers/prisma-user.mapper";
-import { RoleNotFoundError } from "../../domain/errors/role-not-found.error";
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from 'src/shared/database/prisma.service';
+import { UserRepository } from '../../domain/repositories/user.repository.interface';
+import { UserEntity } from '../../domain/entities/user.entity';
+import { RoleName } from '../../domain/value-objects/role-name.vo';
+import { PrismaUserMapper } from '../mappers/prisma-user.mapper';
+import { RoleNotFoundError } from '../../domain/errors/role-not-found.error';
 
 @Injectable()
 export class PrismaUserRepository implements UserRepository {

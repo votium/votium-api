@@ -1,5 +1,5 @@
-import { RoleName } from "../../domain/value-objects/role-name.vo";
-import { UserEntity } from "../../domain/entities/user.entity";
+import { RoleName } from '../../domain/value-objects/role-name.vo';
+import { UserEntity } from '../../domain/entities/user.entity';
 
 export class PrismaUserMapper {
   static toDomain(row: {

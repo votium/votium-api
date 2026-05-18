@@ -1,4 +1,4 @@
-import { RoleName } from "src/modules/users/domain/value-objects/role-name.vo";
+import { RoleName } from 'src/modules/users/domain/value-objects/role-name.vo';
 
 export class AuthResponseDto {
   accessToken!: string;

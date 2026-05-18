@@ -1,19 +1,14 @@
-import { Module, OnModuleInit } from "@nestjs/common";
-import { PrismaService } from "src/shared/database/prisma.service";
-import { EnsureDefaultRolesUseCase } from "./application/use-cases/ensure-default-roles.use-case";
-import { CreateUserUseCase } from "./application/use-cases/create-user.use-case";
-import { UpdateUserRoleUseCase } from "./application/use-cases/update-user-role.use-case";
-import { UsersController } from "./presentation/controllers/users.controller";
-import { UserRepository } from "./domain/repositories/user.repository.interface";
-import { RoleRepository } from "./domain/repositories/role.repository.interface";
-import { PrismaUserRepository } from "./infrastructure/repositories/prisma-user.repository";
-import { PrismaRoleRepository } from "./infrastructure/repositories/prisma-role.repository";
-import {
-  ROLE_REPOSITORY,
-  USER_REPOSITORY,
-} from "./domain/repositories/tokens";
-import { PASSWORD_HASHER_PORT } from "./application/ports/tokens";
-import { NodeCryptoPasswordHasherService } from "./infrastructure/services/node-crypto-password-hasher.service";
+import { Module, OnModuleInit } from '@nestjs/common';
+import { PrismaService } from 'src/shared/database/prisma.service';
+import { EnsureDefaultRolesUseCase } from './application/use-cases/ensure-default-roles.use-case';
+import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
+import { UpdateUserRoleUseCase } from './application/use-cases/update-user-role.use-case';
+import { UsersController } from './presentation/controllers/users.controller';
+import { PrismaUserRepository } from './infrastructure/repositories/prisma-user.repository';
+import { PrismaRoleRepository } from './infrastructure/repositories/prisma-role.repository';
+import { ROLE_REPOSITORY, USER_REPOSITORY } from './domain/repositories/tokens';
+import { PASSWORD_HASHER_PORT } from './application/ports/tokens';
+import { NodeCryptoPasswordHasherService } from './infrastructure/services/node-crypto-password-hasher.service';
 
 @Module({
   controllers: [UsersController],
