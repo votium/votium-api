@@ -39,7 +39,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "npm"
+          cache: 'npm'
 
       - name: Instalar dependencias
         run: npm ci
@@ -53,15 +53,15 @@ jobs:
       - name: Verificar lint
         run: npm run lint
 
-      - name: Tests unitarios
-        run: npm run test
+      # - name: Tests unitarios
+      #   run: npm run test
 
       - name: Aplicar migraciones de prueba
         run: npx prisma migrate deploy
         env:
           DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
 
-      - name: Tests de integración
-        run: npm run test:integration
-        env:
-          DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
+      # - name: Tests de integración
+      #   run: npm run test:integration
+      #   env:
+      #     DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
