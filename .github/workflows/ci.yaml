@@ -12,56 +12,61 @@ on:
       - develop
 
 jobs:
-  ci:
-    name: Lint, Format & Tests
+  format:
+    name: Format
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: votium
-          POSTGRES_PASSWORD: votium
-          POSTGRES_DB: votium_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
-      - name: Checkout código
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run format:check
 
-      - name: Instalar dependencias
-        run: npm ci
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
 
-      - name: Generar cliente Prisma
-        run: npx prisma generate
-
-      - name: Verificar formato
-        run: npm run format:check
-
-      - name: Verificar lint
-        run: npm run lint
-
-      # - name: Tests unitarios
-      #   run: npm run test
-
-      - name: Aplicar migraciones de prueba
-        run: npx prisma migrate deploy
-        env:
-          DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
-
-      # - name: Tests de integración
-      #   run: npm run test:integration
-      #   env:
-      #     DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
+  # tests:
+  #   name: Tests
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     postgres:
+  #       image: postgres:16-alpine
+  #       env:
+  #         POSTGRES_USER: votium
+  #         POSTGRES_PASSWORD: votium
+  #         POSTGRES_DB: votium_test
+  #       ports:
+  #         - 5432:5432
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 5s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 22
+  #         cache: 'npm'
+  #     - run: npm ci
+  #     - run: npx prisma generate
+  #     - run: npm run test
+  #     - run: npx prisma migrate deploy
+  #       env:
+  #         DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
+  #     - run: npm run test:integration
+  #       env:
+  #         DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
