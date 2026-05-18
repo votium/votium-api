@@ -1,1 +1,1 @@
-export const TOKEN_SERVICE_PORT = "TokenServicePort";
+export const TOKEN_SERVICE_PORT = 'TokenServicePort';

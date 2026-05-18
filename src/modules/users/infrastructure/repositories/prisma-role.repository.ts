@@ -1,9 +1,9 @@
-import { Injectable } from "@nestjs/common";
-import { PrismaService } from "src/shared/database/prisma.service";
-import { RoleRepository } from "../../domain/repositories/role.repository.interface";
-import { RoleName } from "../../domain/value-objects/role-name.vo";
-import { RoleEntity } from "../../domain/entities/role.entity";
-import { PrismaRoleMapper } from "../mappers/prisma-role.mapper";
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from 'src/shared/database/prisma.service';
+import { RoleRepository } from '../../domain/repositories/role.repository.interface';
+import { RoleName } from '../../domain/value-objects/role-name.vo';
+import { RoleEntity } from '../../domain/entities/role.entity';
+import { PrismaRoleMapper } from '../mappers/prisma-role.mapper';
 
 @Injectable()
 export class PrismaRoleRepository implements RoleRepository {

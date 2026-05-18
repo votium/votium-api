@@ -1,4 +1,4 @@
-import { RoleName } from "../value-objects/role-name.vo";
+import { RoleName } from '../value-objects/role-name.vo';
 
 export class RoleEntity {
   constructor(

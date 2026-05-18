@@ -1,5 +1,5 @@
-import { UserEntity } from "../entities/user.entity";
-import { RoleName } from "../value-objects/role-name.vo";
+import { UserEntity } from '../entities/user.entity';
+import { RoleName } from '../value-objects/role-name.vo';
 
 export interface UserRepository {
   findById(id: string): Promise<UserEntity | null>;

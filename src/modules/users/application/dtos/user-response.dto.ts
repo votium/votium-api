@@ -1,4 +1,4 @@
-import { RoleName } from "../../domain/value-objects/role-name.vo";
+import { RoleName } from '../../domain/value-objects/role-name.vo';
 
 export class UserResponseDto {
   id!: string;

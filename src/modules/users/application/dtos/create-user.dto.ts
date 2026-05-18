@@ -1,5 +1,5 @@
-import { IsEmail, IsEnum, IsString, MinLength } from "class-validator";
-import { RoleName } from "../../domain/value-objects/role-name.vo";
+import { IsEmail, IsEnum, IsString } from 'class-validator';
+import { RoleName } from '../../domain/value-objects/role-name.vo';
 
 export class CreateUserDto {
   @IsString()
