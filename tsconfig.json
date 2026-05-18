@@ -21,9 +21,15 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
+    "types": [
+      "node",
+      "jest"
+    ]
   },
   "include": [
-    "src"
+    "src",
+    "test",
+    "jest.config.ts"
   ],
   "exclude": [
     "node_modules",
