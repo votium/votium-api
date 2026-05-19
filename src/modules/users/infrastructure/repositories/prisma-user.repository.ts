@@ -18,6 +18,14 @@ export class PrismaUserRepository implements UserRepository {
     return row ? PrismaUserMapper.toDomain(row) : null;
   }
 
+  async findAllActive(): Promise<UserEntity[]> {
+    const rows = await this.prisma.user.findMany({
+      where: { deleted_at: null },
+      include: { role: true },
+    });
+    return rows.map((row) => PrismaUserMapper.toDomain(row));
+  }
+
   async findByEmail(email: string): Promise<UserEntity | null> {
     const row = await this.prisma.user.findUnique({
       where: { email },
