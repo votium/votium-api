@@ -108,3 +108,26 @@ Before finalizing the plan, verify:
 - DTOs are not used inside domain
 - entities are not exposed directly
 - repositories remain abstractions
+
+# Output Persistence Rules
+
+You must create or update the implementation plan file inside:
+
+```txt
+plans/
+```
+
+File naming format:
+
+```txt
+task-<id>-<description>.plan.md
+```
+
+Example:
+
+```txt
+plans/task-001-list-users.plan.md
+```
+
+Do not return plans only in chat.
+Persist the final version to the repository.

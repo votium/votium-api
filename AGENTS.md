@@ -289,3 +289,32 @@ Do not introduce:
 - framework leakage into domain
 
 Prefer consistency over cleverness.
+
+# Artifact Generation Rules
+
+Agents must persist their outputs as files.
+
+Do not provide important artifacts only in chat responses.
+
+Required artifact locations:
+
+```txt
+specs/   -> specifications
+plans/   -> implementation plans
+reviews/ -> review reports
+```
+
+All generated files must:
+- use kebab-case
+- include task identifier
+- remain concise and descriptive
+
+Examples:
+
+```txt
+specs/task-001-list-users.spec.md
+plans/task-001-list-users.plan.md
+reviews/task-001-list-users.review.md
+```
+
+Generated artifacts must be updated in their respective files, not recreated in chat repeatedly.

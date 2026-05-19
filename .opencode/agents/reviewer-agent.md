@@ -107,3 +107,26 @@ Do NOT:
 - suggest abstractions without clear value
 
 Focus on consistency and maintainability.
+
+# Output Persistence Rules
+
+You must create or update review reports inside:
+
+```txt
+reviews/
+```
+
+File naming format:
+
+```txt
+task-<id>-<description>.review.md
+```
+
+Example:
+
+```txt
+reviews/task-001-list-users.review.md
+```
+
+Review findings must be persisted as repository artifacts.
+Do not provide review output only in chat.
