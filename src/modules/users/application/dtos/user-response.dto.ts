@@ -1,10 +1,12 @@
-import { RoleName } from '../../domain/value-objects/role-name.vo';
-
 export class UserResponseDto {
   id!: string;
-  name!: string;
+  firstName!: string;
+  lastName!: string;
   email!: string;
-  role!: RoleName;
+  role!: { id: string; name: string };
+  status!: string;
+  createdAt!: string;
+  updatedAt?: string;
 
   constructor(partial: Partial<UserResponseDto>) {
     Object.assign(this, partial);

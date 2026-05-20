@@ -6,6 +6,7 @@ import type { PasswordHasherPort } from 'src/modules/users/application/ports/pas
 import { PASSWORD_HASHER_PORT } from 'src/modules/users/application/ports/tokens';
 import type { TokenServicePort } from '../ports/token-service.port';
 import { TOKEN_SERVICE_PORT } from '../ports/tokens';
+import { UserStatus } from 'src/modules/users/domain/value-objects/user-status.vo';
 
 @Injectable()
 export class LoginUseCase {
@@ -18,6 +19,8 @@ export class LoginUseCase {
   async execute(input: { email: string; password: string }) {
     const user = await this.users.findByEmail(input.email);
     if (!user) throw new ValidationError('Credenciales invalidas');
+
+    if (user.status === UserStatus.DISABLED) throw new ValidationError('Credenciales invalidas');
 
     const ok = await this.hasher.verify(input.password, user.passwordHash);
     if (!ok) throw new ValidationError('Credenciales invalidas');

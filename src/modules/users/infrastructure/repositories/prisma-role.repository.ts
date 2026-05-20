@@ -9,6 +9,11 @@ import { PrismaRoleMapper } from '../mappers/prisma-role.mapper';
 export class PrismaRoleRepository implements RoleRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async findById(id: string): Promise<RoleEntity | null> {
+    const row = await this.prisma.role.findUnique({ where: { id } });
+    return row ? PrismaRoleMapper.toDomain(row) : null;
+  }
+
   async findByName(name: RoleName): Promise<RoleEntity | null> {
     const row = await this.prisma.role.findUnique({ where: { name } });
     return row ? PrismaRoleMapper.toDomain(row) : null;
