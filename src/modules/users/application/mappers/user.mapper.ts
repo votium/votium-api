@@ -5,9 +5,25 @@ export class UserMapper {
   static toResponse(entity: UserEntity): UserResponseDto {
     return new UserResponseDto({
       id: entity.id,
-      name: entity.name,
+      firstName: entity.firstName,
+      lastName: entity.lastName,
       email: entity.email,
-      role: entity.role,
+      role: { id: entity.roleId, name: entity.role },
+      status: entity.status,
+      createdAt: entity.createdAt.toISOString(),
+      updatedAt: entity.updatedAt.toISOString(),
+    });
+  }
+
+  static toListItem(entity: UserEntity): UserResponseDto {
+    return new UserResponseDto({
+      id: entity.id,
+      firstName: entity.firstName,
+      lastName: entity.lastName,
+      email: entity.email,
+      role: { id: entity.roleId, name: entity.role },
+      status: entity.status,
+      createdAt: entity.createdAt.toISOString(),
     });
   }
 }

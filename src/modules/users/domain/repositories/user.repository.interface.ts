@@ -1,14 +1,36 @@
 import { UserEntity } from '../entities/user.entity';
-import { RoleName } from '../value-objects/role-name.vo';
+import { UserStatus } from '../value-objects/user-status.vo';
 
 export interface UserRepository {
   findById(id: string): Promise<UserEntity | null>;
   findByEmail(email: string): Promise<UserEntity | null>;
-  updateRole(userId: string, role: RoleName): Promise<UserEntity>;
   create(input: {
-    name: string;
+    firstName: string;
+    lastName: string;
     email: string;
     passwordHash: string;
-    role: RoleName;
+    roleId: string;
+    status: UserStatus;
   }): Promise<UserEntity>;
+
+  findAll(params: UserListParams): Promise<{ users: UserEntity[]; total: number }>;
+
+  update(userId: string, data: Partial<UserUpdateData>): Promise<UserEntity>;
+}
+
+export interface UserListParams {
+  page: number;
+  limit: number;
+  search?: string;
+  role?: string;
+  status?: UserStatus;
+}
+
+export interface UserUpdateData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  passwordHash: string;
+  roleId: string;
+  status: UserStatus;
 }
