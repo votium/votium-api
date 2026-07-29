@@ -4,6 +4,8 @@ import { envs } from 'src/config';
 import { IamModule } from 'src/modules/iam/iam.module';
 import { LoginUseCase } from './application/use-cases/login.use-case';
 import { TOKEN_SERVICE_PORT } from './application/ports/tokens';
+import { IAM_GATEWAY, type IamGateway } from './application/ports/iam.gateway.port';
+import type { TokenServicePort } from './application/ports/token-service.port';
 import { JwtTokenService } from './infrastructure/services/jwt-token.service';
 import { JwtAuthGuard } from './presentation/guards/jwt-auth.guard';
 import { RolesGuard } from './presentation/guards/roles.guard';
@@ -19,10 +21,14 @@ import { AuthController } from './presentation/controllers/auth.controller';
   ],
   controllers: [AuthController],
   providers: [
-    LoginUseCase,
     JwtAuthGuard,
     RolesGuard,
     { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService },
+    {
+      provide: LoginUseCase,
+      useFactory: (iam: IamGateway, tokens: TokenServicePort) => new LoginUseCase(iam, tokens),
+      inject: [IAM_GATEWAY, TOKEN_SERVICE_PORT],
+    },
   ],
   exports: [JwtAuthGuard, RolesGuard, { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService }],
 })

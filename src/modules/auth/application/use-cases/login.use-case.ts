@@ -1,14 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
 import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
-import { IAM_GATEWAY, type IamGateway } from '../ports/iam.gateway.port';
+import type { IamGateway } from '../ports/iam.gateway.port';
 import type { TokenServicePort } from '../ports/token-service.port';
-import { TOKEN_SERVICE_PORT } from '../ports/tokens';
 
-@Injectable()
 export class LoginUseCase {
   constructor(
-    @Inject(IAM_GATEWAY) private readonly iam: IamGateway,
-    @Inject(TOKEN_SERVICE_PORT) private readonly tokens: TokenServicePort,
+    private readonly iam: IamGateway,
+    private readonly tokens: TokenServicePort,
   ) {}
 
   async execute(input: { email: string; password: string }) {

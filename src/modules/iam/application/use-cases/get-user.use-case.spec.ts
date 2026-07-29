@@ -9,27 +9,26 @@ describe('GetUserUseCase', () => {
   const users: jest.Mocked<UserRepository> = {
     findById: jest.fn(),
     findByEmail: jest.fn(),
-    create: jest.fn(),
+    save: jest.fn(),
     findAll: jest.fn(),
-    update: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());
 
   it('returns a user when found', async () => {
     users.findById.mockResolvedValue(
-      new UserEntity(
-        'user-1',
-        'John',
-        'Doe',
-        'john@example.com',
-        'hash',
-        RoleName.ADMINISTRADOR,
-        'role-1',
-        UserStatus.ACTIVE,
-        new Date('2026-01-01T00:00:00Z'),
-        new Date('2026-01-01T00:00:00Z'),
-      ),
+      UserEntity.restore({
+        id: 'user-1',
+        firstName: 'John',
+        lastName: 'Doe',
+        email: 'john@example.com',
+        passwordHash: 'hash',
+        roleName: RoleName.ADMINISTRADOR,
+        roleId: 'role-1',
+        status: UserStatus.ACTIVE,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }),
     );
     const useCase = new GetUserUseCase(users);
 

@@ -11,9 +11,8 @@ import { RoleName } from '../../domain/value-objects/role-name.vo';
 describe('DisableUserUseCase', () => {
   const users: jest.Mocked<UserRepository> = {
     findById: jest.fn(),
-    update: jest.fn(),
+    save: jest.fn(),
     findByEmail: jest.fn(),
-    create: jest.fn(),
     findAll: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
@@ -23,39 +22,38 @@ describe('DisableUserUseCase', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('disables a user and logs audit', async () => {
-    users.findById.mockResolvedValue(
-      new UserEntity(
-        'user-1',
-        'John',
-        'Doe',
-        'john@example.com',
-        'hash',
-        RoleName.ADMINISTRADOR,
-        'role-1',
-        UserStatus.ACTIVE,
-        new Date('2026-01-01T00:00:00Z'),
-        new Date('2026-01-01T00:00:00Z'),
-      ),
-    );
-    users.update.mockResolvedValue(
-      new UserEntity(
-        'user-1',
-        'John',
-        'Doe',
-        'john@example.com',
-        'hash',
-        RoleName.ADMINISTRADOR,
-        'role-1',
-        UserStatus.DISABLED,
-        new Date('2026-01-01T00:00:00Z'),
-        new Date('2026-01-01T00:00:00Z'),
-      ),
+    const activeUser = UserEntity.restore({
+      id: 'user-1',
+      firstName: 'John',
+      lastName: 'Doe',
+      email: 'john@example.com',
+      passwordHash: 'hash',
+      roleName: RoleName.ADMINISTRADOR,
+      roleId: 'role-1',
+      status: UserStatus.ACTIVE,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    users.findById.mockResolvedValue(activeUser);
+    users.save.mockResolvedValue(
+      UserEntity.restore({
+        id: 'user-1',
+        firstName: 'John',
+        lastName: 'Doe',
+        email: 'john@example.com',
+        passwordHash: 'hash',
+        roleName: RoleName.ADMINISTRADOR,
+        roleId: 'role-1',
+        status: UserStatus.DISABLED,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }),
     );
     const useCase = new DisableUserUseCase(users, audit);
 
     await useCase.execute('user-1', 'admin-1');
 
-    expect(users.update.mock.calls[0]).toEqual(['user-1', { status: UserStatus.DISABLED }]);
+    expect(users.save.mock.calls[0][0]).toBe(activeUser);
     expect(audit.log.mock.calls[0]).toEqual([
       'USER_DISABLED',
       'admin-1',
@@ -71,18 +69,18 @@ describe('DisableUserUseCase', () => {
 
   it('rejects when already disabled', async () => {
     users.findById.mockResolvedValue(
-      new UserEntity(
-        'user-1',
-        'John',
-        'Doe',
-        'john@example.com',
-        'hash',
-        RoleName.ADMINISTRADOR,
-        'role-1',
-        UserStatus.DISABLED,
-        new Date('2026-01-01T00:00:00Z'),
-        new Date('2026-01-01T00:00:00Z'),
-      ),
+      UserEntity.restore({
+        id: 'user-1',
+        firstName: 'John',
+        lastName: 'Doe',
+        email: 'john@example.com',
+        passwordHash: 'hash',
+        roleName: RoleName.ADMINISTRADOR,
+        roleId: 'role-1',
+        status: UserStatus.DISABLED,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }),
     );
     const useCase = new DisableUserUseCase(users, audit);
 
