@@ -1,7 +1,7 @@
 import { UserEntity } from '../../domain/entities/user.entity';
 import { UserResponseDto } from '../dtos/user-response.dto';
 
-export class UserMapper {
+export class UserPresenter {
   static toResponse(entity: UserEntity): UserResponseDto {
     return new UserResponseDto({
       id: entity.id,
@@ -15,15 +15,7 @@ export class UserMapper {
     });
   }
 
-  static toListItem(entity: UserEntity): UserResponseDto {
-    return new UserResponseDto({
-      id: entity.id,
-      firstName: entity.firstName,
-      lastName: entity.lastName,
-      email: entity.email,
-      role: { id: entity.roleId, name: entity.role },
-      status: entity.status,
-      createdAt: entity.createdAt.toISOString(),
-    });
+  static toList(entities: UserEntity[]): UserResponseDto[] {
+    return entities.map((e) => UserPresenter.toResponse(e));
   }
 }

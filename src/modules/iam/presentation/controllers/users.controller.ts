@@ -2,17 +2,17 @@ import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from
 import { Request } from 'express';
 import { CreateUserDto } from '../../application/dtos/create-user.dto';
 import { CreateUserUseCase } from '../../application/use-cases/create-user.use-case';
-import { UserMapper } from '../../application/mappers/user.mapper';
+import { UserPresenter } from '../presenters/user.presenter';
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from '../../domain/value-objects/role-name.vo';
-import { ListUsersQueryDto } from '../../application/dtos/list-users-query.dto';
+import { DisableUserResponseDto } from '../dtos/disable-user-response.dto';
+import { ListUsersQueryDto } from '../dtos/list-users-query.dto';
 import { GetUsersUseCase } from '../../application/use-cases/get-users.use-case';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { GetUserUseCase } from '../../application/use-cases/get-user.use-case';
 import { DisableUserUseCase } from '../../application/use-cases/disable-user.use-case';
-import { DisableUserResponseDto } from '../../application/dtos/disable-user-response.dto';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -44,7 +44,7 @@ export class UsersController {
       status: dto.status,
       requestingUserId: req.user.sub,
     });
-    return UserMapper.toResponse(user);
+    return UserPresenter.toResponse(user);
   }
 
   @Get()
@@ -59,7 +59,7 @@ export class UsersController {
       status: query.status,
     });
 
-    const data = users.map((user) => UserMapper.toListItem(user));
+    const data = UserPresenter.toList(users);
     return new PaginatedResponseDto(data, total, query.page, query.limit);
   }
 
@@ -68,7 +68,7 @@ export class UsersController {
   @Roles(RoleName.ADMINISTRADOR, RoleName.AUDITOR)
   async byId(@Param('id') id: string) {
     const user = await this.getUser.execute(id);
-    return UserMapper.toResponse(user);
+    return UserPresenter.toResponse(user);
   }
 
   @Patch(':id/disable')

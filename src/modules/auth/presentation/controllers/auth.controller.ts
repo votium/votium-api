@@ -1,7 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { LoginDto } from '../../application/dtos/login.dto';
-import { AuthResponseDto } from '../../application/dtos/auth-response.dto';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
+import { AuthPresenter } from '../presenters/auth.presenter';
 
 @Controller('auth')
 export class AuthController {
@@ -10,6 +10,6 @@ export class AuthController {
   @Post('login')
   async loginUser(@Body() dto: LoginDto) {
     const result = await this.login.execute(dto);
-    return new AuthResponseDto(result);
+    return AuthPresenter.toResponse(result);
   }
 }
