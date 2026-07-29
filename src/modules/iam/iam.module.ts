@@ -7,7 +7,14 @@ import { CreateUserUseCase } from './application/use-cases/create-user.use-case'
 import { UsersController } from './presentation/controllers/users.controller';
 import { PrismaUserRepository } from './infrastructure/repositories/prisma-user.repository';
 import { PrismaRoleRepository } from './infrastructure/repositories/prisma-role.repository';
-import { ROLE_REPOSITORY, USER_REPOSITORY } from './domain/repositories/tokens';
+import {
+  USER_REPOSITORY,
+  type UserRepository,
+} from './domain/repositories/user.repository.interface';
+import {
+  ROLE_REPOSITORY,
+  type RoleRepository,
+} from './domain/repositories/role.repository.interface';
 import { AUDIT_LOG_PORT, type AuditLogPort } from './application/ports/audit-log.port';
 import {
   PASSWORD_HASHER_PORT,
@@ -18,8 +25,6 @@ import { PrismaAuditLogService } from './infrastructure/services/prisma-audit-lo
 import { GetUsersUseCase } from './application/use-cases/get-users.use-case';
 import { GetUserUseCase } from './application/use-cases/get-user.use-case';
 import { DisableUserUseCase } from './application/use-cases/disable-user.use-case';
-import type { UserRepository } from './domain/repositories/user.repository.interface';
-import type { RoleRepository } from './domain/repositories/role.repository.interface';
 
 @Module({
   controllers: [UsersController],

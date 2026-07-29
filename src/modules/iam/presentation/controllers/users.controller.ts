@@ -60,7 +60,7 @@ export class UsersController {
     });
 
     const data = UserPresenter.toList(users);
-    return new PaginatedResponseDto(data, total, query.page, query.limit);
+    return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
   }
 
   @Get(':id')

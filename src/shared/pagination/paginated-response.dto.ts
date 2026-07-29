@@ -7,13 +7,13 @@ export class PaginatedResponseDto<T> {
     totalPages: number;
   };
 
-  constructor(data: T[], total: number, page: number, limit: number) {
-    this.data = data;
+  constructor(params: { data: T[]; total: number; page: number; limit: number }) {
+    this.data = params.data;
     this.meta = {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
+      page: params.page,
+      limit: params.limit,
+      total: params.total,
+      totalPages: Math.ceil(params.total / params.limit),
     };
   }
 }

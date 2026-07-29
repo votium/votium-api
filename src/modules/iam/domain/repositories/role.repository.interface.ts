@@ -1,7 +1,7 @@
 import { RoleEntity } from '../entities/role.entity';
 import { RoleName } from '../value-objects/role-name.vo';
 
-export const ROLE_REPOSITORY = 'ROLE_REPOSITORY';
+export const ROLE_REPOSITORY = 'RoleRepository';
 
 export interface RoleRepository {
   findById(id: string): Promise<RoleEntity | null>;
