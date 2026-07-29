@@ -1,8 +1,7 @@
-import { NotFoundError } from 'src/shared/exceptions/errors/not-found.error';
-import { RoleName } from '../value-objects/role-name.vo';
+import { NotFoundException } from 'src/shared/exceptions/base/not-found.exception';
 
-export class RoleNotFoundError extends NotFoundError {
-  constructor(role: RoleName) {
-    super('Rol', role);
+export class RoleNotFoundError extends NotFoundException {
+  constructor(role: string) {
+    super('Rol', role, 'ROLE_NOT_FOUND');
   }
 }

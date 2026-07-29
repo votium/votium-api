@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ValidationError } from 'src/shared/exceptions/errors/validation.error';
+import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
 import type { UserRepository } from 'src/modules/users/domain/repositories/user.repository.interface';
 import { USER_REPOSITORY } from 'src/modules/users/domain/repositories/tokens';
 import type { PasswordHasherPort } from 'src/modules/users/application/ports/password-hasher.port';
@@ -18,12 +18,12 @@ export class LoginUseCase {
 
   async execute(input: { email: string; password: string }) {
     const user = await this.users.findByEmail(input.email);
-    if (!user) throw new ValidationError('Credenciales invalidas');
+    if (!user) throw new InvalidCredentialsException();
 
-    if (user.status === UserStatus.DISABLED) throw new ValidationError('Credenciales invalidas');
+    if (user.status === UserStatus.DISABLED) throw new InvalidCredentialsException();
 
     const ok = await this.hasher.verify(input.password, user.passwordHash);
-    if (!ok) throw new ValidationError('Credenciales invalidas');
+    if (!ok) throw new InvalidCredentialsException();
 
     const accessToken = await this.tokens.signAccessToken({
       sub: user.id,

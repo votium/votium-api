@@ -1,5 +1,5 @@
-import { ConflictError } from 'src/shared/exceptions/errors/conflict.error';
-import { NotFoundError } from 'src/shared/exceptions/errors/not-found.error';
+import { UserEmailAlreadyExistsException } from '../../domain/errors/user-email-already-exists.exception';
+import { NotFoundException } from 'src/shared/exceptions/base/not-found.exception';
 import { CreateUserUseCase } from './create-user.use-case';
 import { RoleEntity } from '../../domain/entities/role.entity';
 import { RoleName } from '../../domain/value-objects/role-name.vo';
@@ -96,7 +96,7 @@ describe('CreateUserUseCase', () => {
         roleId: 'role-1',
         requestingUserId: 'admin-1',
       }),
-    ).rejects.toBeInstanceOf(ConflictError);
+    ).rejects.toBeInstanceOf(UserEmailAlreadyExistsException);
   });
 
   it('throws when role is missing', async () => {
@@ -113,6 +113,6 @@ describe('CreateUserUseCase', () => {
         roleId: 'role-1',
         requestingUserId: 'admin-1',
       }),
-    ).rejects.toBeInstanceOf(NotFoundError);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

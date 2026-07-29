@@ -1,7 +1,7 @@
-import { ValidationError } from 'src/shared/exceptions/errors/validation.error';
+import { ValidationException } from 'src/shared/exceptions/base/validation.exception';
 
-export class UserSelfDisableError extends ValidationError {
+export class UserSelfDisableError extends ValidationException {
   constructor() {
-    super('Users cannot disable themselves');
+    super('Users cannot disable themselves', 'USER_SELF_DISABLE');
   }
 }
