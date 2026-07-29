@@ -9,7 +9,7 @@ import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from '../../domain/value-objects/role-name.vo';
 import { ListUsersQueryDto } from '../../application/dtos/list-users-query.dto';
 import { GetUsersUseCase } from '../../application/use-cases/get-users.use-case';
-import { PaginatedResponseDto } from '../../application/dtos/paginated-response.dto';
+import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { GetUserUseCase } from '../../application/use-cases/get-user.use-case';
 import { DisableUserUseCase } from '../../application/use-cases/disable-user.use-case';
 import { DisableUserResponseDto } from '../../application/dtos/disable-user-response.dto';

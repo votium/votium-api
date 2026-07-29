@@ -3,7 +3,6 @@ import { PrismaService } from 'src/shared/database/prisma.service';
 import {
   UserListParams,
   UserRepository,
-  UserUpdateData,
 } from '../../domain/repositories/user.repository.interface';
 import { UserEntity } from '../../domain/entities/user.entity';
 import { PrismaUserMapper } from '../mappers/prisma-user.mapper';
@@ -40,28 +39,37 @@ export class PrismaUserRepository implements UserRepository {
     return row ? PrismaUserMapper.toDomain(row) : null;
   }
 
-  async create(input: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    passwordHash: string;
-    roleId: string;
-    status: UserStatus;
-  }): Promise<UserEntity> {
-    const role = await this.prisma.role.findUnique({ where: { id: input.roleId } });
-    if (!role) {
-      // Keep error mapping minimal; application use cases validate role existence.
-      throw new Error('Role not found');
+  async save(entity: UserEntity): Promise<UserEntity> {
+    const exists = await this.prisma.user.findUnique({ where: { id: entity.id } });
+
+    if (exists) {
+      const row = await this.prisma.user.update({
+        where: { id: entity.id },
+        data: {
+          first_name: entity.firstName,
+          last_name: entity.lastName,
+          email: entity.email,
+          password_hash: entity.passwordHash,
+          role_id: entity.roleId,
+          status: entity.status,
+          updated_at: entity.updatedAt,
+        },
+        include: { role: true },
+      });
+      return PrismaUserMapper.toDomain(row);
     }
 
     const row = await this.prisma.user.create({
       data: {
-        first_name: input.firstName,
-        last_name: input.lastName,
-        email: normalizeEmail(input.email),
-        password_hash: input.passwordHash,
-        role_id: input.roleId,
-        status: input.status,
+        id: entity.id,
+        first_name: entity.firstName,
+        last_name: entity.lastName,
+        email: entity.email,
+        password_hash: entity.passwordHash,
+        role_id: entity.roleId,
+        status: entity.status,
+        created_at: entity.createdAt,
+        updated_at: entity.updatedAt,
       },
       include: { role: true },
     });
@@ -100,22 +108,6 @@ export class PrismaUserRepository implements UserRepository {
     ]);
 
     return { users: rows.map((row) => PrismaUserMapper.toDomain(row)), total };
-  }
-
-  async update(userId: string, data: Partial<UserUpdateData>): Promise<UserEntity> {
-    const row = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(data.firstName ? { first_name: data.firstName } : {}),
-        ...(data.lastName ? { last_name: data.lastName } : {}),
-        ...(data.email ? { email: normalizeEmail(data.email) } : {}),
-        ...(data.passwordHash ? { password_hash: data.passwordHash } : {}),
-        ...(data.roleId ? { role_id: data.roleId } : {}),
-        ...(data.status ? { status: data.status } : {}),
-      },
-      include: { role: true },
-    });
-    return PrismaUserMapper.toDomain(row);
   }
 }
 

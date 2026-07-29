@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { RoleName } from 'src/modules/users/domain/value-objects/role-name.vo';
+import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { TokenServicePort } from '../../application/ports/token-service.port';
 
 @Injectable()

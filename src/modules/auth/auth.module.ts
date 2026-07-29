@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { envs } from 'src/config';
-import { UsersModule } from 'src/modules/users/users.module';
+import { IamModule } from 'src/modules/iam/iam.module';
 import { LoginUseCase } from './application/use-cases/login.use-case';
 import { TOKEN_SERVICE_PORT } from './application/ports/tokens';
 import { JwtTokenService } from './infrastructure/services/jwt-token.service';
@@ -11,7 +11,7 @@ import { AuthController } from './presentation/controllers/auth.controller';
 
 @Module({
   imports: [
-    UsersModule,
+    IamModule,
     JwtModule.register({
       secret: envs.jwtSecret,
       signOptions: { expiresIn: envs.jwtExpiresIn },

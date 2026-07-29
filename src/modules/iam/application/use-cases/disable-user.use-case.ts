@@ -1,12 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { UserNotFoundError } from '../../domain/errors/user-not-found.error';
-import { UserAlreadyDisabledError } from '../../domain/errors/user-already-disabled.error';
 import { UserSelfDisableError } from '../../domain/errors/user-self-disable.error';
 import type { UserRepository } from '../../domain/repositories/user.repository.interface';
 import { USER_REPOSITORY } from '../../domain/repositories/tokens';
-import { UserStatus } from '../../domain/value-objects/user-status.vo';
-import type { AuditLogPort } from '../ports/audit-log.port';
-import { AUDIT_LOG_PORT } from '../ports/tokens';
+import { AUDIT_LOG_PORT, type AuditLogPort } from '../ports/audit-log.port';
 
 @Injectable()
 export class DisableUserUseCase {
@@ -20,9 +17,10 @@ export class DisableUserUseCase {
 
     const user = await this.users.findById(targetUserId);
     if (!user) throw new UserNotFoundError(targetUserId);
-    if (user.status === UserStatus.DISABLED) throw new UserAlreadyDisabledError(targetUserId);
 
-    await this.users.update(targetUserId, { status: UserStatus.DISABLED });
+    user.disable();
+
+    await this.users.save(user);
     await this.audit.log('USER_DISABLED', requestingUserId, { targetUserId });
   }
 }

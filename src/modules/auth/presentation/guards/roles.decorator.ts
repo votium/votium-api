@@ -20,7 +20,7 @@ Puedes pasar varios roles:
 */
 
 import { SetMetadata } from '@nestjs/common';
-import { RoleName } from 'src/modules/users/domain/value-objects/role-name.vo';
+import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 
 export const ROLES_KEY = 'roles';
 export const Roles = (...roles: RoleName[]) => SetMetadata(ROLES_KEY, roles);
