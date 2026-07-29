@@ -6,10 +6,9 @@ import {
 } from '../../domain/repositories/user.repository.interface';
 import { UserEntity } from '../../domain/entities/user.entity';
 import { PrismaUserMapper } from '../mappers/prisma-user.mapper';
-import { UserStatus } from '../../domain/value-objects/user-status.vo';
 
 type PrismaUserWhere = {
-  status?: UserStatus;
+  status?: string;
   role?: { name: string };
   OR?: Array<{
     first_name?: { contains: string; mode: 'insensitive' };
@@ -51,7 +50,7 @@ export class PrismaUserRepository implements UserRepository {
           email: entity.email,
           password_hash: entity.passwordHash,
           role_id: entity.roleId,
-          status: entity.status,
+          status: entity.status.value,
           updated_at: entity.updatedAt,
         },
         include: { role: true },
@@ -67,7 +66,7 @@ export class PrismaUserRepository implements UserRepository {
         email: entity.email,
         password_hash: entity.passwordHash,
         role_id: entity.roleId,
-        status: entity.status,
+        status: entity.status.value,
         created_at: entity.createdAt,
         updated_at: entity.updatedAt,
       },
@@ -83,7 +82,7 @@ export class PrismaUserRepository implements UserRepository {
 
     const search = params.search?.trim();
     const where: PrismaUserWhere = {
-      ...(params.status ? { status: params.status } : {}),
+      ...(params.status ? { status: params.status.value } : {}),
       ...(params.role ? { role: { name: params.role } } : {}),
       ...(search
         ? {

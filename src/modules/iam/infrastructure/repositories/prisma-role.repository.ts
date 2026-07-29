@@ -15,15 +15,15 @@ export class PrismaRoleRepository implements RoleRepository {
   }
 
   async findByName(name: RoleName): Promise<RoleEntity | null> {
-    const row = await this.prisma.role.findUnique({ where: { name } });
+    const row = await this.prisma.role.findUnique({ where: { name: name.value } });
     return row ? PrismaRoleMapper.toDomain(row) : null;
   }
 
   async ensureExists(name: RoleName): Promise<RoleEntity> {
     const row = await this.prisma.role.upsert({
-      where: { name },
+      where: { name: name.value },
       update: {},
-      create: { name },
+      create: { name: name.value },
     });
     return PrismaRoleMapper.toDomain(row);
   }

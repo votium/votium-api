@@ -22,9 +22,9 @@ export class PrismaUserMapper {
       lastName: row.last_name,
       email: row.email,
       passwordHash: row.password_hash,
-      role: row.role.name as RoleName,
+      role: RoleName.from(row.role.name),
       roleId: row.role.id,
-      status: row.status as UserStatus,
+      status: UserStatus.from(row.status),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
@@ -37,10 +37,10 @@ export class PrismaUserMapper {
       last_name: entity.lastName,
       email: entity.email,
       password_hash: entity.passwordHash,
-      status: entity.status,
+      status: entity.status.value,
       created_at: entity.createdAt,
       updated_at: entity.updatedAt,
-      role: { id: entity.roleId, name: entity.role },
+      role: { id: entity.roleId, name: entity.role.value },
     };
   }
 }

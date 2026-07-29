@@ -8,8 +8,8 @@ export class UserPresenter {
       firstName: entity.firstName,
       lastName: entity.lastName,
       email: entity.email,
-      role: { id: entity.roleId, name: entity.role },
-      status: entity.status,
+      role: { id: entity.roleId, name: entity.role.value },
+      status: entity.status.value,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
     });

@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsEmail,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -9,7 +9,6 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { UserStatus } from '../../domain/value-objects/user-status.vo';
 
 export class CreateUserDto {
   @IsString()
@@ -43,7 +42,8 @@ export class CreateUserDto {
   roleId!: string;
 
   @IsOptional()
-  @IsEnum(UserStatus)
+  @IsString()
+  @IsIn(['ACTIVE', 'DISABLED'])
   @Type(() => String)
-  status?: UserStatus;
+  status?: string;
 }

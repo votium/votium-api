@@ -19,7 +19,7 @@ export class GetUsersUseCase {
       limit,
       search: params.search,
       role: params.role,
-      status: params.status as UserStatus | undefined,
+      status: params.status ? UserStatus.from(params.status) : undefined,
     });
   }
 }

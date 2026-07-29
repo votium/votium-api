@@ -7,6 +7,7 @@ import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from '../../domain/value-objects/role-name.vo';
+import { UserStatus } from '../../domain/value-objects/user-status.vo';
 import { DisableUserResponseDto } from '../dtos/disable-user-response.dto';
 import { ListUsersQueryDto } from '../dtos/list-users-query.dto';
 import { GetUsersUseCase } from '../../application/use-cases/get-users.use-case';
@@ -33,7 +34,7 @@ export class UsersController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(RoleName.ADMINISTRADOR)
+  @Roles(RoleName.ADMINISTRATOR)
   async create(@Body() dto: CreateUserDto, @Req() req: AuthenticatedRequest) {
     const user = await this.createUser.execute({
       firstName: dto.firstName,
@@ -41,7 +42,7 @@ export class UsersController {
       email: dto.email,
       password: dto.password,
       roleId: dto.roleId,
-      status: dto.status,
+      status: dto.status ? UserStatus.from(dto.status) : undefined,
       requestingUserId: req.user.sub,
     });
     return UserPresenter.toResponse(user);
@@ -49,7 +50,7 @@ export class UsersController {
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(RoleName.ADMINISTRADOR, RoleName.AUDITOR)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
   async list(@Query() query: ListUsersQueryDto) {
     const { users, total } = await this.getUsers.execute({
       page: query.page,
@@ -65,7 +66,7 @@ export class UsersController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(RoleName.ADMINISTRADOR, RoleName.AUDITOR)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
   async byId(@Param('id') id: string) {
     const user = await this.getUser.execute(id);
     return UserPresenter.toResponse(user);
@@ -73,7 +74,7 @@ export class UsersController {
 
   @Patch(':id/disable')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(RoleName.ADMINISTRADOR)
+  @Roles(RoleName.ADMINISTRATOR)
   async disable(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     await this.disableUser.execute(id, req.user.sub);
     return new DisableUserResponseDto('User disabled successfully');

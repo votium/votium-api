@@ -5,7 +5,7 @@ export class EnsureDefaultRolesUseCase {
   constructor(private readonly roles: RoleRepository) {}
 
   async execute(): Promise<void> {
-    await this.roles.ensureExists(RoleName.ADMINISTRADOR);
+    await this.roles.ensureExists(RoleName.ADMINISTRATOR);
     await this.roles.ensureExists(RoleName.AUDITOR);
   }
 }
