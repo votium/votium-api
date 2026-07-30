@@ -146,8 +146,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trigger ECR image scan
-        run: |
-          aws ecr start-image-scan \
-            --repository-name ${{ env.ECR_REPOSITORY }} \
-            --image-id imageTag=${{ steps.tags.outputs.tag }}
+      # - name: Trigger ECR image scan
+      #   run: |
+      #     aws ecr start-image-scan \
+      #       --repository-name ${{ env.ECR_REPOSITORY }} \
+      #       --image-id imageTag=${{ steps.tags.outputs.tag }}
