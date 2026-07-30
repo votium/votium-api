@@ -1,4 +1,3 @@
-# .github/workflows/ci.yml
 name: CI
 
 on:
@@ -10,6 +9,11 @@ on:
     branches:
       - main
       - develop
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: votium-development-backend
+  ENVIRONMENT: develop
 
 jobs:
   format:
@@ -70,3 +74,79 @@ jobs:
       - run: npm run test:integration
         env:
           DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run build
+
+  docker-build:
+    name: Docker Build & Push
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/develop'
+    needs: [tests, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Generate Docker tags
+        id: tags
+        run: |
+          SHA_SHORT=$(git rev-parse --short=7 HEAD)
+
+          GIT_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo "")
+
+          if [ -n "$GIT_TAG" ]; then
+            VERSION="${GIT_TAG#v}"
+          else
+            VERSION="0.0.0"
+          fi
+
+          DOCKER_TAG="${ENVIRONMENT}-${VERSION}-${SHA_SHORT}"
+          echo "tag=${DOCKER_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.tag }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.ENVIRONMENT }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trigger ECR image scan
+        run: |
+          aws ecr start-image-scan \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-id imageTag=${{ steps.tags.outputs.tag }}
