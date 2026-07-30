@@ -30,7 +30,7 @@ export class UsersController {
     private readonly getUsers: GetUsersUseCase,
     private readonly getUser: GetUserUseCase,
     private readonly disableUser: DisableUserUseCase,
-  ) { }
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)

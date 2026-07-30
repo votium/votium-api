@@ -31,4 +31,4 @@ import { AuthController } from './presentation/controllers/auth.controller';
   ],
   exports: [JwtAuthGuard, RolesGuard, { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService }],
 })
-export class AuthModule { }
+export class AuthModule {}
