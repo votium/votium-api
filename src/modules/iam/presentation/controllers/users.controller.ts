@@ -30,7 +30,7 @@ export class UsersController {
     private readonly getUsers: GetUsersUseCase,
     private readonly getUser: GetUserUseCase,
     private readonly disableUser: DisableUserUseCase,
-  ) {}
+  ) { }
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -43,7 +43,7 @@ export class UsersController {
       password: dto.password,
       roleId: dto.roleId,
       status: dto.status ? UserStatus.from(dto.status) : undefined,
-      requestingUserId: req.user.sub,
+      requestingUserId: req.user?.sub,
     });
     return UserPresenter.toResponse(user);
   }

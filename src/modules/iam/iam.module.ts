@@ -1,9 +1,10 @@
-import { Module, OnModuleInit } from '@nestjs/common';
+import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
 import { PrismaService } from 'src/shared/database/prisma.service';
 import { IAM_GATEWAY } from 'src/modules/auth/application/ports/iam.gateway.port';
 import { PrismaIamGateway } from './infrastructure/gateways/prisma-iam.gateway';
 import { EnsureDefaultRolesUseCase } from './application/use-cases/ensure-default-roles.use-case';
 import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
+import { AuthModule } from 'src/modules/auth/auth.module';
 import { UsersController } from './presentation/controllers/users.controller';
 import { PrismaUserRepository } from './infrastructure/repositories/prisma-user.repository';
 import { PrismaRoleRepository } from './infrastructure/repositories/prisma-role.repository';
@@ -27,6 +28,7 @@ import { GetUserUseCase } from './application/use-cases/get-user.use-case';
 import { DisableUserUseCase } from './application/use-cases/disable-user.use-case';
 
 @Module({
+  imports: [forwardRef(() => AuthModule)],
   controllers: [UsersController],
   providers: [
     PrismaService,
