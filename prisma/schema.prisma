@@ -1,0 +1,232 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StatusElection {
+  CREATED
+  PENDING
+  PUBLISHED
+  CLOSED
+  ACTIVE
+}
+
+model Role {
+  id   String @id @default(uuid())
+  name String @unique
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  first_name    String
+  last_name     String
+  email         String    @unique
+  password_hash String
+  role_id       String
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  status        String    @default("ACTIVE")
+
+  role          Role                    @relation(fields: [role_id], references: [id])
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  reports       Report[]
+  statusHistory ElectionStatusHistory[]
+
+  @@map("users")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  user_id   String
+  action    String
+  reason    String?
+  details   String?
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Election {
+  id                 String         @id @default(uuid())
+  name               String
+  description        String
+  start_date         DateTime       @db.Date()
+  start_time         DateTime       @db.Time()
+  end_date           DateTime       @db.Date()
+  end_time           DateTime       @db.Time()
+  current_status     StatusElection @default(CREATED)
+  blank_vote_enabled Boolean        @default(false)
+  created_at         DateTime       @default(now())
+
+  reports        Report[]
+  notifications  Notification[]
+  candidacies    Candiday[]
+  results        Result[]
+  electoralRolls ElectoralRoll[]
+  certificates   Certificate[]
+  statusHistory  ElectionStatusHistory[]
+  voteMetadata   VoteMetadata[]
+
+  @@map("elections")
+}
+
+model ElectionStatusHistory {
+  id          String         @id @default(uuid())
+  election_id String
+  user_id     String
+  old_status  StatusElection
+  new_status  StatusElection
+  changed_at  DateTime       @default(now())
+
+  election Election @relation(fields: [election_id], references: [id])
+  user     User     @relation(fields: [user_id], references: [id])
+
+  @@map("election_status_history")
+}
+
+model VoteMetadata {
+  id          String @id @default(uuid())
+  election_id String
+  tx_hash     String
+
+  election Election @relation(fields: [election_id], references: [id])
+
+  @@map("vote_metadata")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  user_id     String
+  message     String
+  sent_to     Json
+  election_id String
+  created_at  DateTime @default(now())
+
+  user     User     @relation(fields: [user_id], references: [id])
+  election Election @relation(fields: [election_id], references: [id])
+
+  @@map("notifications")
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  user_id     String
+  description String
+  file_url    String?
+  election_id String
+  created_at  DateTime @default(now())
+
+  user     User     @relation(fields: [user_id], references: [id])
+  election Election @relation(fields: [election_id], references: [id])
+
+  @@map("reports")
+}
+
+model Candidate {
+  id                    String   @id @default(uuid())
+  first_name            String
+  last_name             String
+  student_code          String   @unique
+  program_code          String
+  identification_number String   @unique
+  status                String
+  created_at            DateTime @default(now())
+
+  candidays Candiday[]
+
+  @@map("candidates")
+}
+
+model Candiday {
+  id              String   @id @default(uuid())
+  candidate_id    String
+  election_id     String
+  position_number Int
+  image_url       String?
+  created_at      DateTime @default(now())
+
+  candidate Candidate @relation(fields: [candidate_id], references: [id])
+  election  Election  @relation(fields: [election_id], references: [id])
+  results   Result[]
+
+  @@unique([candidate_id, election_id])
+  @@unique([position_number, election_id])
+  @@map("candidacies")
+}
+
+model Result {
+  id           String   @id @default(uuid())
+  election_id  String
+  candidacy_id String
+  votes        Int
+  updated_at   DateTime @default(now())
+
+  election  Election @relation(fields: [election_id], references: [id])
+  candidacy Candiday @relation(fields: [candidacy_id], references: [id])
+
+  @@unique([election_id, candidacy_id])
+  @@map("results")
+}
+
+model Elector {
+  id            String   @id @default(uuid())
+  first_name    String
+  last_name     String
+  email         String   @unique
+  password_hash String
+  student_code  String   @unique
+  program_code  String
+  status        String
+  created_at    DateTime @default(now())
+
+  electoralRolls ElectoralRoll[]
+
+  @@map("electors")
+}
+
+model ElectoralRoll {
+  id                String    @id @default(uuid())
+  election_id       String
+  elector_id        String
+  has_voted         Boolean   @default(false)
+  vote_attempts     Int       @default(0)
+  last_vote_attempt DateTime?
+  created_at        DateTime  @default(now())
+
+  election     Election      @relation(fields: [election_id], references: [id])
+  elector      Elector       @relation(fields: [elector_id], references: [id])
+  certificates Certificate[]
+
+  @@unique([election_id, elector_id])
+  @@map("electoral_rolls")
+}
+
+model Certificate {
+  id                String   @id @default(uuid())
+  electoral_roll_id String
+  election_id       String
+  verification_code String   @unique
+  created_at        DateTime @default(now())
+
+  electoralRoll ElectoralRoll @relation(fields: [electoral_roll_id], references: [id])
+  election      Election      @relation(fields: [election_id], references: [id])
+
+  @@map("certificates")
+}
