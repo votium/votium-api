@@ -1,11 +1,11 @@
-import { RoleName } from 'src/modules/users/domain/value-objects/role-name.vo';
+export const TOKEN_SERVICE_PORT = 'TokenServicePort';
 
 export interface TokenServicePort {
-  signAccessToken(payload: { sub: string; email: string; role: RoleName }): Promise<string>;
+  signAccessToken(payload: { sub: string; email: string; role: string }): Promise<string>;
 
   verifyAccessToken(token: string): Promise<{
     sub: string;
     email: string;
-    role: RoleName;
+    role: string;
   }>;
 }

@@ -1,29 +1,16 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { ValidationError } from 'src/shared/exceptions/errors/validation.error';
-import type { UserRepository } from 'src/modules/users/domain/repositories/user.repository.interface';
-import { USER_REPOSITORY } from 'src/modules/users/domain/repositories/tokens';
-import type { PasswordHasherPort } from 'src/modules/users/application/ports/password-hasher.port';
-import { PASSWORD_HASHER_PORT } from 'src/modules/users/application/ports/tokens';
+import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
+import type { IamGateway } from '../ports/iam.gateway.port';
 import type { TokenServicePort } from '../ports/token-service.port';
-import { TOKEN_SERVICE_PORT } from '../ports/tokens';
-import { UserStatus } from 'src/modules/users/domain/value-objects/user-status.vo';
 
-@Injectable()
 export class LoginUseCase {
   constructor(
-    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
-    @Inject(PASSWORD_HASHER_PORT) private readonly hasher: PasswordHasherPort,
-    @Inject(TOKEN_SERVICE_PORT) private readonly tokens: TokenServicePort,
+    private readonly iam: IamGateway,
+    private readonly tokens: TokenServicePort,
   ) {}
 
   async execute(input: { email: string; password: string }) {
-    const user = await this.users.findByEmail(input.email);
-    if (!user) throw new ValidationError('Credenciales invalidas');
-
-    if (user.status === UserStatus.DISABLED) throw new ValidationError('Credenciales invalidas');
-
-    const ok = await this.hasher.verify(input.password, user.passwordHash);
-    if (!ok) throw new ValidationError('Credenciales invalidas');
+    const user = await this.iam.validateCredentials(input.email, input.password);
+    if (!user) throw new InvalidCredentialsException();
 
     const accessToken = await this.tokens.signAccessToken({
       sub: user.id,

@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { ROLES_KEY } from './roles.decorator';
-import { RoleName } from 'src/modules/users/domain/value-objects/role-name.vo';
+import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -15,10 +15,10 @@ export class RolesGuard implements CanActivate {
     ]);
     if (!required || required.length === 0) return true;
 
-    const req = context.switchToHttp().getRequest<Request & { user: { role?: RoleName } }>();
+    const req = context.switchToHttp().getRequest<Request & { user: { role?: string } }>();
     const user = req.user;
     if (!user?.role) throw new ForbiddenException('Missing role');
-    if (!required.includes(user.role)) throw new ForbiddenException('Forbidden');
+    if (!required.some((r) => r.value === user.role)) throw new ForbiddenException('Forbidden');
     return true;
   }
 }

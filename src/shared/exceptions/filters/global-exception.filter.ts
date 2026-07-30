@@ -7,8 +7,21 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { DomainError } from '../errors/domain.error';
+import { DomainException } from '../base/domain.exception';
 import { ErrorResponseDto } from '../dto/error-response.dto';
+
+const DOMAIN_CODE_TO_HTTP: Record<string, HttpStatus> = {
+  NOT_FOUND: HttpStatus.NOT_FOUND,
+  USER_NOT_FOUND: HttpStatus.NOT_FOUND,
+  ROLE_NOT_FOUND: HttpStatus.NOT_FOUND,
+  CONFLICT: HttpStatus.CONFLICT,
+  EMAIL_CONFLICT: HttpStatus.CONFLICT,
+  USER_ALREADY_DISABLED: HttpStatus.CONFLICT,
+  VALIDATION_ERROR: HttpStatus.UNPROCESSABLE_ENTITY,
+  INVALID_CREDENTIALS: HttpStatus.UNAUTHORIZED,
+  INVALID_TOKEN: HttpStatus.UNAUTHORIZED,
+  USER_SELF_DISABLE: HttpStatus.FORBIDDEN,
+};
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -21,35 +34,40 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const errorResponse = this.buildErrorResponse(exception, request.url);
 
-    // Loguea el error completo internamente, solo el resumen al cliente
-    this.logger.error(
-      `[${request.method}] ${request.url} → ${errorResponse.statusCode}`,
-      exception instanceof Error ? exception.stack : String(exception),
-    );
+    const { statusCode } = errorResponse;
 
-    response.status(errorResponse.statusCode).json(errorResponse);
+    const message = Array.isArray(errorResponse.message)
+      ? errorResponse.message.join(', ')
+      : errorResponse.message;
+
+    if (statusCode >= 500) {
+      this.logger.error(exception);
+    } else {
+      this.logger.warn(`${request.method} ${request.originalUrl} -> ${statusCode} ${message}`);
+    }
+
+    response.status(statusCode).json(errorResponse);
   }
 
   private buildErrorResponse(exception: unknown, path: string): ErrorResponseDto {
     const timestamp = new Date().toISOString();
 
-    // 1. Error de dominio propio (NotFoundError, ConflictError, etc.)
-    if (exception instanceof DomainError) {
+    if (exception instanceof DomainException) {
+      const statusCode = DOMAIN_CODE_TO_HTTP[exception.code] ?? HttpStatus.INTERNAL_SERVER_ERROR;
+
       return new ErrorResponseDto({
-        statusCode: exception.statusCode,
-        error: exception.errorCode,
+        statusCode,
+        error: exception.code,
         message: exception.message,
         timestamp,
         path,
       });
     }
 
-    // 2. HttpException de NestJS (incluye errores de class-validator via ValidationPipe)
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
 
-      // class-validator devuelve un objeto con { message: string[] }
       const message =
         typeof exceptionResponse === 'object' && 'message' in exceptionResponse
           ? exceptionResponse.message
@@ -69,12 +87,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       });
     }
 
-    // 3. Error inesperado — nunca exponer detalles internos al cliente
     this.logger.fatal('Unhandled exception', exception);
     return new ErrorResponseDto({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       error: 'INTERNAL_SERVER_ERROR',
-      message: 'Ocurrió un error inesperado. Intenta de nuevo más tarde.',
+      message: 'An unexpected error occurred. Please try again later.',
       timestamp,
       path,
     });
