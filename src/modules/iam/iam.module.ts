@@ -71,8 +71,10 @@ import { DisableUserUseCase } from './application/use-cases/disable-user.use-cas
   ],
   exports: [
     EnsureDefaultRolesUseCase,
+    PrismaService,
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     { provide: PASSWORD_HASHER_PORT, useClass: NodeCryptoPasswordHasherService },
+    { provide: AUDIT_LOG_PORT, useClass: PrismaAuditLogService },
     { provide: IAM_GATEWAY, useClass: PrismaIamGateway },
   ],
 })

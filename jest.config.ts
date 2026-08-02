@@ -45,7 +45,7 @@ const config: Config = {
     },
     {
       displayName: 'e2e',
-      testMatch: ['<rootDir>/test/**/*.e2e.spec.ts'],
+      testMatch: ['<rootDir>/test/**/*.e2e-spec.ts'],
       testEnvironment: 'node',
       setupFiles: ['<rootDir>/test/jest.setup.ts'],
       transform: {
