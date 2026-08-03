@@ -46,8 +46,26 @@ model User {
   notifications Notification[]
   reports       Report[]
   statusHistory ElectionStatusHistory[]
+  mfaChallenges MfaChallenge[]
 
   @@map("users")
+}
+
+model MfaChallenge {
+  id          String    @id @default(uuid())
+  user_id     String
+  session_id  String    @unique
+  otp_hash    String
+  attempts    Int       @default(0)
+  expires_at  DateTime
+  resend_at   DateTime?
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@map("mfa_challenges")
 }
 
 model AuditLog {
