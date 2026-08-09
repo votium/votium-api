@@ -94,4 +94,81 @@ describe('PrismaElectorRepository integration', () => {
 
     expect(first.id).not.toBe(second.id);
   });
+
+  describe('findByStudentCodeOrEmail', () => {
+    it('returns rows matching by student_code', async () => {
+      const code1 = `Q1-${suffix}`;
+      const code2 = `Q2-${suffix}`;
+      usedStudentCodes.push(code1, code2);
+
+      await repository.create(buildEntity(code1, `q1-${suffix}@example.com`));
+      await repository.create(buildEntity(code2, `q2-${suffix}@example.com`));
+
+      const found = await repository.findByStudentCodeOrEmail([code1], []);
+
+      expect(found).toHaveLength(1);
+      expect(found[0].studentCode).toBe(code1);
+    });
+
+    it('returns rows matching by email', async () => {
+      const code1 = `QE1-${suffix}`;
+      const code2 = `QE2-${suffix}`;
+      const email1 = `qe1-${suffix}@example.com`;
+      const email2 = `qe2-${suffix}@example.com`;
+      usedStudentCodes.push(code1, code2);
+
+      await repository.create(buildEntity(code1, email1));
+      await repository.create(buildEntity(code2, email2));
+
+      const found = await repository.findByStudentCodeOrEmail([], [email1]);
+
+      expect(found).toHaveLength(1);
+      expect(found[0].email).toBe(email1);
+    });
+
+    it('returns only the matching rows when values mix matches and non-matches', async () => {
+      const codeA = `QA-${suffix}`;
+      const codeB = `QB-${suffix}`;
+      usedStudentCodes.push(codeA, codeB);
+
+      await repository.create(buildEntity(codeA, `qa-${suffix}@example.com`));
+      await repository.create(buildEntity(codeB, `qb-${suffix}@example.com`));
+
+      const found = await repository.findByStudentCodeOrEmail(
+        [codeA, 'NONEXISTENT'],
+        ['non-existent@example.com'],
+      );
+
+      expect(found).toHaveLength(1);
+      expect(found[0].studentCode).toBe(codeA);
+    });
+
+    it('returns an empty array when nothing matches', async () => {
+      const found = await repository.findByStudentCodeOrEmail(
+        ['NO-SUCH-CODE'],
+        ['no-such@example.com'],
+      );
+
+      expect(found).toEqual([]);
+    });
+
+    it('returns an empty array when both input arrays are empty', async () => {
+      const found = await repository.findByStudentCodeOrEmail([], []);
+
+      expect(found).toEqual([]);
+    });
+
+    it('returns rows mapped to domain entities', async () => {
+      const code = `QM-${suffix}`;
+      usedStudentCodes.push(code);
+
+      await repository.create(buildEntity(code, `qm-${suffix}@example.com`));
+
+      const found = await repository.findByStudentCodeOrEmail([code], []);
+
+      expect(found[0]).toBeInstanceOf(ElectorEntity);
+      expect(found[0].id).toBeTruthy();
+      expect(found[0].createdAt).toBeInstanceOf(Date);
+    });
+  });
 });

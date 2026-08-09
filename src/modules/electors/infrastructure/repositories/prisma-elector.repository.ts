@@ -22,6 +22,18 @@ export class PrismaElectorRepository implements ElectorRepository {
       throw error;
     }
   }
+
+  async findByStudentCodeOrEmail(
+    studentCodes: string[],
+    emails: string[],
+  ): Promise<ElectorEntity[]> {
+    const rows = await this.prisma.elector.findMany({
+      where: {
+        OR: [{ student_code: { in: studentCodes } }, { email: { in: emails } }],
+      },
+    });
+    return rows.map((row) => PrismaElectorMapper.toDomain(row));
+  }
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
