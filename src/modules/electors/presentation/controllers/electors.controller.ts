@@ -1,8 +1,10 @@
 import {
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -14,7 +16,11 @@ import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
+import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { ImportElectoralRegistryUseCase } from '../../application/use-cases/import-electoral-registry.use-case';
+import { SearchElectorsUseCase } from '../../application/use-cases/search-electors.use-case';
+import { ListElectorsQueryDto } from '../dtos/list-electors-query.dto';
+import { ElectorPresenter } from '../presenters/elector.presenter';
 import { ElectoralRegistryPresenter } from '../presenters/electoral-registry.presenter';
 
 const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -22,7 +28,27 @@ const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 @ApiTags('electors')
 @Controller('electors')
 export class ElectorsController {
-  constructor(private readonly importRegistry: ImportElectoralRegistryUseCase) {}
+  constructor(
+    private readonly importRegistry: ImportElectoralRegistryUseCase,
+    private readonly searchElectors: SearchElectorsUseCase,
+  ) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Search registered electors' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  async search(@Query() query: ListElectorsQueryDto) {
+    const { electors, total } = await this.searchElectors.execute({
+      page: query.page,
+      limit: query.limit,
+      programCode: query.program_code,
+      studentCode: query.student_code,
+      name: query.name,
+    });
+
+    const data = ElectorPresenter.toSearchList(electors);
+    return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
+  }
 
   @Post('import')
   @HttpCode(HttpStatus.OK)

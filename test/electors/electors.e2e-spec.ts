@@ -41,12 +41,31 @@ interface ImportSummaryBody {
   failed: number;
 }
 
+interface ElectorSearchBody {
+  data: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    studentCode: string;
+    programCode: string;
+    status: string;
+    createdAt: string;
+  }>;
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 const VALID_CSV = [
   '202012345,Juan Camilo,Garcia Saenz,2710,juan.garcia@correounivalle.edu.co',
   '202012346,Maria Fernanda,Rodriguez Perez,2710,maria.rodriguez@correounivalle.edu.co',
 ].join('\n');
 
-describe('Electors import (e2e)', () => {
+describe('Electors (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let emailService: FakeEmailService;
@@ -353,6 +372,233 @@ describe('Electors import (e2e)', () => {
       const res = await upload(VALID_CSV, 'registry.csv', auditorToken).expect(403);
 
       expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+  });
+
+  describe('GET /electors (search)', () => {
+    const searchFixtures = [
+      {
+        key: 'juan2710',
+        studentCode: `E2ESRCH-1-${suffix}`,
+        firstName: 'Juan Camilo',
+        lastName: 'Garcia Saenz',
+        programCode: '2710',
+      },
+      {
+        key: 'juan2_2710',
+        studentCode: `E2ESRCH-2-${suffix}`,
+        firstName: 'JUAN Carlos',
+        lastName: 'Perez Rojas',
+        programCode: '2710',
+      },
+      {
+        key: 'maria2711',
+        studentCode: `E2ESRCH-3-${suffix}`,
+        firstName: 'Maria Fernanda',
+        lastName: 'GARCIA',
+        programCode: '2711',
+      },
+      {
+        key: 'ana2711',
+        studentCode: `E2ESRCH-4-${suffix}`,
+        firstName: 'Ana Sofia',
+        lastName: 'Lopez',
+        programCode: '2711',
+      },
+    ] as const;
+
+    const searchCodes = searchFixtures.map((fixture) => fixture.studentCode);
+
+    beforeAll(async () => {
+      // The search suite is self-contained: clear previous elector data, then seed fixtures.
+      await prisma.elector.deleteMany({});
+      for (const fixture of searchFixtures) {
+        await prisma.elector.create({
+          data: {
+            first_name: fixture.firstName,
+            last_name: fixture.lastName,
+            email: `${fixture.studentCode.toLowerCase()}@correounivalle.edu.co`,
+            password_hash: 'pbkdf2$test',
+            student_code: fixture.studentCode,
+            program_code: fixture.programCode,
+            status: 'ACTIVE',
+          },
+        });
+        usedStudentCodes.push(fixture.studentCode);
+      }
+    });
+
+    const search = (query: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .get(`/api/v1/electors${query}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    const codesOf = (body: ElectorSearchBody): string[] =>
+      body.data.map((elector) => elector.studentCode);
+
+    it('S1: search by program_code returns only matching electors (AC-02)', async () => {
+      const res = await search('?program_code=2710').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(body.meta.total).toBe(2);
+      expect(body.data).toHaveLength(2);
+      expect(body.data.every((elector) => elector.programCode === '2710')).toBe(true);
+      expect(codesOf(body).sort()).toEqual([searchCodes[0], searchCodes[1]].sort());
+    });
+
+    it('S2: program_code matching is exact (AC-03)', async () => {
+      const res = await search('?program_code=271').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(body.data).toEqual([]);
+      expect(body.meta.total).toBe(0);
+    });
+
+    it('S3: search by student_code returns the matching elector (AC-04, AC-15)', async () => {
+      const res = await search(`?student_code=${searchCodes[0]}`).expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(body.meta.total).toBe(1);
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].studentCode).toBe(searchCodes[0]);
+      expect(body.data[0].firstName).toBe('Juan Camilo');
+      expect(body.data[0].programCode).toBe('2710');
+    });
+
+    it('S4: student_code matching is exact (AC-05)', async () => {
+      const res = await search('?student_code=E2ESRCH-1').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(body.data).toEqual([]);
+      expect(body.meta.total).toBe(0);
+    });
+
+    it('S5: search by first name (AC-06)', async () => {
+      const res = await search('?name=juan').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(codesOf(body).sort()).toEqual([searchCodes[0], searchCodes[1]].sort());
+      expect(body.meta.total).toBe(2);
+    });
+
+    it('S6: search by last name (AC-07)', async () => {
+      const res = await search('?name=garcia').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(codesOf(body).sort()).toEqual([searchCodes[0], searchCodes[2]].sort());
+      expect(body.meta.total).toBe(2);
+    });
+
+    it('S7: partial name matching (AC-08)', async () => {
+      const res = await search('?name=juan').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(codesOf(body)).toContain(searchCodes[0]); // first_name = 'Juan Camilo'
+    });
+
+    it('S8: name matching is case-insensitive (AC-09)', async () => {
+      const variants = ['juan', 'Juan', 'JUAN', 'jUaN'];
+      const resultSets: string[][] = [];
+
+      for (const name of variants) {
+        const res = await search(`?name=${name}`).expect(200);
+        resultSets.push(codesOf(res.body as ElectorSearchBody).sort());
+      }
+
+      for (const set of resultSets) {
+        expect(set).toEqual(resultSets[0]);
+      }
+      expect(resultSets[0]).toHaveLength(2);
+    });
+
+    it('S9: combined program_code and name filters use AND (AC-10)', async () => {
+      const res = await search('?program_code=2710&name=juan').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(codesOf(body).sort()).toEqual([searchCodes[0], searchCodes[1]].sort());
+      expect(body.meta.total).toBe(2);
+    });
+
+    it('S10: combined program_code and student_code filters use AND (AC-11)', async () => {
+      const res = await search(`?program_code=2710&student_code=${searchCodes[1]}`).expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(codesOf(body)).toEqual([searchCodes[1]]);
+      expect(body.meta.total).toBe(1);
+    });
+
+    it('S11: an elector matching only one filter is excluded (AC-12)', async () => {
+      const res = await search('?program_code=2710&name=lopez').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(body.data).toEqual([]);
+      expect(body.meta.total).toBe(0);
+    });
+
+    it('S12: a nonexistent filter returns an empty collection (AC-14)', async () => {
+      const res = await search('?program_code=9999').expect(200);
+      const body = res.body as ElectorSearchBody;
+
+      expect(body.data).toEqual([]);
+      expect(body.meta.total).toBe(0);
+    });
+
+    it('S13: password_hash is never exposed (AC-16)', async () => {
+      const res = await search('?program_code=2710').expect(200);
+      const serialized = JSON.stringify(res.body);
+
+      expect(serialized).not.toContain('password_hash');
+      expect(serialized).not.toContain('passwordHash');
+      expect(serialized).not.toContain('pbkdf2$test');
+    });
+
+    it('S14: electoralRolls relation is not returned (AC-17)', async () => {
+      const res = await search('?program_code=2710').expect(200);
+
+      expect(JSON.stringify(res.body)).not.toContain('electoralRolls');
+    });
+
+    it('S15: unauthenticated requests are rejected (AC-20)', async () => {
+      await request(app.getHttpServer()).get('/api/v1/electors').expect(401);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .set('Authorization', 'Bearer not-a-real-token')
+        .expect(401);
+    });
+
+    it('S16: an authenticated auditor can search electors (BR-13)', async () => {
+      const res = await search('?program_code=2710', auditorToken).expect(200);
+
+      expect((res.body as ElectorSearchBody).meta.total).toBe(2);
+    });
+
+    it('S17: search requests do not modify elector records (AC-18)', async () => {
+      const before = await prisma.elector.findMany({
+        where: { student_code: { in: searchCodes } },
+        orderBy: { student_code: 'asc' },
+      });
+
+      await search('?program_code=2710&name=juan').expect(200);
+
+      const after = await prisma.elector.findMany({
+        where: { student_code: { in: searchCodes } },
+        orderBy: { student_code: 'asc' },
+      });
+
+      expect(after).toEqual(before);
+    });
+
+    it('S18: an unknown query parameter is rejected with 400 (validation)', async () => {
+      const res = await search('?foo=bar').expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('S19: malformed page/limit values are rejected with 400 (validation)', async () => {
+      await search('?page=abc').expect(400);
+
+      await search('?limit=0').expect(400);
     });
   });
 });

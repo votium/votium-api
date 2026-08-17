@@ -6,6 +6,7 @@ import {
   type PasswordHasherPort,
 } from 'src/modules/iam/application/ports/password-hasher.port';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
+import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
 import { CSV_PARSER_PORT, type CsvParserPort } from './application/ports/csv-parser.port';
 import {
   ELECTOR_REPOSITORY,
@@ -29,6 +30,11 @@ import { ElectorsController } from './presentation/controllers/electors.controll
         hasher: PasswordHasherPort,
       ) => new ImportElectoralRegistryUseCase(parser, electors, hasher),
       inject: [CSV_PARSER_PORT, ELECTOR_REPOSITORY, PASSWORD_HASHER_PORT],
+    },
+    {
+      provide: SearchElectorsUseCase,
+      useFactory: (electors: ElectorRepository) => new SearchElectorsUseCase(electors),
+      inject: [ELECTOR_REPOSITORY],
     },
   ],
 })
