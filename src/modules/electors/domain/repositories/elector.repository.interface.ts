@@ -2,6 +2,19 @@ import { ElectorEntity } from '../entities/elector.entity';
 
 export const ELECTOR_REPOSITORY = 'ElectorRepository';
 
+export interface ElectorSearchParams {
+  page: number;
+  limit: number;
+  programCode?: string;
+  studentCode?: string;
+  name?: string;
+}
+
+export interface ElectorSearchResult {
+  electors: ElectorEntity[];
+  total: number;
+}
+
 export interface ElectorRepository {
   // Persists a NEW elector. Prisma generates id and created_at.
   // Throws ElectorDuplicateError when a unique constraint rejects the row.
@@ -16,4 +29,9 @@ export interface ElectorRepository {
   // Updates ONLY the elector's status. Returns the updated elector, or null
   // when the id does not exist. Never performs a physical deletion.
   updateStatus(id: string, status: string): Promise<ElectorEntity | null>;
+
+  // Searches electors using optional exact program_code / student_code filters and a
+  // case-insensitive partial name filter. Filters combine with AND. Returns a page
+  // of electors plus the total number of matching rows. Read-only.
+  search(params: ElectorSearchParams): Promise<ElectorSearchResult>;
 }
