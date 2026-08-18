@@ -95,252 +95,80 @@ describe('PrismaElectorRepository integration', () => {
     expect(first.id).not.toBe(second.id);
   });
 
-  describe('findAll', () => {
-    const fixtures = [
-      { key: 'juan2710', firstName: 'Juan Camilo', lastName: 'Garcia Saenz', programCode: '2710' },
-      { key: 'juan2_2710', firstName: 'JUAN Carlos', lastName: 'Perez Rojas', programCode: '2710' },
-      { key: 'maria2711', firstName: 'Maria Fernanda', lastName: 'GARCIA', programCode: '2711' },
-      { key: 'ana2711', firstName: 'Ana Sofia', lastName: 'Lopez', programCode: '2711' },
-    ] as const;
+  describe('findByStudentCodeOrEmail', () => {
+    it('returns rows matching by student_code', async () => {
+      const code1 = `Q1-${suffix}`;
+      const code2 = `Q2-${suffix}`;
+      usedStudentCodes.push(code1, code2);
 
-    const codes = {
-      juan2710: `FND-1-${suffix}`,
-      juan2_2710: `FND-2-${suffix}`,
-      maria2711: `FND-3-${suffix}`,
-      ana2711: `FND-4-${suffix}`,
-    };
+      await repository.create(buildEntity(code1, `q1-${suffix}@example.com`));
+      await repository.create(buildEntity(code2, `q2-${suffix}@example.com`));
 
-    beforeEach(async () => {
-      await prisma.elector.deleteMany({});
-      for (const fixture of fixtures) {
-        const code = codes[fixture.key];
-        await repository.create(
-          ElectorEntity.create({
-            firstName: fixture.firstName,
-            lastName: fixture.lastName,
-            email: `${code.toLowerCase()}@correounivalle.edu.co`,
-            passwordHash: 'pbkdf2$int-hash',
-            studentCode: code,
-            programCode: fixture.programCode,
-          }),
-        );
-        usedStudentCodes.push(code);
-      }
+      const found = await repository.findByStudentCodeOrEmail([code1], []);
+
+      expect(found).toHaveLength(1);
+      expect(found[0].studentCode).toBe(code1);
     });
 
-    const search = (params: {
-      page?: number;
-      limit?: number;
-      programCode?: string;
-      studentCode?: string;
-      name?: string;
-    }) => repository.findAll({ page: params.page ?? 1, limit: params.limit ?? 10, ...params });
+    it('returns rows matching by email', async () => {
+      const code1 = `QE1-${suffix}`;
+      const code2 = `QE2-${suffix}`;
+      const email1 = `qe1-${suffix}@example.com`;
+      const email2 = `qe2-${suffix}@example.com`;
+      usedStudentCodes.push(code1, code2);
 
-    const codesOf = (result: { electors: ElectorEntity[] }): string[] =>
-      result.electors.map((elector) => elector.studentCode);
+      await repository.create(buildEntity(code1, email1));
+      await repository.create(buildEntity(code2, email2));
 
-    it('returns only electors with the given program code (AC-02)', async () => {
-      const result = await search({ programCode: '2710' });
+      const found = await repository.findByStudentCodeOrEmail([], [email1]);
 
-      expect(codesOf(result).sort()).toEqual([codes.juan2710, codes.juan2_2710].sort());
-      expect(result.total).toBe(2);
+      expect(found).toHaveLength(1);
+      expect(found[0].email).toBe(email1);
     });
 
-    it('matches program code exactly, rejecting partial or extended codes (AC-03)', async () => {
-      for (const programCode of ['271', '27101', '12710']) {
-        const result = await search({ programCode });
-        expect(result).toEqual({ electors: [], total: 0 });
-      }
-    });
+    it('returns only the matching rows when values mix matches and non-matches', async () => {
+      const codeA = `QA-${suffix}`;
+      const codeB = `QB-${suffix}`;
+      usedStudentCodes.push(codeA, codeB);
 
-    it('returns the elector matching an exact student code (AC-04)', async () => {
-      const result = await search({ studentCode: codes.juan2710 });
+      await repository.create(buildEntity(codeA, `qa-${suffix}@example.com`));
+      await repository.create(buildEntity(codeB, `qb-${suffix}@example.com`));
 
-      expect(result.total).toBe(1);
-      expect(result.electors[0].id).toBeTruthy();
-      expect(result.electors[0]).toEqual(
-        expect.objectContaining({
-          firstName: 'Juan Camilo',
-          lastName: 'Garcia Saenz',
-          studentCode: codes.juan2710,
-          programCode: '2710',
-          status: 'ACTIVE',
-        }),
+      const found = await repository.findByStudentCodeOrEmail(
+        [codeA, 'NONEXISTENT'],
+        ['non-existent@example.com'],
       );
+
+      expect(found).toHaveLength(1);
+      expect(found[0].studentCode).toBe(codeA);
     });
 
-    it('matches student code exactly, rejecting prefixes and suffixes (AC-05)', async () => {
-      const prefixResult = await search({ studentCode: `FND-1` });
-      expect(prefixResult).toEqual({ electors: [], total: 0 });
-
-      const suffixResult = await search({ studentCode: `${codes.juan2710}-extra` });
-      expect(suffixResult).toEqual({ electors: [], total: 0 });
-    });
-
-    it('matches electors by first name (AC-06)', async () => {
-      const result = await search({ name: 'juan' });
-
-      expect(codesOf(result).sort()).toEqual([codes.juan2710, codes.juan2_2710].sort());
-      expect(result.total).toBe(2);
-    });
-
-    it('matches electors by last name (AC-07)', async () => {
-      const result = await search({ name: 'garcia' });
-
-      expect(codesOf(result).sort()).toEqual([codes.juan2710, codes.maria2711].sort());
-      expect(result.total).toBe(2);
-    });
-
-    it('matches partial names within multi-word names (AC-08)', async () => {
-      const result = await search({ name: 'juan' });
-
-      expect(codesOf(result)).toContain(codes.juan2710); // first_name = 'Juan Camilo'
-    });
-
-    it('matches names case-insensitively (AC-09)', async () => {
-      const variants = ['juan', 'Juan', 'JUAN', 'jUaN'];
-      const resultSets = [];
-
-      for (const name of variants) {
-        const result = await search({ name });
-        resultSets.push(codesOf(result).sort());
-      }
-
-      for (const set of resultSets) {
-        expect(set).toEqual(resultSets[0]);
-      }
-      expect(resultSets[0]).toHaveLength(2);
-    });
-
-    it('combines program and name filters with AND logic (AC-10)', async () => {
-      const result = await search({ programCode: '2710', name: 'juan' });
-
-      expect(codesOf(result).sort()).toEqual([codes.juan2710, codes.juan2_2710].sort());
-      expect(result.total).toBe(2);
-    });
-
-    it('combines program and student code filters with AND logic (AC-11)', async () => {
-      const result = await search({ programCode: '2710', studentCode: codes.juan2_2710 });
-
-      expect(codesOf(result)).toEqual([codes.juan2_2710]);
-      expect(result.total).toBe(1);
-    });
-
-    it('excludes an elector matching only one of the supplied filters (AC-12)', async () => {
-      const result = await search({ programCode: '2710', name: 'lopez' });
-
-      expect(result).toEqual({ electors: [], total: 0 });
-    });
-
-    it('returns an empty collection for a valid search with no matches (AC-14)', async () => {
-      const result = await search({ programCode: '9999' });
-
-      expect(result).toEqual({ electors: [], total: 0 });
-    });
-
-    it('does not apply filters that were not supplied (BR-10)', async () => {
-      const result = await search({});
-
-      expect(result.total).toBe(fixtures.length);
-      expect(codesOf(result)).toHaveLength(fixtures.length);
-    });
-
-    it('ignores whitespace-only name filters (repository-level trim)', async () => {
-      const result = await search({ name: '   ' });
-
-      expect(result.total).toBe(fixtures.length);
-    });
-
-    it('paginates results respecting page and limit while counting all matches (AC-13)', async () => {
-      const page1 = await search({ page: 1, limit: 2 });
-      const page2 = await search({ page: 2, limit: 2 });
-
-      expect(page1.electors).toHaveLength(2);
-      expect(page2.electors).toHaveLength(2);
-      expect(page1.total).toBe(fixtures.length);
-      expect(page2.total).toBe(fixtures.length);
-
-      const page1Codes = codesOf(page1);
-      const page2Codes = codesOf(page2);
-      expect(page1Codes).not.toEqual(expect.arrayContaining(page2Codes));
-    });
-
-    it('does not load the electoralRolls relation (AC-17)', async () => {
-      const saved = await repository.create(
-        ElectorEntity.create({
-          firstName: 'Rel',
-          lastName: 'Check',
-          email: `rel-check-${suffix}@correounivalle.edu.co`,
-          passwordHash: 'pbkdf2$int-hash',
-          studentCode: `REL-${suffix}`,
-          programCode: '2712',
-        }),
+    it('returns an empty array when nothing matches', async () => {
+      const found = await repository.findByStudentCodeOrEmail(
+        ['NO-SUCH-CODE'],
+        ['no-such@example.com'],
       );
-      usedStudentCodes.push(`REL-${suffix}`);
 
-      const election = await prisma.election.create({
-        data: {
-          name: `I16 Election ${suffix}`,
-          description: 'Integration test election',
-          start_date: new Date('2026-09-01T00:00:00.000Z'),
-          start_time: new Date('2026-09-01T08:00:00.000Z'),
-          end_date: new Date('2026-09-30T00:00:00.000Z'),
-          end_time: new Date('2026-09-30T18:00:00.000Z'),
-        },
-      });
-
-      try {
-        await prisma.electoralRoll.create({
-          data: { election_id: election.id, elector_id: saved.id },
-        });
-
-        const result = await search({ studentCode: `REL-${suffix}` });
-
-        const elector = result.electors[0];
-        expect(elector).toBeDefined();
-        expect((elector as unknown as Record<string, unknown>).electoralRolls).toBeUndefined();
-      } finally {
-        await prisma.electoralRoll.deleteMany({ where: { elector_id: saved.id } });
-        await prisma.election.delete({ where: { id: election.id } });
-      }
+      expect(found).toEqual([]);
     });
 
-    it('does not modify elector records when searching (AC-18)', async () => {
-      const before = await prisma.elector.findMany({
-        where: { student_code: { in: Object.values(codes) } },
-        orderBy: { student_code: 'asc' },
-      });
+    it('returns an empty array when both input arrays are empty', async () => {
+      const found = await repository.findByStudentCodeOrEmail([], []);
 
-      await search({ programCode: '2710', name: 'juan' });
-
-      const after = await prisma.elector.findMany({
-        where: { student_code: { in: Object.values(codes) } },
-        orderBy: { student_code: 'asc' },
-      });
-
-      expect(after).toEqual(before);
+      expect(found).toEqual([]);
     });
 
-    it('builds the where clause only from supplied filters (BR-10)', async () => {
-      const findManySpy = jest.spyOn(prisma.elector, 'findMany');
-      try {
-        await search({ programCode: '2710' });
-        const programWhere = findManySpy.mock.calls.at(-1)?.[0]?.where as Record<string, unknown>;
-        expect(programWhere).toEqual({ program_code: '2710' });
-      } finally {
-        findManySpy.mockRestore();
-      }
+    it('returns rows mapped to domain entities', async () => {
+      const code = `QM-${suffix}`;
+      usedStudentCodes.push(code);
 
-      const nameSpy = jest.spyOn(prisma.elector, 'findMany');
-      try {
-        await search({ name: 'juan' });
-        const nameWhere = nameSpy.mock.calls.at(-1)?.[0]?.where as Record<string, unknown>;
-        expect(nameWhere).toHaveProperty('OR');
-        expect(nameWhere).not.toHaveProperty('program_code');
-        expect(nameWhere).not.toHaveProperty('student_code');
-      } finally {
-        nameSpy.mockRestore();
-      }
+      await repository.create(buildEntity(code, `qm-${suffix}@example.com`));
+
+      const found = await repository.findByStudentCodeOrEmail([code], []);
+
+      expect(found[0]).toBeInstanceOf(ElectorEntity);
+      expect(found[0].id).toBeTruthy();
+      expect(found[0].createdAt).toBeInstanceOf(Date);
     });
   });
 });

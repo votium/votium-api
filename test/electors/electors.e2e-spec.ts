@@ -34,32 +34,6 @@ interface TokensResponseBody {
   accessToken: string;
 }
 
-interface ImportSummaryBody {
-  message: string;
-  processed: number;
-  created: number;
-  failed: number;
-}
-
-interface ElectorSearchBody {
-  data: Array<{
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    studentCode: string;
-    programCode: string;
-    status: string;
-    createdAt: string;
-  }>;
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
 const VALID_CSV = [
   '202012345,Juan Camilo,Garcia Saenz,2710,juan.garcia@correounivalle.edu.co',
   '202012346,Maria Fernanda,Rodriguez Perez,2710,maria.rodriguez@correounivalle.edu.co',
@@ -237,30 +211,31 @@ describe('Electors (e2e)', () => {
       usedStudentCodes.push('202012347', '202012348');
     });
 
-    it('E6: summary invariant created + failed === processed', async () => {
+    it('E6: rejects the entire import when the file contains a duplicate student_code', async () => {
       const csv = [
         '202012349,Diana,Perez,2710,diana.perez@correounivalle.edu.co',
         '202012349,Diana,Perez,2710,diana.perez.dup@correounivalle.edu.co',
       ].join('\n');
 
-      const res = await upload(csv).expect(200);
-      const summary = res.body as ImportSummaryBody;
+      const res = await upload(csv).expect(409);
 
-      expect(summary.created + summary.failed).toBe(summary.processed);
-      expect(summary.created).toBe(1);
-      expect(summary.failed).toBe(1);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+
+      const rows = await prisma.elector.findMany({
+        where: { student_code: { in: ['202012349'] } },
+      });
+      expect(rows).toHaveLength(0);
       usedStudentCodes.push('202012349');
     });
 
-    it('E7: counts an in-file duplicate student_code as failed', async () => {
+    it('E7: rejects a re-upload of the same CSV with 409 and persists nothing', async () => {
       const csv = [
         '202012350,Felipe,Rojas,2710,felipe.rojas@correounivalle.edu.co',
         '202012351,Felipe,Rojas,2710,felipe.rojas.dup@correounivalle.edu.co',
       ].join('\n');
 
-      const res = await upload(csv).expect(200);
-
-      expect(res.body).toEqual({
+      const first = await upload(csv).expect(200);
+      expect(first.body).toEqual({
         message: 'Electoral registry imported successfully.',
         processed: 2,
         created: 2,
@@ -268,16 +243,16 @@ describe('Electors (e2e)', () => {
       });
       usedStudentCodes.push('202012350', '202012351');
 
-      const again = await upload(csv).expect(200);
-      expect(again.body).toEqual({
-        message: 'Electoral registry imported successfully.',
-        processed: 2,
-        created: 0,
-        failed: 2,
+      const again = await upload(csv).expect(409);
+      expect(again.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+
+      const rows = await prisma.elector.findMany({
+        where: { student_code: { in: ['202012350', '202012351'] } },
       });
+      expect(rows).toHaveLength(2);
     });
 
-    it('E8: counts an email already in the database as failed', async () => {
+    it('E8: rejects a CSV whose email already exists in the database with 409', async () => {
       const preexistingEmail = `preexisting-${suffix}@correounivalle.edu.co`;
       const preexisting = await prisma.elector.create({
         data: {
@@ -294,15 +269,108 @@ describe('Electors (e2e)', () => {
 
       const csv = `202012352,Pre,Seed,2710,${preexistingEmail}`;
 
-      const res = await upload(csv).expect(200);
+      const res = await upload(csv).expect(409);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
 
-      expect(res.body).toEqual({
-        message: 'Electoral registry imported successfully.',
-        processed: 1,
-        created: 0,
-        failed: 1,
+      const rows = await prisma.elector.findMany({
+        where: { student_code: { in: ['202012352'] } },
       });
+      expect(rows).toHaveLength(0);
       usedStudentCodes.push('202012352');
+    });
+
+    it('E18: rejects an in-file duplicate email with 409 and persists nothing', async () => {
+      const sharedEmail = `shared-dup-${suffix}@correounivalle.edu.co`;
+      const csv = [
+        `202012360,Juan,Rojas,2710,${sharedEmail}`,
+        `202012361,Ana,Rojas,2710,${sharedEmail}`,
+      ].join('\n');
+
+      const res = await upload(csv).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+
+      const rows = await prisma.elector.findMany({
+        where: { student_code: { in: ['202012360', '202012361'] } },
+      });
+      expect(rows).toHaveLength(0);
+      usedStudentCodes.push('202012360', '202012361');
+    });
+
+    it('E19: rejects a student_code already in the database and persists nothing', async () => {
+      // Student codes in the CSV must be all-digits: the CSV parser treats a first row
+      // whose first cell is non-numeric as a header row and skips it.
+      const seedCode = `19${suffix}`;
+      const seeded = await prisma.elector.create({
+        data: {
+          first_name: 'Seed',
+          last_name: 'User',
+          email: `seed-e19-${suffix}@correounivalle.edu.co`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: seedCode,
+          program_code: '2710',
+          status: 'ACTIVE',
+        },
+      });
+      usedStudentCodes.push(seeded.student_code);
+
+      const newCode = `20${suffix}`;
+      const csv = [
+        `${seedCode},Existing,User,2710,existing-e19-${suffix}@correounivalle.edu.co`,
+        `${newCode},Brand,New,2710,brand-new-e19-${suffix}@correounivalle.edu.co`,
+      ].join('\n');
+
+      const res = await upload(csv).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+
+      const rows = await prisma.elector.findMany({
+        where: { student_code: { in: [seedCode, newCode] } },
+      });
+      expect(rows).toHaveLength(1);
+      usedStudentCodes.push(newCode);
+    });
+
+    it('E20: returns the standard error body on a rejected import', async () => {
+      const sharedEmail = `standard-dup-${suffix}@correounivalle.edu.co`;
+      const csv = [
+        `202012362,Dupe,One,2710,${sharedEmail}`,
+        `202012363,Dupe,Two,2710,${sharedEmail}`,
+      ].join('\n');
+
+      const res = await upload(csv).expect(409);
+
+      const body = res.body as {
+        statusCode: number;
+        error: string;
+        message: string;
+        timestamp: string;
+        path: string;
+      };
+      expect(body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+      expect(body.message).toContain('duplicate');
+      expect(typeof body.timestamp).toBe('string');
+      expect(typeof body.path).toBe('string');
+      usedStudentCodes.push('202012362', '202012363');
+    });
+
+    it('E21: rejects a file that mixes an in-file duplicate with a valid new row', async () => {
+      const sharedEmail = `mix-dup-${suffix}@correounivalle.edu.co`;
+      const csv = [
+        `202012364,Mix,One,2710,${sharedEmail}`,
+        `202012365,Mix,Two,2710,${sharedEmail}`,
+        `202012366,Mix,Three,2710,mix-new-${suffix}@correounivalle.edu.co`,
+      ].join('\n');
+
+      const res = await upload(csv).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+
+      const rows = await prisma.elector.findMany({
+        where: { student_code: { in: ['202012364', '202012365', '202012366'] } },
+      });
+      expect(rows).toHaveLength(0);
+      usedStudentCodes.push('202012364', '202012365', '202012366');
     });
 
     it('E9: rejects a missing file with 400', async () => {

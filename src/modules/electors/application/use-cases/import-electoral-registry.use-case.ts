@@ -6,11 +6,13 @@ import {
   type PasswordHasherPort,
 } from 'src/modules/iam/application/ports/password-hasher.port';
 import { ElectorDuplicateError } from '../../domain/errors/elector-duplicate.error';
+import { ElectoralRegistryDuplicateError } from '../../domain/errors/electoral-registry-duplicate.error';
 import { ElectorEntity } from '../../domain/entities/elector.entity';
 import {
   ELECTOR_REPOSITORY,
   type ElectorRepository,
 } from '../../domain/repositories/elector.repository.interface';
+import { ElectoralRegistryDuplicateValidator } from '../../domain/services/electoral-registry-duplicate.validator';
 import { CSV_PARSER_PORT, type CsvParserPort, type ElectorCsvRow } from '../ports/csv-parser.port';
 
 export interface ElectoralRegistryImportSummary {
@@ -22,6 +24,7 @@ export interface ElectoralRegistryImportSummary {
 @Injectable()
 export class ImportElectoralRegistryUseCase {
   private readonly logger = new Logger(ImportElectoralRegistryUseCase.name);
+  private readonly duplicateValidator = new ElectoralRegistryDuplicateValidator();
 
   constructor(
     @Inject(CSV_PARSER_PORT) private readonly parser: CsvParserPort,
@@ -50,6 +53,27 @@ export class ImportElectoralRegistryUseCase {
     }
 
     this.logger.log(`Electoral registry import started: ${rows.length} rows to process.`);
+
+    if (rows.length === 0) {
+      return { processed: 0, created: 0, failed: 0 };
+    }
+
+    const existing = await this.electors.findByStudentCodeOrEmail(
+      rows.map((row) => row.studentCode),
+      rows.map((row) => row.email),
+    );
+
+    const report = this.duplicateValidator.validate(rows, existing);
+
+    if (report.hasDuplicates) {
+      this.logger.warn(
+        `Electoral registry import rejected: ${report.inFileDuplicates} in-file and ` +
+          `${report.existingDuplicates} existing duplicate(s).`,
+      );
+      throw new ElectoralRegistryDuplicateError(
+        report.inFileDuplicates + report.existingDuplicates,
+      );
+    }
 
     let created = 0;
     let failed = 0;

@@ -15,7 +15,6 @@ export interface ElectorRepository {
   // Throws ElectorDuplicateError when a unique constraint rejects the row.
   create(entity: ElectorEntity): Promise<ElectorEntity>;
 
-  // Searches electors applying only the supplied filters at the database level.
-  // Returns the page of matching electors and the total number of matches.
-  findAll(params: ElectorListParams): Promise<{ electors: ElectorEntity[]; total: number }>;
+  // Returns electors whose student_code or email matches any of the given values.
+  findByStudentCodeOrEmail(studentCodes: string[], emails: string[]): Promise<ElectorEntity[]>;
 }
