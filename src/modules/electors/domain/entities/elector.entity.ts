@@ -1,3 +1,5 @@
+import { ElectorAlreadyInactiveError } from '../errors/elector-already-inactive.error';
+
 export interface CreateElectorInput {
   firstName: string;
   lastName: string;
@@ -22,6 +24,7 @@ export interface RestoreElectorInput {
 
 export class ElectorEntity {
   static readonly DEFAULT_STATUS = 'ACTIVE';
+  static readonly INACTIVE_STATUS = 'INACTIVE';
 
   private constructor(
     public readonly id: string | null,
@@ -31,7 +34,7 @@ export class ElectorEntity {
     public readonly passwordHash: string,
     public readonly studentCode: string,
     public readonly programCode: string,
-    public readonly status: string,
+    private _status: string,
     public readonly createdAt: Date | null,
   ) {}
 
@@ -69,6 +72,18 @@ export class ElectorEntity {
     const code = studentCode.trim();
 
     return `${namePrefix(givenName)}${code}${namePrefix(surname)}`;
+  }
+
+  get status(): string {
+    return this._status;
+  }
+
+  deactivate(): void {
+    if (this._status === ElectorEntity.INACTIVE_STATUS) {
+      throw new ElectorAlreadyInactiveError(this.id ?? '');
+    }
+
+    this._status = ElectorEntity.INACTIVE_STATUS;
   }
 }
 

@@ -1,3 +1,4 @@
+import { ElectorAlreadyInactiveError } from '../errors/elector-already-inactive.error';
 import { ElectorEntity } from './elector.entity';
 
 describe('ElectorEntity', () => {
@@ -91,6 +92,54 @@ describe('ElectorEntity', () => {
 
       expect(entity.firstName).toBe('  Juan  ');
       expect(entity.email).toBe('Juan.Garcia@Example.COM');
+    });
+  });
+
+  describe('deactivate', () => {
+    it('D1: changes status from ACTIVE to INACTIVE without modifying other fields', () => {
+      const createdAt = new Date('2026-08-01T00:00:00.000Z');
+      const entity = ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        status: 'ACTIVE',
+        createdAt,
+      });
+
+      entity.deactivate();
+
+      expect(entity.status).toBe(ElectorEntity.INACTIVE_STATUS);
+      expect(entity.status).toBe('INACTIVE');
+      expect(entity.id).toBe('elector-1');
+      expect(entity.firstName).toBe('Juan Camilo');
+      expect(entity.lastName).toBe('Garcia Saenz');
+      expect(entity.email).toBe('juan.garcia@correounivalle.edu.co');
+      expect(entity.passwordHash).toBe('pbkdf2$210000$salt$hash');
+      expect(entity.studentCode).toBe('202012345');
+      expect(entity.programCode).toBe('2710');
+      expect(entity.createdAt).toBe(createdAt);
+    });
+
+    it('D2: throws ElectorAlreadyInactiveError when already inactive', () => {
+      const entity = ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        status: 'INACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      });
+
+      expect(() => entity.deactivate()).toThrow(ElectorAlreadyInactiveError);
+      expect(entity.status).toBe('INACTIVE');
+    });
+
+    it('D3: exposes the shared INACTIVE status constant after restore', () => {
+      const entity = ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        status: 'INACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      });
+
+      expect(entity.status).toBe(ElectorEntity.INACTIVE_STATUS);
     });
   });
 

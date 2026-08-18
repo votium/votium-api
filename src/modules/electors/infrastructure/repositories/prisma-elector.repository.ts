@@ -34,6 +34,33 @@ export class PrismaElectorRepository implements ElectorRepository {
     });
     return rows.map((row) => PrismaElectorMapper.toDomain(row));
   }
+
+  async findById(id: string): Promise<ElectorEntity | null> {
+    const row = await this.prisma.elector.findUnique({ where: { id } });
+    return row ? PrismaElectorMapper.toDomain(row) : null;
+  }
+
+  async updateStatus(id: string, status: string): Promise<ElectorEntity | null> {
+    try {
+      const row = await this.prisma.elector.update({
+        where: { id },
+        data: { status },
+      });
+      return PrismaElectorMapper.toDomain(row);
+    } catch (error) {
+      if (isRecordNotFoundError(error)) return null;
+      throw error;
+    }
+  }
+}
+
+function isRecordNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2025'
+  );
 }
 
 function isUniqueConstraintError(error: unknown): boolean {

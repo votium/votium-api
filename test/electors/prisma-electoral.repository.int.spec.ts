@@ -171,4 +171,156 @@ describe('PrismaElectorRepository integration', () => {
       expect(found[0].createdAt).toBeInstanceOf(Date);
     });
   });
+
+  describe('findById and updateStatus', () => {
+    it('I1: returns the created elector by id', async () => {
+      const code = `DEL-1-${suffix}`;
+      const email = `del-1-${suffix}@example.com`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(buildEntity(code, email));
+
+      const found = await repository.findById(saved.id as string);
+
+      expect(found).not.toBeNull();
+      expect(found?.id).toBe(saved.id);
+      expect(found?.firstName).toBe('Juan');
+      expect(found?.lastName).toBe('Garcia');
+      expect(found?.email).toBe(email);
+      expect(found?.passwordHash).toBe('pbkdf2$210000$salt$hash');
+      expect(found?.studentCode).toBe(code);
+      expect(found?.programCode).toBe('2710');
+      expect(found?.status).toBe(ElectorEntity.DEFAULT_STATUS);
+      expect(found?.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('I2: returns null when the id does not exist', async () => {
+      const found = await repository.findById(crypto.randomUUID());
+
+      expect(found).toBeNull();
+    });
+
+    it('I3: updates the status to INACTIVE and keeps the record in the database', async () => {
+      const code = `DEL-3-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(buildEntity(code, `del-3-${suffix}@example.com`));
+
+      const updated = await repository.updateStatus(
+        saved.id as string,
+        ElectorEntity.INACTIVE_STATUS,
+      );
+
+      expect(updated).not.toBeNull();
+      expect(updated?.id).toBe(saved.id);
+      expect(updated?.status).toBe(ElectorEntity.INACTIVE_STATUS);
+
+      const stillThere = await repository.findById(saved.id as string);
+      expect(stillThere).not.toBeNull();
+      expect(stillThere?.status).toBe(ElectorEntity.INACTIVE_STATUS);
+    });
+
+    it('I4: preserves all other fields when updating the status', async () => {
+      const code = `DEL-4-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(buildEntity(code, `del-4-${suffix}@example.com`));
+
+      const updated = await repository.updateStatus(
+        saved.id as string,
+        ElectorEntity.INACTIVE_STATUS,
+      );
+
+      expect(updated?.firstName).toBe('Juan');
+      expect(updated?.lastName).toBe('Garcia');
+      expect(updated?.email).toBe(`del-4-${suffix}@example.com`);
+      expect(updated?.passwordHash).toBe('pbkdf2$210000$salt$hash');
+      expect(updated?.studentCode).toBe(code);
+      expect(updated?.programCode).toBe('2710');
+      expect(updated?.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('I5: returns null when updating a nonexistent id and creates nothing', async () => {
+      const missingId = crypto.randomUUID();
+
+      const updated = await repository.updateStatus(missingId, ElectorEntity.INACTIVE_STATUS);
+
+      expect(updated).toBeNull();
+
+      const count = await prisma.elector.count({ where: { id: missingId } });
+      expect(count).toBe(0);
+    });
+
+    it('I6: issues an update with only the status field and never deletes', async () => {
+      const code = `DEL-6-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(buildEntity(code, `del-6-${suffix}@example.com`));
+
+      const updateSpy = jest.spyOn(prisma.elector, 'update');
+      const deleteSpy = jest.spyOn(prisma.elector, 'delete');
+      const deleteManySpy = jest.spyOn(prisma.elector, 'deleteMany');
+
+      await repository.updateStatus(saved.id as string, ElectorEntity.INACTIVE_STATUS);
+
+      expect(updateSpy).toHaveBeenCalledWith({
+        where: { id: saved.id },
+        data: { status: ElectorEntity.INACTIVE_STATUS },
+      });
+      expect(deleteSpy).not.toHaveBeenCalled();
+      expect(deleteManySpy).not.toHaveBeenCalled();
+    });
+
+    it('I7: preserves related electoral rolls when updating the status', async () => {
+      const code = `DEL-7-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(buildEntity(code, `del-7-${suffix}@example.com`));
+
+      const election = await prisma.election.create({
+        data: {
+          name: `Election ${code}`,
+          description: 'Integration test election',
+          start_date: new Date('2026-09-01T00:00:00.000Z'),
+          start_time: new Date('2026-09-01T08:00:00.000Z'),
+          end_date: new Date('2026-09-15T00:00:00.000Z'),
+          end_time: new Date('2026-09-15T18:00:00.000Z'),
+        },
+      });
+
+      try {
+        await prisma.electoralRoll.create({
+          data: {
+            election_id: election.id,
+            elector_id: saved.id as string,
+          },
+        });
+
+        await repository.updateStatus(saved.id as string, ElectorEntity.INACTIVE_STATUS);
+
+        const rollCount = await prisma.electoralRoll.count({
+          where: { elector_id: saved.id as string },
+        });
+        expect(rollCount).toBe(1);
+      } finally {
+        await prisma.electoralRoll.deleteMany({ where: { elector_id: saved.id as string } });
+        await prisma.election.delete({ where: { id: election.id } });
+      }
+    });
+
+    it('I8: findById returns the same id with INACTIVE status after updateStatus', async () => {
+      const code = `DEL-8-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(buildEntity(code, `del-8-${suffix}@example.com`));
+
+      await repository.updateStatus(saved.id as string, ElectorEntity.INACTIVE_STATUS);
+
+      const found = await repository.findById(saved.id as string);
+
+      expect(found).not.toBeNull();
+      expect(found?.id).toBe(saved.id);
+      expect(found?.status).toBe(ElectorEntity.INACTIVE_STATUS);
+    });
+  });
 });
