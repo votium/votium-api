@@ -442,4 +442,136 @@ describe('Electors import (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 403 });
     });
   });
+
+  describe('DELETE /electors/:id (deactivate)', () => {
+    let activeElector: { id: string; student_code: string; created_at: Date };
+    let repeatElector: { id: string; student_code: string };
+    let e7Elector: { id: string; student_code: string };
+
+    const activeCode = `E2EDEL-${suffix}`;
+    const repeatCode = `E2EDELR-${suffix}`;
+    const e7Code = `E2EDEL7-${suffix}`;
+
+    beforeAll(async () => {
+      activeElector = await prisma.elector.create({
+        data: {
+          first_name: 'Deact',
+          last_name: 'Active',
+          email: `e2e-del-${suffix}@correounivalle.edu.co`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: activeCode,
+          program_code: '2710',
+          status: 'ACTIVE',
+        },
+      });
+      usedStudentCodes.push(activeElector.student_code);
+
+      repeatElector = await prisma.elector.create({
+        data: {
+          first_name: 'Deact',
+          last_name: 'Repeat',
+          email: `e2e-del-r-${suffix}@correounivalle.edu.co`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: repeatCode,
+          program_code: '2710',
+          status: 'ACTIVE',
+        },
+      });
+      usedStudentCodes.push(repeatElector.student_code);
+
+      e7Elector = await prisma.elector.create({
+        data: {
+          first_name: 'Deact',
+          last_name: 'Count',
+          email: `e2e-del-7-${suffix}@correounivalle.edu.co`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: e7Code,
+          program_code: '2710',
+          status: 'ACTIVE',
+        },
+      });
+      usedStudentCodes.push(e7Elector.student_code);
+    });
+
+    it('E1: deactivates an active elector with 200 and preserves the record', async () => {
+      const res = await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${activeElector.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(res.body).toEqual({ message: 'Elector deactivated successfully.' });
+
+      const row = await prisma.elector.findUnique({ where: { id: activeElector.id } });
+      expect(row).not.toBeNull();
+      expect(row?.id).toBe(activeElector.id);
+      expect(row?.status).toBe('INACTIVE');
+      expect(row?.created_at).toEqual(activeElector.created_at);
+      expect(row?.first_name).toBe('Deact');
+      expect(row?.last_name).toBe('Active');
+      expect(row?.email).toBe(`e2e-del-${suffix}@correounivalle.edu.co`);
+      expect(row?.password_hash).toBe('pbkdf2$placeholder');
+      expect(row?.student_code).toBe(activeCode);
+      expect(row?.program_code).toBe('2710');
+    });
+
+    it('E2: returns 404 for a nonexistent elector id', async () => {
+      await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${crypto.randomUUID()}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+    });
+
+    it('E3: returns 400 for an invalid (non-UUID) elector id', async () => {
+      await request(app.getHttpServer())
+        .delete('/api/v1/electors/not-a-uuid')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
+    it('E4: returns 401 without a token or with an invalid token', async () => {
+      await request(app.getHttpServer()).delete(`/api/v1/electors/${activeElector.id}`).expect(401);
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${activeElector.id}`)
+        .set('Authorization', 'Bearer not-a-real-token')
+        .expect(401);
+    });
+
+    it('E5: returns 403 for an auditor', async () => {
+      const res = await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${activeElector.id}`)
+        .set('Authorization', `Bearer ${auditorToken}`)
+        .expect(403);
+
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('E6: returns 200 then 409 when deactivating an already inactive elector', async () => {
+      await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${repeatElector.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const again = await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${repeatElector.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(409);
+
+      expect(again.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_ALREADY_INACTIVE' });
+    });
+
+    it('E7: does not physically delete the elector record', async () => {
+      const res = await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${e7Elector.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(res.body).toEqual({ message: 'Elector deactivated successfully.' });
+
+      const count = await prisma.elector.count({
+        where: { student_code: e7Elector.student_code },
+      });
+      expect(count).toBe(1);
+    });
+  });
 });

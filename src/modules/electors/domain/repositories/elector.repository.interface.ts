@@ -9,4 +9,11 @@ export interface ElectorRepository {
 
   // Returns electors whose student_code or email matches any of the given values.
   findByStudentCodeOrEmail(studentCodes: string[], emails: string[]): Promise<ElectorEntity[]>;
+
+  // Returns the elector with the given id, or null when it does not exist.
+  findById(id: string): Promise<ElectorEntity | null>;
+
+  // Updates ONLY the elector's status. Returns the updated elector, or null
+  // when the id does not exist. Never performs a physical deletion.
+  updateStatus(id: string, status: string): Promise<ElectorEntity | null>;
 }

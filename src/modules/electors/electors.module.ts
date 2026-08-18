@@ -5,6 +5,11 @@ import {
   PASSWORD_HASHER_PORT,
   type PasswordHasherPort,
 } from 'src/modules/iam/application/ports/password-hasher.port';
+import {
+  AUDIT_LOG_PORT,
+  type AuditLogPort,
+} from 'src/modules/iam/application/ports/audit-log.port';
+import { DeactivateElectorUseCase } from './application/use-cases/deactivate-elector.use-case';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
 import { CSV_PARSER_PORT, type CsvParserPort } from './application/ports/csv-parser.port';
 import {
@@ -29,6 +34,12 @@ import { ElectorsController } from './presentation/controllers/electors.controll
         hasher: PasswordHasherPort,
       ) => new ImportElectoralRegistryUseCase(parser, electors, hasher),
       inject: [CSV_PARSER_PORT, ELECTOR_REPOSITORY, PASSWORD_HASHER_PORT],
+    },
+    {
+      provide: DeactivateElectorUseCase,
+      useFactory: (electors: ElectorRepository, audit: AuditLogPort) =>
+        new DeactivateElectorUseCase(electors, audit),
+      inject: [ELECTOR_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
 })
