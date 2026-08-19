@@ -1,11 +1,13 @@
 import {
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -19,10 +21,14 @@ import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
+import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { DeactivateElectorUseCase } from '../../application/use-cases/deactivate-elector.use-case';
 import { ImportElectoralRegistryUseCase } from '../../application/use-cases/import-electoral-registry.use-case';
+import { SearchElectorsUseCase } from '../../application/use-cases/search-electors.use-case';
 import { ElectoralRegistryPresenter } from '../presenters/electoral-registry.presenter';
+import { ElectorPresenter } from '../presenters/elector.presenter';
 import { DeactivateElectorResponseDto } from '../dtos/deactivate-elector-response.dto';
+import { SearchElectorsQueryDto } from '../dtos/search-electors-query.dto';
 
 const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
@@ -40,7 +46,25 @@ export class ElectorsController {
   constructor(
     private readonly importRegistry: ImportElectoralRegistryUseCase,
     private readonly deactivateElector: DeactivateElectorUseCase,
+    private readonly searchElectors: SearchElectorsUseCase,
   ) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Search electors by program code, student code, or name' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  async search(@Query() query: SearchElectorsQueryDto) {
+    const { electors, total } = await this.searchElectors.execute({
+      page: query.page,
+      limit: query.limit,
+      programCode: query.program_code,
+      studentCode: query.student_code,
+      name: query.name,
+    });
+
+    const data = ElectorPresenter.toList(electors);
+    return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
+  }
 
   @Post('import')
   @HttpCode(HttpStatus.OK)

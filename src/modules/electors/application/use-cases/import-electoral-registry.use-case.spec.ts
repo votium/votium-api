@@ -25,6 +25,9 @@ describe('ImportElectoralRegistryUseCase', () => {
   const electors: jest.Mocked<ElectorRepository> = {
     create: jest.fn(),
     findByStudentCodeOrEmail: jest.fn(),
+    findById: jest.fn(),
+    updateStatus: jest.fn(),
+    search: jest.fn(),
   };
   const hasher: jest.Mocked<PasswordHasherPort> = { hash: jest.fn(), verify: jest.fn() };
 

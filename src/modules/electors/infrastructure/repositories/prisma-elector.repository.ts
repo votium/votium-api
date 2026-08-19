@@ -2,8 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/shared/database/prisma.service';
 import { ElectorEntity } from '../../domain/entities/elector.entity';
 import { ElectorDuplicateError } from '../../domain/errors/elector-duplicate.error';
-import { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
+import {
+  ElectorSearchParams,
+  ElectorSearchResult,
+  ElectorRepository,
+} from '../../domain/repositories/elector.repository.interface';
 import { PrismaElectorMapper } from '../mappers/prisma-elector.mapper';
+
+type PrismaElectorWhere = {
+  program_code?: string;
+  student_code?: string;
+  OR?: Array<{
+    first_name?: { contains: string; mode: 'insensitive' };
+    last_name?: { contains: string; mode: 'insensitive' };
+  }>;
+};
 
 @Injectable()
 export class PrismaElectorRepository implements ElectorRepository {
@@ -51,6 +64,39 @@ export class PrismaElectorRepository implements ElectorRepository {
       if (isRecordNotFoundError(error)) return null;
       throw error;
     }
+  }
+
+  async search(params: ElectorSearchParams): Promise<ElectorSearchResult> {
+    const skip = (params.page - 1) * params.limit;
+
+    const programCode = params.programCode?.trim();
+    const studentCode = params.studentCode?.trim();
+    const name = params.name?.trim();
+
+    const where: PrismaElectorWhere = {
+      ...(programCode ? { program_code: programCode } : {}),
+      ...(studentCode ? { student_code: studentCode } : {}),
+      ...(name
+        ? {
+            OR: [
+              { first_name: { contains: name, mode: 'insensitive' } },
+              { last_name: { contains: name, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.elector.count({ where }),
+      this.prisma.elector.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: params.limit,
+      }),
+    ]);
+
+    return { electors: rows.map((row) => PrismaElectorMapper.toDomain(row)), total };
   }
 }
 
