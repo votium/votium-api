@@ -9,6 +9,7 @@ import {
 import { PrismaCandidateMapper } from '../mappers/prisma-candidate.mapper';
 
 type PrismaCandidateWhere = {
+  status?: { not: string };
   first_name?: { contains: string; mode: 'insensitive' };
   last_name?: { contains: string; mode: 'insensitive' };
   program_code?: string;
@@ -34,6 +35,24 @@ export class PrismaCandidateRepository implements CandidateRepository {
     }
   }
 
+  async findById(id: string): Promise<CandidateEntity | null> {
+    const row = await this.prisma.candidate.findUnique({ where: { id } });
+    return row ? PrismaCandidateMapper.toDomain(row) : null;
+  }
+
+  async updateStatus(id: string, status: string): Promise<CandidateEntity | null> {
+    try {
+      const row = await this.prisma.candidate.update({
+        where: { id },
+        data: { status },
+      });
+      return PrismaCandidateMapper.toDomain(row);
+    } catch (error) {
+      if (isRecordNotFoundError(error)) return null;
+      throw error;
+    }
+  }
+
   async search(params: CandidateSearchParams): Promise<CandidateEntity[]> {
     const firstName = params.firstName?.trim();
     const lastName = params.lastName?.trim();
@@ -42,6 +61,7 @@ export class PrismaCandidateRepository implements CandidateRepository {
     const identificationNumber = params.identificationNumber?.trim();
 
     const where: PrismaCandidateWhere = {
+      status: { not: CandidateEntity.INACTIVE_STATUS },
       ...(firstName ? { first_name: { contains: firstName, mode: 'insensitive' } } : {}),
       ...(lastName ? { last_name: { contains: lastName, mode: 'insensitive' } } : {}),
       ...(studyPlanCode ? { program_code: studyPlanCode } : {}),
@@ -55,6 +75,15 @@ export class PrismaCandidateRepository implements CandidateRepository {
     });
     return rows.map((row) => PrismaCandidateMapper.toDomain(row));
   }
+}
+
+function isRecordNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2025'
+  );
 }
 
 function isUniqueConstraintError(error: unknown): boolean {

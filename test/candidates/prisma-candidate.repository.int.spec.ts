@@ -161,6 +161,94 @@ describe('PrismaCandidateRepository integration', () => {
     createSpy.mockRestore();
   });
 
+  describe('findById', () => {
+    it('returns the candidate with the given id', async () => {
+      const code = `FIND-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-FIND-${suffix}`));
+
+      const found = await repository.findById(saved.id!);
+
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(saved.id);
+      expect(found!.studentCode).toBe(code);
+    });
+
+    it('returns null when the candidate does not exist', async () => {
+      const found = await repository.findById(crypto.randomUUID());
+
+      expect(found).toBeNull();
+    });
+
+    it('returns an inactive candidate (no status filter)', async () => {
+      const code = `FIND-IN-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-FIND-IN-${suffix}`));
+      await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
+
+      const found = await repository.findById(saved.id!);
+
+      expect(found).not.toBeNull();
+      expect(found!.status).toBe(CandidateEntity.INACTIVE_STATUS);
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('updates only the status field and returns the updated candidate', async () => {
+      const code = `STAT-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-STAT-${suffix}`));
+
+      const updated = await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
+
+      expect(updated).not.toBeNull();
+      expect(updated!.id).toBe(saved.id);
+      expect(updated!.status).toBe(CandidateEntity.INACTIVE_STATUS);
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row).not.toBeNull();
+      expect(row!.status).toBe('INACTIVE');
+      expect(row!.first_name).toBe('Juan');
+      expect(row!.last_name).toBe('Garcia');
+      expect(row!.student_code).toBe(code);
+      expect(row!.program_code).toBe('1234');
+      expect(row!.identification_number).toBe(`ID-STAT-${suffix}`);
+      expect(row!.created_at).toBeInstanceOf(Date);
+    });
+
+    it('does not delete the row', async () => {
+      const code = `STAT-NODEL-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-STAT-NODEL-${suffix}`));
+
+      await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
+
+      const rows = await prisma.candidate.findMany({ where: { student_code: code } });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('returns null when the candidate does not exist', async () => {
+      const updated = await repository.updateStatus(
+        crypto.randomUUID(),
+        CandidateEntity.INACTIVE_STATUS,
+      );
+
+      expect(updated).toBeNull();
+    });
+
+    it('returns null when the row disappeared between read and update (P2025)', async () => {
+      const code = `STAT-GONE-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-STAT-GONE-${suffix}`));
+
+      await prisma.candidate.deleteMany({ where: { student_code: code } });
+
+      const updated = await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
+
+      expect(updated).toBeNull();
+    });
+  });
+
   describe('search', () => {
     const searchCodes: string[] = [];
     let candidateA: CandidateEntity;
@@ -330,7 +418,7 @@ describe('PrismaCandidateRepository integration', () => {
       expect(after).toBe(before);
     });
 
-    it('returns rows regardless of status (no status filter)', async () => {
+    it('excludes logically deleted (INACTIVE) candidates from results', async () => {
       const inactive = await prisma.candidate.create({
         data: {
           first_name: 'Inactive',
@@ -343,9 +431,12 @@ describe('PrismaCandidateRepository integration', () => {
       });
       searchCodes.push(inactive.student_code);
 
-      const rows = await repository.search({ lastName: 'Row' });
-      expect(rows).toHaveLength(1);
-      expect(rows[0].studentCode).toBe(inactive.student_code);
+      const byLastName = await repository.search({ lastName: 'Row' });
+      expect(byLastName).toEqual([]);
+
+      const all = await repository.search({});
+      expect(all.map((row) => row.studentCode)).not.toContain(inactive.student_code);
+      expect(all).toHaveLength(4);
     });
   });
 });

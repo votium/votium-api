@@ -15,8 +15,17 @@ export interface CandidateRepository {
   // Throws CandidateDuplicateError when a unique constraint rejects the row.
   create(entity: CandidateEntity): Promise<CandidateEntity>;
 
-  // Returns all candidates matching the optional filters. Filters combine with AND.
-  // firstName/lastName match case-insensitively and partially; code fields match exactly.
-  // Empty or whitespace-only values are ignored. Read-only, ordered by created_at desc.
+  // Returns the candidate with the given id, or null when it does not exist.
+  // Does not filter by status (needed for existence checks and idempotent deactivation).
+  findById(id: string): Promise<CandidateEntity | null>;
+
+  // Updates ONLY the candidate's status. Returns the updated candidate, or null
+  // when the id does not exist. Never performs a physical deletion.
+  updateStatus(id: string, status: string): Promise<CandidateEntity | null>;
+
+  // Returns all candidates matching the optional filters, EXCLUDING logically
+  // deleted (INACTIVE) candidates. Filters combine with AND. firstName/lastName
+  // match case-insensitively and partially; code fields match exactly. Empty or
+  // whitespace-only values are ignored. Read-only, ordered by created_at desc.
   search(params: CandidateSearchParams): Promise<CandidateEntity[]>;
 }

@@ -85,9 +85,50 @@ describe('CandidateEntity', () => {
     });
   });
 
+  describe('deactivate', () => {
+    it('marks an ACTIVE candidate as INACTIVE', () => {
+      const entity = CandidateEntity.create(baseInput);
+
+      expect(entity.status).toBe(CandidateEntity.DEFAULT_STATUS);
+
+      entity.deactivate();
+
+      expect(entity.status).toBe(CandidateEntity.INACTIVE_STATUS);
+      expect(entity.status).toBe('INACTIVE');
+    });
+
+    it('does not modify any other field', () => {
+      const createdAt = new Date('2026-08-19T15:00:00.000Z');
+      const entity = CandidateEntity.restore({
+        id: 'candidate-1',
+        firstName: 'Juan',
+        lastName: 'Garcia',
+        studentCode: '20201234',
+        programCode: '1234',
+        identificationNumber: '1000123456',
+        status: 'ACTIVE',
+        createdAt,
+      });
+
+      entity.deactivate();
+
+      expect(entity.id).toBe('candidate-1');
+      expect(entity.firstName).toBe('Juan');
+      expect(entity.lastName).toBe('Garcia');
+      expect(entity.studentCode).toBe('20201234');
+      expect(entity.programCode).toBe('1234');
+      expect(entity.identificationNumber).toBe('1000123456');
+      expect(entity.createdAt).toBe(createdAt);
+    });
+  });
+
   describe('constants', () => {
     it('exposes the established DEFAULT_STATUS value', () => {
       expect(CandidateEntity.DEFAULT_STATUS).toBe('ACTIVE');
+    });
+
+    it('exposes the established INACTIVE_STATUS value', () => {
+      expect(CandidateEntity.INACTIVE_STATUS).toBe('INACTIVE');
     });
   });
 });

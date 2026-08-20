@@ -19,6 +19,8 @@ describe('SearchCandidatesUseCase', () => {
   const candidates: jest.Mocked<CandidateRepository> = {
     create: jest.fn(),
     search: jest.fn(),
+    findById: jest.fn(),
+    updateStatus: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());
