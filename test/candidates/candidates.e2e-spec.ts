@@ -406,4 +406,108 @@ describe('Candidates registration (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
   });
+
+  describe('DELETE /candidates/:id (deactivate)', () => {
+    let activeCandidate: { id: string; student_code: string; created_at: Date };
+    let repeatCandidate: { id: string; student_code: string };
+
+    const activeCode = `E2EDEL-${suffix}`;
+    const repeatCode = `E2EDELR-${suffix}`;
+
+    const seedCandidate = async (studentCode: string) => {
+      const row = await prisma.candidate.create({
+        data: {
+          first_name: 'Deact',
+          last_name: 'Active',
+          student_code: studentCode,
+          program_code: '1234',
+          identification_number: `ID-${studentCode}`,
+          status: 'ACTIVE',
+        },
+      });
+      usedStudentCodes.push(studentCode);
+      return row;
+    };
+
+    const deleteCandidate = (id: string, token?: string) => {
+      const req = request(app.getHttpServer()).delete(`/api/v1/candidates/${id}`);
+      return token ? req.set('Authorization', `Bearer ${token}`) : req;
+    };
+
+    beforeAll(async () => {
+      activeCandidate = await seedCandidate(activeCode);
+      repeatCandidate = await seedCandidate(repeatCode);
+    });
+
+    it('E1: admin logically deletes an active candidate with 204 and empty body', async () => {
+      const res = await deleteCandidate(activeCandidate.id, adminToken).expect(204);
+
+      expect(res.text).toBe('');
+
+      const row = await prisma.candidate.findUnique({ where: { id: activeCandidate.id } });
+      expect(row).not.toBeNull();
+      expect(row?.id).toBe(activeCandidate.id);
+      expect(row?.status).toBe('INACTIVE');
+      expect(row?.created_at).toEqual(activeCandidate.created_at);
+      expect(row?.first_name).toBe('Deact');
+      expect(row?.last_name).toBe('Active');
+      expect(row?.student_code).toBe(activeCode);
+      expect(row?.program_code).toBe('1234');
+      expect(row?.identification_number).toBe(`ID-${activeCode}`);
+    });
+
+    it('E2: deleting the same candidate again returns 204 (idempotent)', async () => {
+      const first = await deleteCandidate(repeatCandidate.id, adminToken).expect(204);
+      expect(first.text).toBe('');
+
+      const again = await deleteCandidate(repeatCandidate.id, adminToken).expect(204);
+      expect(again.text).toBe('');
+
+      const row = await prisma.candidate.findUnique({ where: { id: repeatCandidate.id } });
+      expect(row?.status).toBe('INACTIVE');
+    });
+
+    it('E3: returns 404 with CANDIDATE_NOT_FOUND for a non-existent id', async () => {
+      const res = await deleteCandidate(crypto.randomUUID(), adminToken).expect(404);
+
+      const body = res.body as {
+        statusCode: number;
+        error: string;
+        message: string;
+        timestamp: string;
+        path: string;
+      };
+      expect(body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+      expect(body.message).toContain('not found');
+      expect(typeof body.timestamp).toBe('string');
+      expect(typeof body.path).toBe('string');
+    });
+
+    it('E4: returns 400 for an invalid (non-UUID) id', async () => {
+      await deleteCandidate('not-a-uuid', adminToken).expect(400);
+    });
+
+    it('E5: returns 401 without a token or with an invalid token', async () => {
+      await deleteCandidate(activeCandidate.id).expect(401);
+
+      await deleteCandidate(activeCandidate.id, 'not-a-real-token').expect(401);
+    });
+
+    it('E6: returns 403 for an auditor', async () => {
+      const res = await deleteCandidate(activeCandidate.id, auditorToken).expect(403);
+
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('E7: does not physically delete the candidate record', async () => {
+      const code = `E2EDEL7-${suffix}`;
+      const seeded = await seedCandidate(code);
+
+      await deleteCandidate(seeded.id, adminToken).expect(204);
+
+      const rows = await prisma.candidate.findMany({ where: { student_code: code } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe('INACTIVE');
+    });
+  });
 });

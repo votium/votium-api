@@ -160,4 +160,134 @@ describe('PrismaCandidateRepository integration', () => {
 
     createSpy.mockRestore();
   });
+
+  describe('findById / updateStatus', () => {
+    function persistedCandidate(status: string): CandidateEntity {
+      return CandidateEntity.create({
+        firstName: 'Juan',
+        lastName: 'Garcia',
+        studentCode: `FIND-${suffix}`,
+        programCode: '1234',
+        identificationNumber: `ID-FIND-${suffix}`,
+        status,
+      });
+    }
+
+    it('I1: findById returns the persisted candidate with all fields mapped', async () => {
+      const saved = await repository.create(persistedCandidate('ACTIVE'));
+      usedStudentCodes.push(saved.studentCode);
+
+      const found = await repository.findById(saved.id!);
+
+      expect(found).not.toBeNull();
+      expect(found).toEqual(
+        expect.objectContaining({
+          id: saved.id,
+          firstName: 'Juan',
+          lastName: 'Garcia',
+          studentCode: saved.studentCode,
+          programCode: '1234',
+          identificationNumber: saved.identificationNumber,
+          status: 'ACTIVE',
+        }),
+      );
+      expect(found!.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('I2: findById returns null for a non-existent id', async () => {
+      const found = await repository.findById(crypto.randomUUID());
+
+      expect(found).toBeNull();
+    });
+
+    it('I3: findById returns INACTIVE candidates too (needed for idempotent delete)', async () => {
+      const saved = await repository.create(persistedCandidate('INACTIVE'));
+      usedStudentCodes.push(saved.studentCode);
+
+      const found = await repository.findById(saved.id!);
+
+      expect(found).not.toBeNull();
+      expect(found!.status).toBe('INACTIVE');
+    });
+
+    it('I4: updateStatus flips ACTIVE to INACTIVE and returns the updated entity', async () => {
+      const saved = await repository.create(persistedCandidate('ACTIVE'));
+      usedStudentCodes.push(saved.studentCode);
+
+      const updated = await repository.updateStatus(saved.id!, 'INACTIVE');
+
+      expect(updated).not.toBeNull();
+      expect(updated!.status).toBe('INACTIVE');
+      expect(updated!.id).toBe(saved.id);
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row?.status).toBe('INACTIVE');
+    });
+
+    it('I5: updateStatus returns null for a non-existent id', async () => {
+      const updated = await repository.updateStatus(crypto.randomUUID(), 'INACTIVE');
+
+      expect(updated).toBeNull();
+    });
+
+    it('I6: updateStatus only changes status; no unrelated field is modified', async () => {
+      const saved = await repository.create(persistedCandidate('ACTIVE'));
+      usedStudentCodes.push(saved.studentCode);
+
+      const updateSpy = jest.spyOn(prisma.candidate, 'update');
+
+      await repository.updateStatus(saved.id!, 'INACTIVE');
+
+      const data = updateSpy.mock.calls[0][0].data as Record<string, unknown>;
+      expect(data).toEqual({ status: 'INACTIVE' });
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row).not.toBeNull();
+      expect(row!.status).toBe('INACTIVE');
+      expect(row!.first_name).toBe('Juan');
+      expect(row!.last_name).toBe('Garcia');
+      expect(row!.student_code).toBe(saved.studentCode);
+      expect(row!.program_code).toBe('1234');
+      expect(row!.identification_number).toBe(saved.identificationNumber);
+      expect(row!.created_at).toEqual(saved.createdAt);
+
+      updateSpy.mockRestore();
+    });
+
+    it('I7: updateStatus never physically deletes the record', async () => {
+      const saved = await repository.create(persistedCandidate('ACTIVE'));
+      usedStudentCodes.push(saved.studentCode);
+
+      await repository.updateStatus(saved.id!, 'INACTIVE');
+
+      const rows = await prisma.candidate.findMany({ where: { student_code: saved.studentCode } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe('INACTIVE');
+    });
+
+    it('I8: updateStatus on an already INACTIVE candidate keeps INACTIVE', async () => {
+      const saved = await repository.create(persistedCandidate('INACTIVE'));
+      usedStudentCodes.push(saved.studentCode);
+
+      const updated = await repository.updateStatus(saved.id!, 'INACTIVE');
+
+      expect(updated).not.toBeNull();
+      expect(updated!.status).toBe('INACTIVE');
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row?.status).toBe('INACTIVE');
+    });
+
+    it('I9: updateStatus persists exactly the given status string', async () => {
+      const saved = await repository.create(persistedCandidate('ACTIVE'));
+      usedStudentCodes.push(saved.studentCode);
+
+      const updated = await repository.updateStatus(saved.id!, 'SUSPENDED');
+
+      expect(updated!.status).toBe('SUSPENDED');
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row?.status).toBe('SUSPENDED');
+    });
+  });
 });
