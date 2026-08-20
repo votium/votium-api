@@ -160,4 +160,192 @@ describe('PrismaCandidateRepository integration', () => {
 
     createSpy.mockRestore();
   });
+
+  describe('search', () => {
+    const searchCodes: string[] = [];
+    let candidateA: CandidateEntity;
+    let candidateB: CandidateEntity;
+    let candidateC: CandidateEntity;
+    let candidateD: CandidateEntity;
+
+    async function seedSearchCandidate(data: {
+      firstName: string;
+      lastName: string;
+      programCode: string;
+      studentCode: string;
+      identificationNumber: string;
+    }): Promise<CandidateEntity> {
+      const saved = await repository.create(
+        CandidateEntity.create({
+          firstName: data.firstName,
+          lastName: data.lastName,
+          programCode: data.programCode,
+          studentCode: data.studentCode,
+          identificationNumber: data.identificationNumber,
+        }),
+      );
+      searchCodes.push(saved.studentCode);
+      return saved;
+    }
+
+    beforeAll(async () => {
+      // Start from a clean slate: this is the only integration spec that writes candidates,
+      // so removing all rows makes the search assertions deterministic even if a previous run
+      // left stray rows behind.
+      await prisma.candidate.deleteMany({});
+
+      candidateA = await seedSearchCandidate({
+        firstName: 'Juan',
+        lastName: 'Garcia',
+        programCode: '1234',
+        studentCode: `SRCH-A-${suffix}`,
+        identificationNumber: `ID-A-${suffix}`,
+      });
+      candidateB = await seedSearchCandidate({
+        firstName: 'Maria',
+        lastName: 'Rodriguez',
+        programCode: '2710',
+        studentCode: `SRCH-B-${suffix}`,
+        identificationNumber: `ID-B-${suffix}`,
+      });
+      candidateC = await seedSearchCandidate({
+        firstName: 'Juan',
+        lastName: 'Perez',
+        programCode: '1234',
+        studentCode: `SRCH-C-${suffix}`,
+        identificationNumber: `ID-C-${suffix}`,
+      });
+      candidateD = await seedSearchCandidate({
+        firstName: 'Ana',
+        lastName: 'Lopez',
+        programCode: '9999',
+        studentCode: `SRCH-D-${suffix}`,
+        identificationNumber: `ID-D-${suffix}`,
+      });
+    });
+
+    afterAll(async () => {
+      if (searchCodes.length > 0) {
+        await prisma.candidate.deleteMany({ where: { student_code: { in: searchCodes } } });
+      }
+    });
+
+    it('returns all candidates ordered by created_at desc when no filters are provided', async () => {
+      const rows = await repository.search({});
+
+      const codes = rows.map((row) => row.studentCode);
+      expect(codes).toHaveLength(4);
+      expect(codes).toEqual(
+        expect.arrayContaining([
+          candidateA.studentCode,
+          candidateB.studentCode,
+          candidateC.studentCode,
+          candidateD.studentCode,
+        ]),
+      );
+
+      const times = rows.map((row) => row.createdAt!.getTime());
+      for (let i = 1; i < times.length; i++) {
+        expect(times[i]).toBeLessThanOrEqual(times[i - 1]);
+      }
+    });
+
+    it('filters firstName with a case-insensitive partial match', async () => {
+      const byLower = await repository.search({ firstName: 'jua' });
+      expect(byLower.map((row) => row.studentCode).sort()).toEqual(
+        [candidateA.studentCode, candidateC.studentCode].sort(),
+      );
+
+      const byUpper = await repository.search({ firstName: 'JUAN' });
+      expect(byUpper.map((row) => row.studentCode).sort()).toEqual(
+        [candidateA.studentCode, candidateC.studentCode].sort(),
+      );
+    });
+
+    it('filters lastName with a case-insensitive partial match', async () => {
+      const rows = await repository.search({ lastName: 'rodri' });
+      expect(rows.map((row) => row.studentCode)).toEqual([candidateB.studentCode]);
+    });
+
+    it('filters studyPlanCode with an exact match', async () => {
+      const exact = await repository.search({ studyPlanCode: '1234' });
+      expect(exact.map((row) => row.studentCode).sort()).toEqual(
+        [candidateA.studentCode, candidateC.studentCode].sort(),
+      );
+
+      const partial = await repository.search({ studyPlanCode: '123' });
+      expect(partial).toEqual([]);
+    });
+
+    it('filters studentCode with an exact match', async () => {
+      const rows = await repository.search({ studentCode: candidateB.studentCode });
+      expect(rows.map((row) => row.studentCode)).toEqual([candidateB.studentCode]);
+    });
+
+    it('filters identificationNumber with an exact match', async () => {
+      const rows = await repository.search({
+        identificationNumber: candidateD.identificationNumber,
+      });
+      expect(rows.map((row) => row.studentCode)).toEqual([candidateD.studentCode]);
+    });
+
+    it('combines multiple filters with AND semantics', async () => {
+      const byNameAndPlan = await repository.search({ firstName: 'Juan', studyPlanCode: '1234' });
+      expect(byNameAndPlan.map((row) => row.studentCode).sort()).toEqual(
+        [candidateA.studentCode, candidateC.studentCode].sort(),
+      );
+
+      const allThree = await repository.search({
+        firstName: 'Juan',
+        studyPlanCode: '1234',
+        studentCode: candidateA.studentCode,
+      });
+      expect(allThree.map((row) => row.studentCode)).toEqual([candidateA.studentCode]);
+    });
+
+    it('ignores empty and whitespace-only filter values', async () => {
+      const rows = await repository.search({ firstName: '   ', studentCode: '' });
+      expect(rows).toHaveLength(4);
+    });
+
+    it('trims filter values before matching', async () => {
+      const rows = await repository.search({ studyPlanCode: ' 1234 ', firstName: ' Juan ' });
+      expect(rows.map((row) => row.studentCode).sort()).toEqual(
+        [candidateA.studentCode, candidateC.studentCode].sort(),
+      );
+    });
+
+    it('returns an empty array when no candidate matches', async () => {
+      const rows = await repository.search({ identificationNumber: 'NOPE' });
+      expect(rows).toEqual([]);
+    });
+
+    it('does not create, update, or delete rows', async () => {
+      const before = await prisma.candidate.count();
+
+      await repository.search({});
+      await repository.search({ firstName: 'x' });
+
+      const after = await prisma.candidate.count();
+      expect(after).toBe(before);
+    });
+
+    it('returns rows regardless of status (no status filter)', async () => {
+      const inactive = await prisma.candidate.create({
+        data: {
+          first_name: 'Inactive',
+          last_name: 'Row',
+          student_code: `SRCH-IN-${suffix}`,
+          program_code: '1234',
+          identification_number: `ID-IN-${suffix}`,
+          status: 'INACTIVE',
+        },
+      });
+      searchCodes.push(inactive.student_code);
+
+      const rows = await repository.search({ lastName: 'Row' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].studentCode).toBe(inactive.student_code);
+    });
+  });
 });
