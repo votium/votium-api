@@ -14,4 +14,8 @@ export class CandidatePresenter {
       createdAt: entity.createdAt?.toISOString() ?? '',
     });
   }
+
+  static toList(entities: CandidateEntity[]): CandidateResponseDto[] {
+    return entities.map((entity) => CandidatePresenter.toResponse(entity));
+  }
 }

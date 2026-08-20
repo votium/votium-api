@@ -20,6 +20,7 @@ function buildSavedCandidate(): CandidateEntity {
 describe('RegisterCandidateUseCase', () => {
   const candidates: jest.Mocked<CandidateRepository> = {
     create: jest.fn(),
+    search: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),

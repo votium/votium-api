@@ -6,6 +6,7 @@ import {
   type AuditLogPort,
 } from 'src/modules/iam/application/ports/audit-log.port';
 import { RegisterCandidateUseCase } from './application/use-cases/register-candidate.use-case';
+import { SearchCandidatesUseCase } from './application/use-cases/search-candidates.use-case';
 import {
   CANDIDATE_REPOSITORY,
   type CandidateRepository,
@@ -23,6 +24,11 @@ import { CandidatesController } from './presentation/controllers/candidates.cont
       useFactory: (candidates: CandidateRepository, audit: AuditLogPort) =>
         new RegisterCandidateUseCase(candidates, audit),
       inject: [CANDIDATE_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: SearchCandidatesUseCase,
+      useFactory: (candidates: CandidateRepository) => new SearchCandidatesUseCase(candidates),
+      inject: [CANDIDATE_REPOSITORY],
     },
   ],
 })

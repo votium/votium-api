@@ -406,4 +406,202 @@ describe('Candidates registration (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
   });
+
+  describe('GET /candidates (query)', () => {
+    const queryCandidates = (qs: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .get(`/api/v1/candidates${qs}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    // Names/codes intentionally unique so they cannot collide with candidates created by the
+    // POST tests (which persist until the top-level afterAll cleanup).
+    const querySeed = [
+      {
+        firstName: 'Bruno',
+        lastName: 'Fernandez',
+        programCode: '5001',
+        studentCode: `Q1-${suffix}`,
+        identificationNumber: `QI1-${suffix}`,
+      },
+      {
+        firstName: 'Clara',
+        lastName: 'Molina',
+        programCode: '5002',
+        studentCode: `Q2-${suffix}`,
+        identificationNumber: `QI2-${suffix}`,
+      },
+      {
+        firstName: 'Bruno',
+        lastName: 'Rojas',
+        programCode: '5001',
+        studentCode: `Q3-${suffix}`,
+        identificationNumber: `QI3-${suffix}`,
+      },
+      {
+        firstName: 'Diana',
+        lastName: 'Torres',
+        programCode: '5003',
+        studentCode: `Q4-${suffix}`,
+        identificationNumber: `QI4-${suffix}`,
+      },
+    ];
+
+    beforeAll(async () => {
+      for (const seed of querySeed) {
+        await prisma.candidate.create({
+          data: {
+            first_name: seed.firstName,
+            last_name: seed.lastName,
+            student_code: seed.studentCode,
+            program_code: seed.programCode,
+            identification_number: seed.identificationNumber,
+            status: 'ACTIVE',
+          },
+        });
+        usedStudentCodes.push(seed.studentCode);
+      }
+    });
+
+    it('E1: returns all registered candidates without filters', async () => {
+      const res = await queryCandidates('').expect(200);
+      const body = res.body as { data: Array<Record<string, unknown>> };
+      const data = body.data;
+
+      const codes = data.map((item) => item.studentCode);
+      expect(codes).toEqual(expect.arrayContaining(querySeed.map((s) => s.studentCode)));
+
+      const times = data.map((item) => new Date(item.createdAt as string).getTime());
+      for (let i = 1; i < times.length; i++) {
+        expect(times[i]).toBeLessThanOrEqual(times[i - 1]);
+      }
+    });
+
+    it('E2: filters by firstName with a partial, case-insensitive match', async () => {
+      const res = await queryCandidates('?firstName=bruno').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes.sort()).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
+    });
+
+    it('E3: filters by lastName with a partial, case-insensitive match', async () => {
+      const res = await queryCandidates('?lastName=torres').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes).toEqual([`Q4-${suffix}`]);
+    });
+
+    it('E4: filters by studyPlanCode', async () => {
+      const res = await queryCandidates('?studyPlanCode=5001').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes.sort()).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
+    });
+
+    it('E5: filters by studentCode', async () => {
+      const res = await queryCandidates(`?studentCode=${`Q2-${suffix}`}`).expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes).toEqual([`Q2-${suffix}`]);
+    });
+
+    it('E6: filters by identificationNumber', async () => {
+      const res = await queryCandidates(`?identificationNumber=${`QI4-${suffix}`}`).expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes).toEqual([`Q4-${suffix}`]);
+    });
+
+    it('E7: combines multiple filters with AND semantics', async () => {
+      const res = await queryCandidates(
+        `?firstName=Bruno&studyPlanCode=5001&studentCode=${`Q1-${suffix}`}`,
+      ).expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes).toEqual([`Q1-${suffix}`]);
+    });
+
+    it('E8: returns an empty collection when nothing matches (not an error)', async () => {
+      const res = await queryCandidates('?studentCode=does-not-exist').expect(200);
+      expect(res.body).toEqual({ data: [] });
+    });
+
+    it('E9: ignores empty and whitespace-only filter values', async () => {
+      const noFilter = await queryCandidates('').expect(200);
+      const noFilterBody = noFilter.body as { data: Array<{ studentCode: string }> };
+      const noFilterCodes = noFilterBody.data.map((c) => c.studentCode).sort();
+
+      const res = await queryCandidates('?firstName=%20%20&lastName=').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const filteredCodes = body.data.map((c) => c.studentCode).sort();
+
+      expect(filteredCodes).toEqual(noFilterCodes);
+    });
+
+    it('E10: rejects unauthenticated requests with 401', async () => {
+      await request(app.getHttpServer()).get('/api/v1/candidates').expect(401);
+    });
+
+    it('E11: rejects an invalid token with 401', async () => {
+      const res = await queryCandidates('', 'not-a-real-token').expect(401);
+      expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+
+    it('E12: allows the auditor role', async () => {
+      const res = await queryCandidates('', auditorToken).expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes).toEqual(expect.arrayContaining(querySeed.map((s) => s.studentCode)));
+    });
+
+    it('E13: rejects an invalid studyPlanCode format with 400', async () => {
+      const res = await queryCandidates('?studyPlanCode=271').expect(400);
+
+      const body = res.body as {
+        statusCode: number;
+        message: string | string[];
+        timestamp: string;
+        path: string;
+      };
+      expect(body.statusCode).toBe(400);
+      expect(body.message).toEqual(
+        expect.arrayContaining(['Program code must contain exactly four digits.']),
+      );
+      expect(typeof body.timestamp).toBe('string');
+      expect(typeof body.path).toBe('string');
+    });
+
+    it('E14: rejects unknown query parameters with 400', async () => {
+      await queryCandidates('?unknown=value').expect(400);
+    });
+
+    it('E15: response items expose exactly the CandidateResponseDto contract', async () => {
+      const res = await queryCandidates('').expect(200);
+      const body = res.body as { data: Array<Record<string, unknown>> };
+      const item = body.data[0];
+
+      expect(Object.keys(item).sort()).toEqual(
+        [
+          'id',
+          'firstName',
+          'lastName',
+          'studentCode',
+          'programCode',
+          'identificationNumber',
+          'status',
+          'createdAt',
+        ].sort(),
+      );
+    });
+
+    it('E16: the query endpoint is read-only', async () => {
+      const before = await prisma.candidate.count();
+
+      await queryCandidates('').expect(200);
+      await queryCandidates('?firstName=bruno').expect(200);
+      await queryCandidates('?studentCode=does-not-exist').expect(200);
+
+      const after = await prisma.candidate.count();
+      expect(after).toBe(before);
+    });
+  });
 });
