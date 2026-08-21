@@ -5,6 +5,7 @@ import {
   AUDIT_LOG_PORT,
   type AuditLogPort,
 } from 'src/modules/iam/application/ports/audit-log.port';
+import { DeactivateCandidateUseCase } from './application/use-cases/deactivate-candidate.use-case';
 import { RegisterCandidateUseCase } from './application/use-cases/register-candidate.use-case';
 import { SearchCandidatesUseCase } from './application/use-cases/search-candidates.use-case';
 import {
@@ -29,6 +30,12 @@ import { CandidatesController } from './presentation/controllers/candidates.cont
       provide: SearchCandidatesUseCase,
       useFactory: (candidates: CandidateRepository) => new SearchCandidatesUseCase(candidates),
       inject: [CANDIDATE_REPOSITORY],
+    },
+    {
+      provide: DeactivateCandidateUseCase,
+      useFactory: (candidates: CandidateRepository, audit: AuditLogPort) =>
+        new DeactivateCandidateUseCase(candidates, audit),
+      inject: [CANDIDATE_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
 })

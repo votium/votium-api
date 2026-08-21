@@ -604,4 +604,119 @@ describe('Candidates registration (e2e)', () => {
       expect(after).toBe(before);
     });
   });
+
+  describe('DELETE /candidates/:id', () => {
+    const deleteCandidate = (id: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .delete(`/api/v1/candidates/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    const registerCandidate = async (): Promise<{ id: string; studentCode: string }> => {
+      const payload = validCandidate();
+      payload.studentCode = `DEL-${suffix}-${usedStudentCodes.length}`;
+      payload.identificationNumber = `IDDEL-${suffix}-${usedStudentCodes.length}`;
+      const res = await register(payload, adminToken).expect(201);
+      usedStudentCodes.push(payload.studentCode);
+      return { id: (res.body as { id: string }).id, studentCode: payload.studentCode };
+    };
+
+    it('E1: an authenticated administrator logically deletes a candidate with 204 and no body', async () => {
+      const { id } = await registerCandidate();
+
+      const del = await deleteCandidate(id).expect(204);
+
+      expect(del.body).toEqual({});
+    });
+
+    it('E2: does not physically delete the record and marks it INACTIVE', async () => {
+      const { id } = await registerCandidate();
+      const before = await prisma.candidate.findUnique({ where: { id } });
+      const countBefore = await prisma.candidate.count();
+
+      await deleteCandidate(id).expect(204);
+
+      const after = await prisma.candidate.findUnique({ where: { id } });
+      const countAfter = await prisma.candidate.count();
+
+      expect(after).not.toBeNull();
+      expect(after?.status).toBe('INACTIVE');
+      expect(after?.first_name).toBe(before?.first_name);
+      expect(after?.last_name).toBe(before?.last_name);
+      expect(after?.student_code).toBe(before?.student_code);
+      expect(after?.program_code).toBe(before?.program_code);
+      expect(after?.identification_number).toBe(before?.identification_number);
+      expect(countAfter).toBe(countBefore);
+    });
+
+    it('E3: a deleted candidate is excluded from candidate query results', async () => {
+      const { id, studentCode } = await registerCandidate();
+
+      await deleteCandidate(id).expect(204);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/candidates?studentCode=${studentCode}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      expect(body.data).toEqual([]);
+    });
+
+    it('E4: a repeated delete is idempotent and returns 204 again', async () => {
+      const { id } = await registerCandidate();
+
+      await deleteCandidate(id).expect(204);
+      await deleteCandidate(id).expect(204);
+    });
+
+    it('E5: rejects unauthenticated requests with 401', async () => {
+      const { id } = await registerCandidate();
+
+      await request(app.getHttpServer()).delete(`/api/v1/candidates/${id}`).expect(401);
+    });
+
+    it('E6: rejects an invalid token with 401', async () => {
+      const { id } = await registerCandidate();
+
+      const res = await deleteCandidate(id, 'not-a-real-token').expect(401);
+
+      expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+
+    it('E7: rejects a non-admin role with 403', async () => {
+      const { id } = await registerCandidate();
+
+      const res = await deleteCandidate(id, auditorToken).expect(403);
+
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('E8: returns 404 with CANDIDATE_NOT_FOUND for an unknown id', async () => {
+      const res = await deleteCandidate(crypto.randomUUID()).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+    });
+
+    it('E9: rejects a malformed id with 400', async () => {
+      const res = await deleteCandidate('not-a-uuid').expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E10: does not modify unrelated candidate fields', async () => {
+      const { id } = await registerCandidate();
+      const before = await prisma.candidate.findUnique({ where: { id } });
+
+      await deleteCandidate(id).expect(204);
+
+      const after = await prisma.candidate.findUnique({ where: { id } });
+      expect(after?.status).toBe('INACTIVE');
+      expect(after?.first_name).toBe(before?.first_name);
+      expect(after?.last_name).toBe(before?.last_name);
+      expect(after?.student_code).toBe(before?.student_code);
+      expect(after?.program_code).toBe(before?.program_code);
+      expect(after?.identification_number).toBe(before?.identification_number);
+      expect(after?.created_at?.getTime()).toBe(before?.created_at?.getTime());
+    });
+  });
 });

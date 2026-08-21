@@ -20,6 +20,7 @@ export interface RestoreCandidateInput {
 
 export class CandidateEntity {
   static readonly DEFAULT_STATUS = 'ACTIVE';
+  static readonly INACTIVE_STATUS = 'INACTIVE';
 
   private constructor(
     public readonly id: string | null,
@@ -60,5 +61,9 @@ export class CandidateEntity {
 
   get status(): string {
     return this._status;
+  }
+
+  deactivate(): void {
+    this._status = CandidateEntity.INACTIVE_STATUS;
   }
 }

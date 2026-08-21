@@ -21,6 +21,8 @@ describe('RegisterCandidateUseCase', () => {
   const candidates: jest.Mocked<CandidateRepository> = {
     create: jest.fn(),
     search: jest.fn(),
+    findById: jest.fn(),
+    updateStatus: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),
