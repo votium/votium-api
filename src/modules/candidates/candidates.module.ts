@@ -8,6 +8,7 @@ import {
 import { DeactivateCandidateUseCase } from './application/use-cases/deactivate-candidate.use-case';
 import { RegisterCandidateUseCase } from './application/use-cases/register-candidate.use-case';
 import { SearchCandidatesUseCase } from './application/use-cases/search-candidates.use-case';
+import { UpdateCandidateUseCase } from './application/use-cases/update-candidate.use-case';
 import {
   CANDIDATE_REPOSITORY,
   type CandidateRepository,
@@ -35,6 +36,12 @@ import { CandidatesController } from './presentation/controllers/candidates.cont
       provide: DeactivateCandidateUseCase,
       useFactory: (candidates: CandidateRepository, audit: AuditLogPort) =>
         new DeactivateCandidateUseCase(candidates, audit),
+      inject: [CANDIDATE_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: UpdateCandidateUseCase,
+      useFactory: (candidates: CandidateRepository, audit: AuditLogPort) =>
+        new UpdateCandidateUseCase(candidates, audit),
       inject: [CANDIDATE_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],

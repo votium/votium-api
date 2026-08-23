@@ -249,6 +249,102 @@ describe('PrismaCandidateRepository integration', () => {
     });
   });
 
+  describe('update', () => {
+    it('R-01: updates all editable fields and returns the updated entity', async () => {
+      const code = `UPD-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-UPD-${suffix}`));
+
+      const updated = await repository.update(saved.id!, {
+        firstName: 'Maria',
+        lastName: 'Lopez',
+        programCode: '2710',
+        identificationNumber: `ID-UPD-2-${suffix}`,
+      });
+
+      expect(updated).not.toBeNull();
+      expect(updated!.firstName).toBe('Maria');
+      expect(updated!.lastName).toBe('Lopez');
+      expect(updated!.programCode).toBe('2710');
+      expect(updated!.identificationNumber).toBe(`ID-UPD-2-${suffix}`);
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.first_name).toBe('Maria');
+      expect(row!.last_name).toBe('Lopez');
+      expect(row!.program_code).toBe('2710');
+      expect(row!.identification_number).toBe(`ID-UPD-2-${suffix}`);
+    });
+
+    it('R-02: partial update changes only the provided field', async () => {
+      const code = `UPDP-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-UPDP-${suffix}`));
+
+      const updated = await repository.update(saved.id!, { firstName: 'OnlyFirst' });
+
+      expect(updated!.firstName).toBe('OnlyFirst');
+      expect(updated!.lastName).toBe('Garcia');
+      expect(updated!.programCode).toBe('1234');
+      expect(updated!.identificationNumber).toBe(`ID-UPDP-${suffix}`);
+    });
+
+    it('R-03: returns null when the candidate does not exist', async () => {
+      const updated = await repository.update(crypto.randomUUID(), { firstName: 'X' });
+
+      expect(updated).toBeNull();
+    });
+
+    it('R-04: rejects a duplicate identificationNumber with CandidateDuplicateError', async () => {
+      const codeA = `UPDDUP-A-${suffix}`;
+      const codeB = `UPDDUP-B-${suffix}`;
+      usedStudentCodes.push(codeA, codeB);
+      const a = await repository.create(buildEntity(codeA, `ID-DUP-A-${suffix}`));
+      await repository.create(buildEntity(codeB, `ID-DUP-B-${suffix}`));
+
+      await expect(
+        repository.update(a.id!, { identificationNumber: `ID-DUP-B-${suffix}` }),
+      ).rejects.toBeInstanceOf(CandidateDuplicateError);
+
+      const after = await prisma.candidate.findUnique({ where: { id: a.id! } });
+      expect(after!.identification_number).toBe(`ID-DUP-A-${suffix}`);
+    });
+
+    it('R-05: sends only the provided fields to the Prisma client', async () => {
+      const code = `UPDSPY-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-UPDSPY-${suffix}`));
+
+      const updateSpy = jest.spyOn(prisma.candidate, 'update');
+
+      await repository.update(saved.id!, { firstName: 'Spy' });
+
+      const data = updateSpy.mock.calls[0][0].data as Record<string, unknown>;
+      expect(data).toMatchObject({ first_name: 'Spy' });
+      expect(data).not.toHaveProperty('id');
+      expect(data).not.toHaveProperty('created_at');
+      expect(data).not.toHaveProperty('student_code');
+      expect(data).not.toHaveProperty('status');
+      expect(data).not.toHaveProperty('last_name');
+      expect(data).not.toHaveProperty('program_code');
+      expect(data).not.toHaveProperty('identification_number');
+
+      updateSpy.mockRestore();
+    });
+
+    it('R-06: updates a logically deleted (INACTIVE) candidate at the repository level', async () => {
+      const code = `UPDIN-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-UPDIN-${suffix}`));
+      await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
+
+      const updated = await repository.update(saved.id!, { firstName: 'Changed' });
+
+      expect(updated).not.toBeNull();
+      expect(updated!.firstName).toBe('Changed');
+      expect(updated!.status).toBe(CandidateEntity.INACTIVE_STATUS);
+    });
+  });
+
   describe('search', () => {
     const searchCodes: string[] = [];
     let candidateA: CandidateEntity;
