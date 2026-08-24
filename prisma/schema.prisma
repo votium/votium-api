@@ -93,6 +93,8 @@ model Election {
   blank_vote_enabled Boolean        @default(false)
   created_at         DateTime       @default(now())
 
+  @@unique([name])
+
   reports        Report[]
   notifications  Notification[]
   candidacies    Candiday[]

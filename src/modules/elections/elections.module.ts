@@ -1,0 +1,29 @@
+import { Module } from '@nestjs/common';
+import { AuthModule } from 'src/modules/auth/auth.module';
+import { IamModule } from 'src/modules/iam/iam.module';
+import {
+  AUDIT_LOG_PORT,
+  type AuditLogPort,
+} from 'src/modules/iam/application/ports/audit-log.port';
+import { CreateElectionUseCase } from './application/use-cases/create-election.use-case';
+import {
+  ELECTION_REPOSITORY,
+  type ElectionRepository,
+} from './domain/repositories/election.repository.interface';
+import { PrismaElectionRepository } from './infrastructure/repositories/prisma-election.repository';
+import { ElectionsController } from './presentation/controllers/elections.controller';
+
+@Module({
+  imports: [IamModule, AuthModule],
+  controllers: [ElectionsController],
+  providers: [
+    { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },
+    {
+      provide: CreateElectionUseCase,
+      useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
+        new CreateElectionUseCase(elections, audit),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
+    },
+  ],
+})
+export class ElectionsModule {}
