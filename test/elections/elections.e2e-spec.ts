@@ -1,0 +1,331 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import { App } from 'supertest/types';
+import { AppModule } from '../../src/app.module';
+import { PrismaService } from '../../src/shared/database/prisma.service';
+import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
+import {
+  EMAIL_SERVICE_PORT,
+  type EmailServicePort,
+} from '../../src/modules/auth/application/ports/email-service.port';
+import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
+import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
+import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+
+class FakeEmailService implements EmailServicePort {
+  sent: Array<{ to: string; code: string }> = [];
+
+  sendVerificationCode(to: string, code: string): Promise<void> {
+    this.sent.push({ to, code });
+    return Promise.resolve();
+  }
+
+  last(): { to: string; code: string } {
+    return this.sent[this.sent.length - 1];
+  }
+}
+
+interface TokensResponseBody {
+  accessToken: string;
+}
+
+describe('Elections creation (e2e)', () => {
+  let app: INestApplication<App>;
+  let prisma: PrismaService;
+  let emailService: FakeEmailService;
+
+  let adminUser: { id: string; email: string; password: string };
+  let auditorUser: { id: string; email: string; password: string };
+
+  const suffix = Date.now();
+  const usedNames: string[] = [];
+
+  let adminToken = '';
+  let auditorToken = '';
+
+  const validElection = (name: string): Record<string, unknown> => ({
+    name,
+    description: 'Election for the 2026 student council.',
+    startDate: '2026-10-01',
+    startTime: '08:00:00',
+    endDate: '2026-10-01',
+    endTime: '18:00:00',
+    blankVoteEnabled: false,
+  });
+
+  const completeLogin = async (email: string, password: string): Promise<string> => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email, password })
+      .expect(201);
+    const sessionId = (loginRes.body as { sessionId: string }).sessionId;
+    const code = emailService.last().code;
+    const verifyRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/mfa/verify')
+      .send({ sessionId, code })
+      .expect(201);
+    return (verifyRes.body as TokensResponseBody).accessToken;
+  };
+
+  const createElection = (payload: Record<string, unknown>, token: string) =>
+    request(app.getHttpServer())
+      .post('/api/v1/elections')
+      .set('Authorization', `Bearer ${token}`)
+      .send(payload);
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(EMAIL_SERVICE_PORT)
+      .useValue(new FakeEmailService())
+      .compile();
+
+    app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalFilters(new GlobalExceptionFilter());
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+
+    prisma = app.get(PrismaService);
+    emailService = app.get<FakeEmailService>(EMAIL_SERVICE_PORT);
+
+    const hasher = new NodeCryptoPasswordHasherService();
+    const adminRole = await prisma.role.upsert({
+      where: { name: RoleName.ADMINISTRATOR.value },
+      update: {},
+      create: { name: RoleName.ADMINISTRATOR.value },
+    });
+    const auditorRole = await prisma.role.upsert({
+      where: { name: RoleName.AUDITOR.value },
+      update: {},
+      create: { name: RoleName.AUDITOR.value },
+    });
+
+    adminUser = {
+      id: '',
+      email: `e2e-election-admin-${suffix}@example.com`,
+      password: 'SuperSecret123!',
+    };
+    auditorUser = {
+      id: '',
+      email: `e2e-election-auditor-${suffix}@example.com`,
+      password: 'SuperSecret123!',
+    };
+
+    const createdAdmin = await prisma.user.create({
+      data: {
+        first_name: 'E2E',
+        last_name: 'Admin',
+        email: adminUser.email,
+        password_hash: await hasher.hash(adminUser.password),
+        role_id: adminRole.id,
+        status: UserStatus.ACTIVE.value,
+      },
+    });
+    const createdAuditor = await prisma.user.create({
+      data: {
+        first_name: 'E2E',
+        last_name: 'Auditor',
+        email: auditorUser.email,
+        password_hash: await hasher.hash(auditorUser.password),
+        role_id: auditorRole.id,
+        status: UserStatus.ACTIVE.value,
+      },
+    });
+    adminUser.id = createdAdmin.id;
+    auditorUser.id = createdAuditor.id;
+
+    adminToken = await completeLogin(adminUser.email, adminUser.password);
+    auditorToken = await completeLogin(auditorUser.email, auditorUser.password);
+  });
+
+  afterAll(async () => {
+    if (usedNames.length > 0) {
+      await prisma.election.deleteMany({ where: { name: { in: usedNames } } });
+    }
+    const ids = [adminUser.id, auditorUser.id];
+    await prisma.mfaChallenge.deleteMany({ where: { user_id: { in: ids } } });
+    await prisma.auditLog.deleteMany({ where: { user_id: { in: ids } } });
+    await prisma.user.deleteMany({ where: { id: { in: ids } } });
+    await app.close();
+  });
+
+  describe('POST /elections', () => {
+    it('E1: an authenticated administrator creates an election with 201', async () => {
+      const name = `ELECTION-${suffix}`;
+      usedNames.push(name);
+      const res = await createElection(validElection(name), adminToken).expect(201);
+      expect(res.body).toMatchObject({
+        name,
+        description: 'Election for the 2026 student council.',
+        currentStatus: 'CREATED',
+        blankVoteEnabled: false,
+      });
+    });
+
+    it('E2: the response represents the created election without extra fields', async () => {
+      const name = `ELECTION2-${suffix}`;
+      usedNames.push(name);
+      const res = await createElection(validElection(name), adminToken).expect(201);
+      const body = res.body as Record<string, unknown>;
+      expect(body.id).toBeTruthy();
+      expect(body.currentStatus).toBe('CREATED');
+      expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(Object.keys(body).sort()).toEqual(
+        [
+          'id',
+          'name',
+          'description',
+          'startDate',
+          'startTime',
+          'endDate',
+          'endTime',
+          'currentStatus',
+          'blankVoteEnabled',
+          'createdAt',
+        ].sort(),
+      );
+    });
+
+    it('E3: the election exists in the database with the correct values', async () => {
+      const name = `ELECTION3-${suffix}`;
+      usedNames.push(name);
+      const res = await createElection(validElection(name), adminToken).expect(201);
+      const body = res.body as Record<string, unknown>;
+      const row = await prisma.election.findUnique({ where: { name } });
+      expect(row).not.toBeNull();
+      expect(row!.id).toBe(body.id);
+      expect(row!.name).toBe(name);
+      expect(row!.current_status).toBe('CREATED');
+      expect(row!.blank_vote_enabled).toBe(false);
+      expect(row!.created_at).toBeInstanceOf(Date);
+    });
+
+    it('E4: rejects unauthenticated requests with 401', async () => {
+      await createElection(validElection(`NOAUTH-${suffix}`), '').expect(401);
+    });
+
+    it('E5: rejects an invalid token with 401', async () => {
+      const res = await createElection(
+        validElection(`BADTOKEN-${suffix}`),
+        'not-a-real-token',
+      ).expect(401);
+      expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+
+    it('E6: rejects a non-admin role with 403', async () => {
+      const res = await createElection(validElection(`AUDITOR-${suffix}`), auditorToken).expect(
+        403,
+      );
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('E7: rejects a missing required field with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`MISSING-${suffix}`) };
+      delete payload.name;
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E8: rejects an empty required value with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`EMPTY-${suffix}`) };
+      payload.name = '';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E9: rejects whitespace-only name with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`WS-${suffix}`) };
+      payload.name = '   ';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E10: rejects an invalid start date with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`BADDATE-${suffix}`) };
+      payload.startDate = '2026-13-40';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E11: rejects an invalid start time with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`BADTIME-${suffix}`) };
+      payload.startTime = '25:00:00';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E12: rejects an equal start/end date-time with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`EQUAL-${suffix}`) };
+      payload.endDate = '2026-10-01';
+      payload.endTime = '08:00:00';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E13: rejects a start date-time after end with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`AFTER-${suffix}`) };
+      payload.endDate = '2026-09-30';
+      payload.endTime = '08:00:00';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E14: rejects a non-boolean blank_vote_enabled with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`BOOL-${suffix}`) };
+      payload.blankVoteEnabled = 'true';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E15: rejects a client-supplied id with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`ID-${suffix}`) };
+      payload.id = '00000000-0000-0000-0000-000000000000';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E16: rejects a client-supplied currentStatus with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`STATUS-${suffix}`) };
+      payload.currentStatus = 'ACTIVE';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E17: rejects a client-supplied created_at with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`CREATED-${suffix}`) };
+      payload.createdAt = '2026-01-01T00:00:00.000Z';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E18: rejects a duplicate election name with 409 and does not overwrite', async () => {
+      const name = `DUP-${suffix}`;
+      usedNames.push(name);
+      await createElection(validElection(name), adminToken).expect(201);
+      const res = await createElection(validElection(name), adminToken).expect(409);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NAME_CONFLICT' });
+      const rows = await prisma.election.findMany({ where: { name } });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('E19: failed requests do not create unrelated records', async () => {
+      const before = await prisma.election.count();
+      await createElection({ ...validElection(`FAIL-${suffix}`), name: '' }, adminToken).expect(
+        400,
+      );
+      await createElection(validElection(`UNAUTH-${suffix}`), '').expect(401);
+      await createElection(validElection(`FORBID-${suffix}`), auditorToken).expect(403);
+      const after = await prisma.election.count();
+      expect(after).toBe(before);
+    });
+  });
+});
