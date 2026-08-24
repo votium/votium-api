@@ -1,3 +1,5 @@
+import type { UpdateCandidateInput } from './update-candidate-input';
+
 export interface CreateCandidateInput {
   firstName: string;
   lastName: string;
@@ -24,11 +26,11 @@ export class CandidateEntity {
 
   private constructor(
     public readonly id: string | null,
-    public readonly firstName: string,
-    public readonly lastName: string,
+    public firstName: string,
+    public lastName: string,
     public readonly studentCode: string,
-    public readonly programCode: string,
-    public readonly identificationNumber: string,
+    public programCode: string,
+    public identificationNumber: string,
     private _status: string,
     public readonly createdAt: Date | null,
   ) {}
@@ -65,5 +67,14 @@ export class CandidateEntity {
 
   deactivate(): void {
     this._status = CandidateEntity.INACTIVE_STATUS;
+  }
+
+  update(input: UpdateCandidateInput): void {
+    if (input.firstName !== undefined) this.firstName = input.firstName.trim();
+    if (input.lastName !== undefined) this.lastName = input.lastName.trim();
+    if (input.programCode !== undefined) this.programCode = input.programCode.trim();
+    if (input.identificationNumber !== undefined) {
+      this.identificationNumber = input.identificationNumber.trim();
+    }
   }
 }

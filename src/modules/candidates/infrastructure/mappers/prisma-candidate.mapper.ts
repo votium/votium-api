@@ -1,4 +1,5 @@
 import { CandidateEntity } from '../../domain/entities/candidate.entity';
+import type { UpdateCandidateInput } from '../../domain/entities/update-candidate-input';
 
 export type PrismaCandidateRow = {
   id: string;
@@ -12,6 +13,10 @@ export type PrismaCandidateRow = {
 };
 
 export type PrismaCandidateCreateData = Omit<PrismaCandidateRow, 'id' | 'created_at'>;
+
+export type PrismaCandidateUpdateData = Partial<
+  Pick<PrismaCandidateRow, 'first_name' | 'last_name' | 'program_code' | 'identification_number'>
+>;
 
 export class PrismaCandidateMapper {
   static toDomain(row: PrismaCandidateRow): CandidateEntity {
@@ -36,5 +41,16 @@ export class PrismaCandidateMapper {
       identification_number: entity.identificationNumber,
       status: entity.status,
     };
+  }
+
+  static toUpdateData(input: UpdateCandidateInput): PrismaCandidateUpdateData {
+    const data: PrismaCandidateUpdateData = {};
+    if (input.firstName !== undefined) data.first_name = input.firstName;
+    if (input.lastName !== undefined) data.last_name = input.lastName;
+    if (input.programCode !== undefined) data.program_code = input.programCode;
+    if (input.identificationNumber !== undefined) {
+      data.identification_number = input.identificationNumber;
+    }
+    return data;
   }
 }

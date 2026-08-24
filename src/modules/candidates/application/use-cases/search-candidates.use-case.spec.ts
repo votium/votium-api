@@ -21,6 +21,7 @@ describe('SearchCandidatesUseCase', () => {
     search: jest.fn(),
     findById: jest.fn(),
     updateStatus: jest.fn(),
+    update: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());

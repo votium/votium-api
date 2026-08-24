@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -19,9 +20,11 @@ import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { CreateCandidateDto } from '../../application/dtos/create-candidate.dto';
+import { UpdateCandidateDto } from '../../application/dtos/update-candidate.dto';
 import { DeactivateCandidateUseCase } from '../../application/use-cases/deactivate-candidate.use-case';
 import { RegisterCandidateUseCase } from '../../application/use-cases/register-candidate.use-case';
 import { SearchCandidatesUseCase } from '../../application/use-cases/search-candidates.use-case';
+import { UpdateCandidateUseCase } from '../../application/use-cases/update-candidate.use-case';
 import { CandidatePresenter } from '../presenters/candidate.presenter';
 import { SearchCandidatesQueryDto } from '../dtos/search-candidates-query.dto';
 
@@ -40,6 +43,7 @@ export class CandidatesController {
     private readonly registerCandidate: RegisterCandidateUseCase,
     private readonly searchCandidates: SearchCandidatesUseCase,
     private readonly deactivateCandidate: DeactivateCandidateUseCase,
+    private readonly updateCandidate: UpdateCandidateUseCase,
   ) {}
 
   @Get()
@@ -80,5 +84,27 @@ export class CandidatesController {
   @Roles(RoleName.ADMINISTRATOR)
   async deactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
     await this.deactivateCandidate.execute(id, req.user.sub);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update an existing candidate' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCandidateDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const candidate = await this.updateCandidate.execute(
+      id,
+      {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        programCode: dto.programCode,
+        identificationNumber: dto.identificationNumber,
+      },
+      req.user.sub,
+    );
+    return CandidatePresenter.toResponse(candidate);
   }
 }

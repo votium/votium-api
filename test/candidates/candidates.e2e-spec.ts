@@ -719,4 +719,270 @@ describe('Candidates registration (e2e)', () => {
       expect(after?.created_at?.getTime()).toBe(before?.created_at?.getTime());
     });
   });
+
+  describe('PATCH /candidates/:id', () => {
+    // VOTER role is not defined in the current RoleName value object, so only
+    // AUDITOR is exercised for the forbidden scenarios (spec business rule 1).
+    const updateCandidate = (id: string, payload: CandidatePayload, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .patch(`/api/v1/candidates/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(payload);
+
+    const registerAndGetId = async (payload: CandidatePayload): Promise<string> => {
+      const res = await register(payload, adminToken).expect(201);
+      return (res.body as { id: string }).id;
+    };
+
+    const patchSeed = (studentCode: string, identificationNumber: string): CandidatePayload => ({
+      firstName: 'Patch',
+      lastName: 'Cand',
+      studentCode,
+      programCode: '1234',
+      identificationNumber,
+    });
+
+    it('E1: an authenticated administrator updates a candidate with 200', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH1-${suffix}`, `IDPATCH1-${suffix}`));
+      usedStudentCodes.push(`PATCH1-${suffix}`);
+
+      const res = await updateCandidate(id, {
+        firstName: 'Updated',
+        lastName: 'Name',
+        programCode: '2710',
+        identificationNumber: 'IDPATCH1-NEW',
+      }).expect(200);
+
+      expect(res.body).toMatchObject({
+        id,
+        firstName: 'Updated',
+        lastName: 'Name',
+        programCode: '2710',
+        identificationNumber: 'IDPATCH1-NEW',
+        status: 'ACTIVE',
+      });
+    });
+
+    it('E2: partial update preserves omitted fields and immutable values', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH2-${suffix}`, `IDPATCH2-${suffix}`));
+      usedStudentCodes.push(`PATCH2-${suffix}`);
+
+      const before = await prisma.candidate.findUnique({ where: { id } });
+
+      const res = await updateCandidate(id, { firstName: 'OnlyFirst' }).expect(200);
+      const body = res.body as Record<string, unknown>;
+
+      expect(body.firstName).toBe('OnlyFirst');
+      expect(body.lastName).toBe('Cand');
+      expect(body.programCode).toBe('1234');
+      expect(body.identificationNumber).toBe(`IDPATCH2-${suffix}`);
+      expect(body.studentCode).toBe(`PATCH2-${suffix}`);
+      expect(body.status).toBe('ACTIVE');
+      expect(body.createdAt).toBe(before?.created_at?.toISOString());
+    });
+
+    it('E3: partial update of only identificationNumber', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH3-${suffix}`, `IDPATCH3-${suffix}`));
+      usedStudentCodes.push(`PATCH3-${suffix}`);
+
+      const res = await updateCandidate(id, { identificationNumber: 'IDPATCH3-NEW' }).expect(200);
+      const body = res.body as Record<string, unknown>;
+
+      expect(body.identificationNumber).toBe('IDPATCH3-NEW');
+      expect(body.firstName).toBe('Patch');
+      expect(body.lastName).toBe('Cand');
+    });
+
+    it('E4: rejects unauthenticated requests with 401', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH4-${suffix}`, `IDPATCH4-${suffix}`));
+      usedStudentCodes.push(`PATCH4-${suffix}`);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/candidates/${id}`)
+        .send({ firstName: 'X' })
+        .expect(401);
+    });
+
+    it('E5: rejects an invalid token with 401', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH5-${suffix}`, `IDPATCH5-${suffix}`));
+      usedStudentCodes.push(`PATCH5-${suffix}`);
+
+      const res = await updateCandidate(id, { firstName: 'X' }, 'not-a-real-token').expect(401);
+      expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+
+    it('E6: rejects a non-admin role (AUDITOR) with 403', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH6-${suffix}`, `IDPATCH6-${suffix}`));
+      usedStudentCodes.push(`PATCH6-${suffix}`);
+
+      const res = await updateCandidate(id, { firstName: 'X' }, auditorToken).expect(403);
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('E8: returns 404 with CANDIDATE_NOT_FOUND for an unknown id', async () => {
+      const res = await updateCandidate(crypto.randomUUID(), { firstName: 'Updated' }).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+    });
+
+    it('E9: treats a logically deleted candidate as not found (404)', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH9-${suffix}`, `IDPATCH9-${suffix}`));
+      usedStudentCodes.push(`PATCH9-${suffix}`);
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/candidates/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      const res = await updateCandidate(id, { firstName: 'Updated' }).expect(404);
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+    });
+
+    it('E10: rejects a malformed id with 400', async () => {
+      const res = await updateCandidate('not-a-uuid', { firstName: 'X' }).expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E11: rejects a firstName shorter than 2 characters with 400', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH11-${suffix}`, `IDPATCH11-${suffix}`));
+      usedStudentCodes.push(`PATCH11-${suffix}`);
+
+      const res = await updateCandidate(id, { firstName: 'X' }).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E12: rejects a firstName longer than 100 characters with 400', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH12-${suffix}`, `IDPATCH12-${suffix}`));
+      usedStudentCodes.push(`PATCH12-${suffix}`);
+
+      const res = await updateCandidate(id, { firstName: 'a'.repeat(101) }).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E13: rejects a lastName shorter than 2 characters with 400', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH13-${suffix}`, `IDPATCH13-${suffix}`));
+      usedStudentCodes.push(`PATCH13-${suffix}`);
+
+      const res = await updateCandidate(id, { lastName: 'Y' }).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E14: rejects an invalid program code format with 400', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH14-${suffix}`, `IDPATCH14-${suffix}`));
+      usedStudentCodes.push(`PATCH14-${suffix}`);
+
+      const res = await updateCandidate(id, { programCode: '271' }).expect(400);
+      const body = res.body as { statusCode: number; message: string | string[] };
+      expect(body.statusCode).toBe(400);
+      expect(body.message).toEqual(
+        expect.arrayContaining(['Program code must contain exactly four digits.']),
+      );
+    });
+
+    it('E15: rejects an empty identificationNumber with 400', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH15-${suffix}`, `IDPATCH15-${suffix}`));
+      usedStudentCodes.push(`PATCH15-${suffix}`);
+
+      const res = await updateCandidate(id, { identificationNumber: '' }).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E16: rejects unknown/system-managed fields in the body with 400', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH16-${suffix}`, `IDPATCH16-${suffix}`));
+      usedStudentCodes.push(`PATCH16-${suffix}`);
+
+      const res = await updateCandidate(id, {
+        firstName: 'Ok',
+        id: crypto.randomUUID(),
+        studentCode: 'HACK',
+        status: 'INACTIVE',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }).expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row?.first_name).toBe('Patch');
+      expect(row?.student_code).toBe(`PATCH16-${suffix}`);
+      expect(row?.status).toBe('ACTIVE');
+    });
+
+    it('E17: rejects a duplicate identificationNumber with 409 and does not change the row', async () => {
+      const idA = await registerAndGetId(patchSeed(`PATCH17A-${suffix}`, `IDPATCH17A-${suffix}`));
+      await registerAndGetId(patchSeed(`PATCH17B-${suffix}`, `IDPATCH17B-${suffix}`));
+      usedStudentCodes.push(`PATCH17A-${suffix}`, `PATCH17B-${suffix}`);
+
+      const res = await updateCandidate(idA, {
+        identificationNumber: `IDPATCH17B-${suffix}`,
+      }).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'CANDIDATE_CONFLICT' });
+
+      const rowA = await prisma.candidate.findUnique({ where: { id: idA } });
+      expect(rowA?.identification_number).toBe(`IDPATCH17A-${suffix}`);
+    });
+
+    it('E18: the response exposes exactly the CandidateResponseDto contract', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH18-${suffix}`, `IDPATCH18-${suffix}`));
+      usedStudentCodes.push(`PATCH18-${suffix}`);
+
+      const res = await updateCandidate(id, { firstName: 'Contract' }).expect(200);
+      const body = res.body as Record<string, unknown>;
+
+      expect(Object.keys(body).sort()).toEqual(
+        [
+          'id',
+          'firstName',
+          'lastName',
+          'studentCode',
+          'programCode',
+          'identificationNumber',
+          'status',
+          'createdAt',
+        ].sort(),
+      );
+    });
+
+    it('E19: createdAt is serialized as an ISO string', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH19-${suffix}`, `IDPATCH19-${suffix}`));
+      usedStudentCodes.push(`PATCH19-${suffix}`);
+
+      const res = await updateCandidate(id, { firstName: 'Iso' }).expect(200);
+      const body = res.body as Record<string, unknown>;
+      expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    });
+
+    it('E20: repeated identical updates are idempotent', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH20-${suffix}`, `IDPATCH20-${suffix}`));
+      usedStudentCodes.push(`PATCH20-${suffix}`);
+
+      const first = await updateCandidate(id, { firstName: 'Same' }).expect(200);
+      const second = await updateCandidate(id, { firstName: 'Same' }).expect(200);
+      const firstBody = first.body as Record<string, unknown>;
+      const secondBody = second.body as Record<string, unknown>;
+
+      expect(secondBody.firstName).toBe('Same');
+      expect(secondBody.firstName).toBe(firstBody.firstName);
+    });
+
+    it('E21: failed requests do not create or modify records', async () => {
+      const before = await prisma.candidate.count();
+
+      const id = await registerAndGetId(patchSeed(`PATCH21-${suffix}`, `IDPATCH21-${suffix}`));
+      usedStudentCodes.push(`PATCH21-${suffix}`);
+
+      const beforeRow = await prisma.candidate.findUnique({ where: { id } });
+
+      await updateCandidate(id, { firstName: 'X' }).expect(400); // too short
+      await updateCandidate(id, { firstName: 'Valid' }, 'not-a-real-token').expect(401);
+      await updateCandidate(id, { firstName: 'Valid' }, auditorToken).expect(403);
+
+      const after = await prisma.candidate.count();
+      expect(after).toBe(before + 1);
+
+      const afterRow = await prisma.candidate.findUnique({ where: { id } });
+      expect(afterRow?.first_name).toBe(beforeRow?.first_name);
+    });
+  });
 });

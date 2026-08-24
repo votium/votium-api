@@ -23,6 +23,7 @@ describe('RegisterCandidateUseCase', () => {
     search: jest.fn(),
     findById: jest.fn(),
     updateStatus: jest.fn(),
+    update: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),

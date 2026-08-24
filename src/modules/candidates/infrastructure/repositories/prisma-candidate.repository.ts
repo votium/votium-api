@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/shared/database/prisma.service';
 import { CandidateEntity } from '../../domain/entities/candidate.entity';
+import type { UpdateCandidateInput } from '../../domain/entities/update-candidate-input';
 import { CandidateDuplicateError } from '../../domain/errors/candidate-duplicate.error';
 import {
   CandidateSearchParams,
@@ -49,6 +50,20 @@ export class PrismaCandidateRepository implements CandidateRepository {
       return PrismaCandidateMapper.toDomain(row);
     } catch (error) {
       if (isRecordNotFoundError(error)) return null;
+      throw error;
+    }
+  }
+
+  async update(id: string, input: UpdateCandidateInput): Promise<CandidateEntity | null> {
+    try {
+      const row = await this.prisma.candidate.update({
+        where: { id },
+        data: PrismaCandidateMapper.toUpdateData(input),
+      });
+      return PrismaCandidateMapper.toDomain(row);
+    } catch (error) {
+      if (isRecordNotFoundError(error)) return null;
+      if (isUniqueConstraintError(error)) throw new CandidateDuplicateError();
       throw error;
     }
   }

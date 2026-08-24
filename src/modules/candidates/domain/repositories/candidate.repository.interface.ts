@@ -1,4 +1,5 @@
 import { CandidateEntity } from '../entities/candidate.entity';
+import type { UpdateCandidateInput } from '../entities/update-candidate-input';
 
 export const CANDIDATE_REPOSITORY = 'CandidateRepository';
 
@@ -22,6 +23,11 @@ export interface CandidateRepository {
   // Updates ONLY the candidate's status. Returns the updated candidate, or null
   // when the id does not exist. Never performs a physical deletion.
   updateStatus(id: string, status: string): Promise<CandidateEntity | null>;
+
+  // Updates ONLY the editable fields present in input. Returns the updated
+  // candidate, or null when the id does not exist. Throws CandidateDuplicateError
+  // when a unique constraint (e.g. identificationNumber) rejects the row.
+  update(id: string, input: UpdateCandidateInput): Promise<CandidateEntity | null>;
 
   // Returns all candidates matching the optional filters, EXCLUDING logically
   // deleted (INACTIVE) candidates. Filters combine with AND. firstName/lastName
