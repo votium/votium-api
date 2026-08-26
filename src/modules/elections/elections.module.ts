@@ -6,6 +6,7 @@ import {
   type AuditLogPort,
 } from 'src/modules/iam/application/ports/audit-log.port';
 import { CreateElectionUseCase } from './application/use-cases/create-election.use-case';
+import { UpdateElectionUseCase } from './application/use-cases/update-election.use-case';
 import {
   ELECTION_REPOSITORY,
   type ElectionRepository,
@@ -22,6 +23,12 @@ import { ElectionsController } from './presentation/controllers/elections.contro
       provide: CreateElectionUseCase,
       useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
         new CreateElectionUseCase(elections, audit),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: UpdateElectionUseCase,
+      useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
+        new UpdateElectionUseCase(elections, audit),
       inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
