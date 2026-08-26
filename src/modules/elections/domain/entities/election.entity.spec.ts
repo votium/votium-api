@@ -78,4 +78,89 @@ describe('ElectionEntity', () => {
       expect(entity.id).toBe('election-1');
     });
   });
+
+  describe('update', () => {
+    function makeElection(
+      over: Partial<Parameters<typeof ElectionEntity.restore>[0]> = {},
+    ): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'Original Name',
+        description: 'Original description',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: 'CREATED',
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        ...over,
+      });
+    }
+
+    it('merges provided fields and trims name/description', () => {
+      const e = makeElection();
+      e.update({ name: '  New Name  ', description: '  New Desc  ' });
+      expect(e.name).toBe('New Name');
+      expect(e.description).toBe('New Desc');
+    });
+
+    it('is a no-op when no fields are provided', () => {
+      const e = makeElection();
+      const nameBefore = e.name;
+      const descBefore = e.description;
+      e.update({});
+      expect(e.name).toBe(nameBefore);
+      expect(e.description).toBe(descBefore);
+    });
+
+    it('assigns only the provided date/time parts', () => {
+      const e = makeElection();
+      const newStart = new Date(Date.UTC(2026, 10, 2));
+      const newStartTime = new Date(Date.UTC(1970, 0, 1, 9, 0, 0));
+      e.update({ startDate: newStart, startTime: newStartTime });
+      expect(e.startDate).toBe(newStart);
+      expect(e.startTime).toBe(newStartTime);
+      expect(e.endDate.getUTCDate()).toBe(1);
+      expect(e.endTime.getUTCHours()).toBe(18);
+    });
+
+    it('never alters immutable fields (id, currentStatus, createdAt)', () => {
+      const e = makeElection();
+      const id = e.id;
+      const status = e.currentStatus;
+      const createdAt = e.createdAt;
+      e.update({ name: 'Changed' });
+      expect(e.id).toBe(id);
+      expect(e.currentStatus).toBe(status);
+      expect(e.createdAt).toBe(createdAt);
+    });
+  });
+
+  describe('isEditable', () => {
+    function makeElection(currentStatus: string): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: currentStatus as ElectionEntity['currentStatus'],
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+    }
+
+    it('is true for CREATED', () => {
+      expect(makeElection('CREATED').isEditable()).toBe(true);
+    });
+
+    it('is false for any non-CREATED status', () => {
+      for (const status of ['PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
+        expect(makeElection(status).isEditable()).toBe(false);
+      }
+    });
+  });
 });

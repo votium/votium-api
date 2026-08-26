@@ -1,6 +1,7 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { ElectionEntity } from '../../src/modules/elections/domain/entities/election.entity';
 import { ElectionNameConflictError } from '../../src/modules/elections/domain/errors/election-name-conflict.error';
+import { ElectionNotFoundError } from '../../src/modules/elections/domain/errors/election-not-found.error';
 import { PrismaElectionRepository } from '../../src/modules/elections/infrastructure/repositories/prisma-election.repository';
 
 describe('PrismaElectionRepository integration', () => {
@@ -107,5 +108,72 @@ describe('PrismaElectionRepository integration', () => {
 
     const rows = await prisma.election.findMany({ where: { name } });
     expect(rows).toHaveLength(1);
+  });
+
+  describe('findById', () => {
+    it('returns the entity for an existing election', async () => {
+      const name = `FIND-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const found = await repository.findById(saved.id as string);
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(saved.id);
+      expect(found!.name).toBe(name);
+    });
+
+    it('returns null for a missing election', async () => {
+      const found = await repository.findById('00000000-0000-0000-0000-000000000000');
+      expect(found).toBeNull();
+    });
+  });
+
+  describe('update', () => {
+    it('persists editable fields and returns the updated entity', async () => {
+      const name = `UPD-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      saved.update({ name: `${name}-edited`, description: 'Edited', blankVoteEnabled: true });
+      const updated = await repository.update(saved);
+      expect(updated.name).toBe(`${name}-edited`);
+      expect(updated.blankVoteEnabled).toBe(true);
+    });
+
+    it('leaves id, current_status and created_at unchanged', async () => {
+      const name = `IMM-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const updated = await repository.update(saved);
+      expect(updated.id).toBe(saved.id);
+      expect(updated.currentStatus).toBe('CREATED');
+      expect(updated.createdAt).toEqual(saved.createdAt);
+    });
+
+    it('rejects a duplicate name with ElectionNameConflictError (P2002)', async () => {
+      const a = `DUP-A-${suffix}`;
+      const b = `DUP-B-${suffix}`;
+      usedNames.push(a, b);
+      const electionA = await repository.create(buildEntity(a));
+      const electionB = await repository.create(buildEntity(b));
+      electionB.update({ name: a });
+      await expect(repository.update(electionB)).rejects.toBeInstanceOf(ElectionNameConflictError);
+      expect(await prisma.election.findMany({ where: { name: a } })).toHaveLength(1);
+      void electionA;
+    });
+
+    it('self-rename (same name) succeeds', async () => {
+      const name = `SELF-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      saved.update({ name });
+      await expect(repository.update(saved)).resolves.toBeDefined();
+    });
+
+    it('rejects with ElectionNotFoundError when the row is gone (P2025)', async () => {
+      const name = `GONE-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      await prisma.election.delete({ where: { id: saved.id as string } });
+      await expect(repository.update(saved)).rejects.toBeInstanceOf(ElectionNotFoundError);
+    });
   });
 });
