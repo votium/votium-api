@@ -69,6 +69,10 @@ export class CandidateEntity {
     this._status = CandidateEntity.INACTIVE_STATUS;
   }
 
+  reactivate(): void {
+    this._status = CandidateEntity.DEFAULT_STATUS;
+  }
+
   update(input: UpdateCandidateInput): void {
     if (input.firstName !== undefined) this.firstName = input.firstName.trim();
     if (input.lastName !== undefined) this.lastName = input.lastName.trim();

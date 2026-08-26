@@ -122,6 +122,52 @@ describe('CandidateEntity', () => {
     });
   });
 
+  describe('reactivate', () => {
+    it('marks an INACTIVE candidate as ACTIVE', () => {
+      const entity = CandidateEntity.restore({
+        id: 'candidate-1',
+        firstName: 'Juan',
+        lastName: 'Garcia',
+        studentCode: '20201234',
+        programCode: '1234',
+        identificationNumber: '1000123456',
+        status: CandidateEntity.INACTIVE_STATUS,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+
+      expect(entity.status).toBe(CandidateEntity.INACTIVE_STATUS);
+
+      entity.reactivate();
+
+      expect(entity.status).toBe(CandidateEntity.DEFAULT_STATUS);
+      expect(entity.status).toBe('ACTIVE');
+    });
+
+    it('does not modify any other field', () => {
+      const createdAt = new Date('2026-08-19T15:00:00.000Z');
+      const entity = CandidateEntity.restore({
+        id: 'candidate-1',
+        firstName: 'Juan',
+        lastName: 'Garcia',
+        studentCode: '20201234',
+        programCode: '1234',
+        identificationNumber: '1000123456',
+        status: CandidateEntity.INACTIVE_STATUS,
+        createdAt,
+      });
+
+      entity.reactivate();
+
+      expect(entity.id).toBe('candidate-1');
+      expect(entity.firstName).toBe('Juan');
+      expect(entity.lastName).toBe('Garcia');
+      expect(entity.studentCode).toBe('20201234');
+      expect(entity.programCode).toBe('1234');
+      expect(entity.identificationNumber).toBe('1000123456');
+      expect(entity.createdAt?.toISOString()).toBe(createdAt.toISOString());
+    });
+  });
+
   describe('constants', () => {
     it('exposes the established DEFAULT_STATUS value', () => {
       expect(CandidateEntity.DEFAULT_STATUS).toBe('ACTIVE');
