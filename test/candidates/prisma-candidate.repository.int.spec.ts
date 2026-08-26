@@ -249,6 +249,45 @@ describe('PrismaCandidateRepository integration', () => {
     });
   });
 
+  describe('reactivate (status reversal)', () => {
+    it('INT-R1: flips an INACTIVE candidate back to ACTIVE and preserves other columns', async () => {
+      const code = `REACT-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-REACT-${suffix}`));
+      await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
+
+      const updated = await repository.updateStatus(saved.id!, CandidateEntity.DEFAULT_STATUS);
+
+      expect(updated).not.toBeNull();
+      expect(updated!.id).toBe(saved.id);
+      expect(updated!.status).toBe(CandidateEntity.DEFAULT_STATUS);
+      expect(updated!.status).toBe('ACTIVE');
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.status).toBe('ACTIVE');
+      expect(row!.first_name).toBe('Juan');
+      expect(row!.student_code).toBe(code);
+      expect(row!.identification_number).toBe(`ID-REACT-${suffix}`);
+      expect(row!.created_at).toBeInstanceOf(Date);
+    });
+
+    it('INT-R2: a reactivated candidate becomes visible in search() results', async () => {
+      const code = `REACTSRCH-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-REACTSRCH-${suffix}`));
+      await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
+
+      const hidden = await repository.search({ studentCode: code });
+      expect(hidden).toEqual([]);
+
+      await repository.updateStatus(saved.id!, CandidateEntity.DEFAULT_STATUS);
+
+      const visible = await repository.search({ studentCode: code });
+      expect(visible).toHaveLength(1);
+      expect(visible[0].id).toBe(saved.id);
+    });
+  });
+
   describe('update', () => {
     it('R-01: updates all editable fields and returns the updated entity', async () => {
       const code = `UPD-${suffix}`;

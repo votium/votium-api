@@ -985,4 +985,143 @@ describe('Candidates registration (e2e)', () => {
       expect(afterRow?.first_name).toBe(beforeRow?.first_name);
     });
   });
+
+  describe('PATCH /candidates/:id/reactivate', () => {
+    const reactivate = (id: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .patch(`/api/v1/candidates/${id}/reactivate`)
+        .set('Authorization', `Bearer ${token}`);
+
+    let reactCounter = 0;
+    const registerInactive = async (): Promise<{ id: string; studentCode: string }> => {
+      reactCounter += 1;
+      const code = `REACT-${suffix}-${reactCounter}`;
+      const idn = `IDREACT-${suffix}-${reactCounter}`;
+      const payload = validCandidate();
+      payload.studentCode = code;
+      payload.identificationNumber = idn;
+      const res = await register(payload, adminToken).expect(201);
+      usedStudentCodes.push(code);
+      const id = (res.body as { id: string }).id;
+      await prisma.candidate.update({ where: { id }, data: { status: 'INACTIVE' } });
+      return { id, studentCode: code };
+    };
+
+    it('E1: ADMIN reactivates an INACTIVE candidate -> 200 with ACTIVE status', async () => {
+      const { id, studentCode } = await registerInactive();
+
+      const res = await reactivate(id).expect(200);
+
+      expect(res.body).toMatchObject({ id, status: 'ACTIVE', studentCode });
+
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row!.status).toBe('ACTIVE');
+    });
+
+    it('E2: unauthenticated request -> 401', async () => {
+      const { id } = await registerInactive();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/candidates/${id}/reactivate`)
+        .expect(401);
+
+      expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+
+    it('E3: invalid token -> 401', async () => {
+      const { id } = await registerInactive();
+
+      const res = await reactivate(id, 'not-a-real-token').expect(401);
+
+      expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+
+    it('E4: AUDITOR -> 403', async () => {
+      const { id } = await registerInactive();
+
+      const res = await reactivate(id, auditorToken).expect(403);
+
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('E5: invalid id format -> 400', async () => {
+      const res = await reactivate('not-a-uuid').expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E6: unknown valid UUID -> 404 CANDIDATE_NOT_FOUND', async () => {
+      const res = await reactivate(crypto.randomUUID()).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+    });
+
+    it('E7: already ACTIVE candidate -> 409 CANDIDATE_ALREADY_ACTIVE', async () => {
+      reactCounter += 1;
+      const code = `REACTACT-${suffix}-${reactCounter}`;
+      const idn = `IDREACTACT-${suffix}-${reactCounter}`;
+      const payload = validCandidate();
+      payload.studentCode = code;
+      payload.identificationNumber = idn;
+      const res = await register(payload, adminToken).expect(201);
+      usedStudentCodes.push(code);
+      const id = (res.body as { id: string }).id;
+
+      const r = await reactivate(id).expect(409);
+
+      expect(r.body).toMatchObject({ statusCode: 409, error: 'CANDIDATE_ALREADY_ACTIVE' });
+    });
+
+    it('E8: id and other fields unchanged on reactivation', async () => {
+      const { id } = await registerInactive();
+      const before = await prisma.candidate.findUnique({ where: { id } });
+
+      await reactivate(id).expect(200);
+
+      const after = await prisma.candidate.findUnique({ where: { id } });
+      expect(after!.id).toBe(before!.id);
+      expect(after!.first_name).toBe(before!.first_name);
+      expect(after!.last_name).toBe(before!.last_name);
+      expect(after!.student_code).toBe(before!.student_code);
+      expect(after!.identification_number).toBe(before!.identification_number);
+      expect(after!.status).toBe('ACTIVE');
+      expect(before!.status).toBe('INACTIVE');
+    });
+
+    it('E9: becomes visible in active list only after reactivation', async () => {
+      const { id, studentCode } = await registerInactive();
+
+      const hidden = await request(app.getHttpServer())
+        .get(`/api/v1/candidates?studentCode=${studentCode}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(hidden.body.data).toEqual([]);
+
+      await reactivate(id).expect(200);
+
+      const visible = await request(app.getHttpServer())
+        .get(`/api/v1/candidates?studentCode=${studentCode}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(visible.body.data).toHaveLength(1);
+      expect(visible.body.data[0].id).toBe(id);
+    });
+
+    it('E10: failed requests do not create or modify records', async () => {
+      const before = await prisma.candidate.count();
+
+      const { id } = await registerInactive();
+      const beforeRow = await prisma.candidate.findUnique({ where: { id } });
+
+      await reactivate(id, 'not-a-real-token').expect(401);
+      await reactivate(id, auditorToken).expect(403);
+      await reactivate(crypto.randomUUID()).expect(404);
+
+      const after = await prisma.candidate.count();
+      expect(after).toBe(before + 1);
+
+      const afterRow = await prisma.candidate.findUnique({ where: { id } });
+      expect(afterRow!.status).toBe(beforeRow!.status);
+    });
+  });
 });

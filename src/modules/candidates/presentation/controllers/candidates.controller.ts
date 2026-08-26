@@ -22,6 +22,7 @@ import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { CreateCandidateDto } from '../../application/dtos/create-candidate.dto';
 import { UpdateCandidateDto } from '../../application/dtos/update-candidate.dto';
 import { DeactivateCandidateUseCase } from '../../application/use-cases/deactivate-candidate.use-case';
+import { ReactivateCandidateUseCase } from '../../application/use-cases/reactivate-candidate.use-case';
 import { RegisterCandidateUseCase } from '../../application/use-cases/register-candidate.use-case';
 import { SearchCandidatesUseCase } from '../../application/use-cases/search-candidates.use-case';
 import { UpdateCandidateUseCase } from '../../application/use-cases/update-candidate.use-case';
@@ -44,6 +45,7 @@ export class CandidatesController {
     private readonly searchCandidates: SearchCandidatesUseCase,
     private readonly deactivateCandidate: DeactivateCandidateUseCase,
     private readonly updateCandidate: UpdateCandidateUseCase,
+    private readonly reactivateCandidate: ReactivateCandidateUseCase,
   ) {}
 
   @Get()
@@ -105,6 +107,15 @@ export class CandidatesController {
       },
       req.user.sub,
     );
+    return CandidatePresenter.toResponse(candidate);
+  }
+
+  @Patch(':id/reactivate')
+  @ApiOperation({ summary: 'Reactivate a logically deleted candidate' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async reactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const candidate = await this.reactivateCandidate.execute(id, req.user.sub);
     return CandidatePresenter.toResponse(candidate);
   }
 }
