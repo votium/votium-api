@@ -23,20 +23,33 @@ export interface RestoreElectionInput {
   createdAt: Date;
 }
 
+// Partial input for an election update. Only the provided fields are merged; the rest
+// keep their current value. Date/time fields carry already-parsed Date values (the
+// string-to-Date parsing and resulting-interval validation live in the application layer).
+export interface UpdateElectionInput {
+  name?: string;
+  description?: string;
+  startDate?: Date;
+  startTime?: Date;
+  endDate?: Date;
+  endTime?: Date;
+  blankVoteEnabled?: boolean;
+}
+
 export class ElectionEntity {
   static readonly DEFAULT_STATUS = 'CREATED';
   static readonly DEFAULT_BLANK_VOTE = false;
 
   private constructor(
     public readonly id: string | null,
-    public readonly name: string,
-    public readonly description: string,
-    public readonly startDate: Date,
-    public readonly startTime: Date,
-    public readonly endDate: Date,
-    public readonly endTime: Date,
+    public name: string,
+    public description: string,
+    public startDate: Date,
+    public startTime: Date,
+    public endDate: Date,
+    public endTime: Date,
     public readonly currentStatus: ElectionStatus,
-    public readonly blankVoteEnabled: boolean,
+    public blankVoteEnabled: boolean,
     public readonly createdAt: Date | null,
   ) {}
 
@@ -68,5 +81,23 @@ export class ElectionEntity {
       input.blankVoteEnabled,
       input.createdAt,
     );
+  }
+
+  // Whether the election can still be edited. Only the initial/pending lifecycle state
+  // (CREATED) is editable. This is the single decision point for the editable-state rule.
+  isEditable(): boolean {
+    return this.currentStatus === ElectionEntity.DEFAULT_STATUS;
+  }
+
+  // Merges the provided partial input into the entity. Only supplied fields change;
+  // `id`, `currentStatus`, and `createdAt` are immutable and never touched here.
+  update(input: UpdateElectionInput): void {
+    if (input.name !== undefined) this.name = input.name.trim();
+    if (input.description !== undefined) this.description = input.description.trim();
+    if (input.startDate !== undefined) this.startDate = input.startDate;
+    if (input.startTime !== undefined) this.startTime = input.startTime;
+    if (input.endDate !== undefined) this.endDate = input.endDate;
+    if (input.endTime !== undefined) this.endTime = input.endTime;
+    if (input.blankVoteEnabled !== undefined) this.blankVoteEnabled = input.blankVoteEnabled;
   }
 }

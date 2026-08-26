@@ -328,4 +328,109 @@ describe('Elections creation (e2e)', () => {
       expect(after).toBe(before);
     });
   });
+
+  describe('PATCH /elections/:id', () => {
+    const patchElection = (id: string, payload: Record<string, unknown>, token: string) =>
+      request(app.getHttpServer())
+        .patch(`/api/v1/elections/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(payload);
+
+    const createElectionAndGetId = async (name: string, token: string): Promise<string> => {
+      const res = await createElection(validElection(name), token).expect(201);
+      return (res.body as { id: string }).id;
+    };
+
+    let editableId = '';
+    let editableName = '';
+
+    beforeAll(async () => {
+      editableName = `PATCH-${suffix}`;
+      usedNames.push(editableName);
+      editableId = await createElectionAndGetId(editableName, adminToken);
+    });
+
+    it('P1: ADMIN edits a CREATED election with 200 and preserves omitted fields', async () => {
+      const res = await patchElection(editableId, { description: 'Updated.' }, adminToken).expect(
+        200,
+      );
+      const body = res.body as { name: string; description: string; currentStatus: string };
+      expect(body.name).toBe(editableName);
+      expect(body.description).toBe('Updated.');
+      expect(body.currentStatus).toBe('CREATED');
+    });
+
+    it('P2: unauthenticated request is rejected with 401', async () => {
+      await patchElection(editableId, { description: 'x' }, '').expect(401);
+    });
+
+    it('P3: an invalid token is rejected with 401', async () => {
+      await patchElection(editableId, { description: 'x' }, 'not-a-real-token').expect(401);
+    });
+
+    it('P4: a non-admin role (AUDITOR) is rejected with 403', async () => {
+      await patchElection(editableId, { description: 'x' }, auditorToken).expect(403);
+    });
+
+    it('P5: a non-UUID id is rejected with 400', async () => {
+      await patchElection('not-a-uuid', { description: 'x' }, adminToken).expect(400);
+    });
+
+    it('P6: a valid UUID that does not exist is rejected with 404', async () => {
+      const res = await patchElection(
+        '00000000-0000-0000-0000-000000000000',
+        { description: 'x' },
+        adminToken,
+      ).expect(404);
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'ELECTION_NOT_FOUND' });
+    });
+
+    it('P7: an election in a non-editable state is rejected with 409', async () => {
+      const name = `NONEDIT-${suffix}`;
+      usedNames.push(name);
+      const id = await createElectionAndGetId(name, adminToken);
+      await prisma.election.update({ where: { id }, data: { current_status: 'PENDING' } });
+      const res = await patchElection(id, { description: 'x' }, adminToken).expect(409);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_EDITABLE' });
+    });
+
+    it('P8: renaming to an existing election name is rejected with 409', async () => {
+      const other = `OTHER-${suffix}`;
+      usedNames.push(other);
+      await createElectionAndGetId(other, adminToken);
+      const res = await patchElection(editableId, { name: other }, adminToken).expect(409);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NAME_CONFLICT' });
+    });
+
+    it('P9: renaming to its own current name succeeds (self excluded)', async () => {
+      await patchElection(editableId, { name: editableName }, adminToken).expect(200);
+    });
+
+    it('P10: an invalid startDate is rejected with 400', async () => {
+      await patchElection(editableId, { startDate: '2026-13-40' }, adminToken).expect(400);
+    });
+
+    it('P11: a partial update producing an invalid interval is rejected with 400', async () => {
+      const res = await patchElection(editableId, { startTime: '19:00:00' }, adminToken).expect(
+        400,
+      );
+      expect(res.body).toMatchObject({ statusCode: 400, error: 'ELECTION_INVALID_DATE_RANGE' });
+    });
+
+    it('P12: a client-supplied immutable field in the body is rejected with 400', async () => {
+      await patchElection(editableId, { currentStatus: 'ACTIVE' }, adminToken).expect(400);
+    });
+
+    it('P13: a non-boolean blankVoteEnabled is rejected with 400', async () => {
+      await patchElection(editableId, { blankVoteEnabled: 'true' }, adminToken).expect(400);
+    });
+
+    it('P14: a successful edit does not alter currentStatus or createdAt', async () => {
+      const before = await prisma.election.findUnique({ where: { id: editableId } });
+      await patchElection(editableId, { description: 'Again.' }, adminToken).expect(200);
+      const after = await prisma.election.findUnique({ where: { id: editableId } });
+      expect(after!.current_status).toBe(before!.current_status);
+      expect(after!.created_at.toISOString()).toBe(before!.created_at.toISOString());
+    });
+  });
 });

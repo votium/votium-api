@@ -44,4 +44,18 @@ export class PrismaElectionMapper {
       blank_vote_enabled: entity.blankVoteEnabled,
     };
   }
+
+  // Maps ONLY the editable columns. `id`, `current_status`, and `created_at` are
+  // intentionally omitted so they can never be overwritten by an update operation.
+  static toUpdateData(entity: ElectionEntity): Prisma.ElectionUpdateInput {
+    return {
+      name: entity.name,
+      description: entity.description,
+      start_date: entity.startDate,
+      start_time: entity.startTime,
+      end_date: entity.endDate,
+      end_time: entity.endTime,
+      blank_vote_enabled: entity.blankVoteEnabled,
+    };
+  }
 }
