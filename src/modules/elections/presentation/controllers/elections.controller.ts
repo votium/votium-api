@@ -8,7 +8,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
@@ -19,6 +19,7 @@ import { UpdateElectionDto } from '../../application/dtos/update-election.dto';
 import { CreateElectionUseCase } from '../../application/use-cases/create-election.use-case';
 import { UpdateElectionUseCase } from '../../application/use-cases/update-election.use-case';
 import { ElectionPresenter } from '../presenters/election.presenter';
+import { ElectionResponseDto } from '../dtos/election-response.dto';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -29,6 +30,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @ApiTags('elections')
+@ApiBearerAuth()
 @Controller('elections')
 export class ElectionsController {
   constructor(
@@ -37,7 +39,19 @@ export class ElectionsController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new election (ADMIN only)' })
+  @ApiOperation({
+    summary: 'Create a new election',
+    description: 'Creates an election. Requires ADMINISTRATOR role.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Election created successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 409, description: 'Election name conflict.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async create(@Body() dto: CreateElectionDto, @Req() req: AuthenticatedRequest) {
@@ -55,7 +69,21 @@ export class ElectionsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update an existing election (ADMIN only, CREATED state)' })
+  @ApiOperation({
+    summary: 'Update an existing election',
+    description: 'Updates an election in CREATED state. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election updated successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({ status: 409, description: 'Election not editable or name conflict.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async update(
