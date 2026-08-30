@@ -13,7 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
@@ -27,6 +27,7 @@ import { RegisterCandidateUseCase } from '../../application/use-cases/register-c
 import { SearchCandidatesUseCase } from '../../application/use-cases/search-candidates.use-case';
 import { UpdateCandidateUseCase } from '../../application/use-cases/update-candidate.use-case';
 import { CandidatePresenter } from '../presenters/candidate.presenter';
+import { CandidateResponseDto } from '../dtos/candidate-response.dto';
 import { SearchCandidatesQueryDto } from '../dtos/search-candidates-query.dto';
 
 type AuthenticatedRequest = Request & {
@@ -38,6 +39,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @ApiTags('candidates')
+@ApiBearerAuth()
 @Controller('candidates')
 export class CandidatesController {
   constructor(
@@ -49,7 +51,19 @@ export class CandidatesController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Query candidates by optional filters' })
+  @ApiOperation({
+    summary: 'Query candidates by optional filters',
+    description:
+      'Returns candidates matching the provided filters. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Candidates retrieved successfully.',
+    type: [CandidateResponseDto],
+  })
+  @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
   async search(@Query() query: SearchCandidatesQueryDto) {
@@ -64,7 +78,19 @@ export class CandidatesController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Register a new candidate' })
+  @ApiOperation({
+    summary: 'Register a new candidate',
+    description: 'Creates a candidate. Requires ADMINISTRATOR role.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Candidate registered successfully.',
+    type: CandidateResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 409, description: 'Duplicate student code or identification number.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async create(@Body() dto: CreateCandidateDto, @Req() req: AuthenticatedRequest) {
@@ -81,7 +107,16 @@ export class CandidatesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Deactivate a candidate (soft delete)' })
+  @ApiOperation({
+    summary: 'Deactivate a candidate (soft delete)',
+    description: 'Deactivates a candidate. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the candidate.', example: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Candidate deactivated successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Candidate not found.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async deactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
@@ -89,7 +124,21 @@ export class CandidatesController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update an existing candidate' })
+  @ApiOperation({
+    summary: 'Update an existing candidate',
+    description: 'Updates a candidate. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the candidate.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Candidate updated successfully.',
+    type: CandidateResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Candidate not found.' })
+  @ApiResponse({ status: 409, description: 'Duplicate identification number.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async update(
@@ -111,7 +160,21 @@ export class CandidatesController {
   }
 
   @Patch(':id/reactivate')
-  @ApiOperation({ summary: 'Reactivate a logically deleted candidate' })
+  @ApiOperation({
+    summary: 'Reactivate a logically deleted candidate',
+    description: 'Reactivates a deactivated candidate. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the candidate.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Candidate reactivated successfully.',
+    type: CandidateResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Candidate not found.' })
+  @ApiResponse({ status: 409, description: 'Candidate is already ACTIVE.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async reactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {

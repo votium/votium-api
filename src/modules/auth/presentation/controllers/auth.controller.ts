@@ -1,4 +1,4 @@
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
 import { Body, Controller, Post } from '@nestjs/common';
 import { LoginDto } from '../../application/dtos/login.dto';
 import { MfaRequiredResponseDto } from '../../application/dtos/mfa-required-response.dto';
@@ -21,6 +21,13 @@ export class AuthController {
 
   @Post('login')
   @ApiOperation({ summary: 'Validate credentials and start the MFA authentication process' })
+  @ApiResponse({
+    status: 201,
+    description: 'MFA challenge initiated. A verification code was sent.',
+    type: MfaRequiredResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials.' })
   async loginUser(@Body() dto: LoginDto) {
     const result = await this.login.execute(dto);
     return new MfaRequiredResponseDto(result);
@@ -28,6 +35,13 @@ export class AuthController {
 
   @Post('mfa/verify')
   @ApiOperation({ summary: 'Verify the six-digit OTP and complete authentication' })
+  @ApiResponse({
+    status: 201,
+    description: 'Authentication completed. Tokens issued.',
+    type: AuthTokensResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired code.' })
   async verifyMfaCode(@Body() dto: VerifyMfaDto) {
     const result = await this.verifyMfa.execute(dto);
     return new AuthTokensResponseDto(result);
@@ -35,6 +49,13 @@ export class AuthController {
 
   @Post('mfa/resend')
   @ApiOperation({ summary: 'Generate and send a new verification code' })
+  @ApiResponse({
+    status: 201,
+    description: 'A new verification code was sent.',
+    type: ResendMfaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired session.' })
   async resendMfaCode(@Body() dto: ResendMfaDto) {
     const result = await this.resendMfa.execute(dto);
     return new ResendMfaResponseDto(result);

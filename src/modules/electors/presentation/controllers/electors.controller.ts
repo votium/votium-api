@@ -14,7 +14,15 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+  ApiResponse,
+  ApiParam,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
@@ -28,6 +36,8 @@ import { SearchElectorsUseCase } from '../../application/use-cases/search-electo
 import { ElectoralRegistryPresenter } from '../presenters/electoral-registry.presenter';
 import { ElectorPresenter } from '../presenters/elector.presenter';
 import { DeactivateElectorResponseDto } from '../dtos/deactivate-elector-response.dto';
+import { ElectorsListResponseDto } from '../dtos/electors-list-response.dto';
+import { ImportElectoralRegistryResponseDto } from '../dtos/import-electoral-registry-response.dto';
 import { SearchElectorsQueryDto } from '../dtos/search-electors-query.dto';
 
 const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -41,6 +51,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @ApiTags('electors')
+@ApiBearerAuth()
 @Controller('electors')
 export class ElectorsController {
   constructor(
@@ -50,7 +61,18 @@ export class ElectorsController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Search electors by program code, student code, or name' })
+  @ApiOperation({
+    summary: 'Search electors by program code, student code, or name',
+    description: 'Returns a paginated list of electors. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Electors retrieved successfully.',
+    type: ElectorsListResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
   async search(@Query() query: SearchElectorsQueryDto) {
@@ -68,7 +90,10 @@ export class ElectorsController {
 
   @Post('import')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Import an electoral registry from a CSV file' })
+  @ApiOperation({
+    summary: 'Import an electoral registry from a CSV file',
+    description: 'Imports electors from a CSV file. Requires ADMINISTRATOR role.',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: 'Electoral registry CSV file',
@@ -79,6 +104,14 @@ export class ElectorsController {
       },
     },
   })
+  @ApiResponse({
+    status: 200,
+    description: 'Electoral registry imported successfully.',
+    type: ImportElectoralRegistryResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Missing CSV file.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_CSV_FILE_SIZE } }))
@@ -96,7 +129,20 @@ export class ElectorsController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Deactivate an elector (soft delete)' })
+  @ApiOperation({
+    summary: 'Deactivate an elector (soft delete)',
+    description: 'Deactivates an elector. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the elector.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Elector deactivated successfully.',
+    type: DeactivateElectorResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Elector not found.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async deactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
