@@ -163,4 +163,31 @@ describe('ElectionEntity', () => {
       }
     });
   });
+
+  describe('isDeletable', () => {
+    function makeElection(currentStatus: string): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: currentStatus as ElectionEntity['currentStatus'],
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+    }
+
+    it('is true for CREATED', () => {
+      expect(makeElection('CREATED').isDeletable()).toBe(true);
+    });
+
+    it('is false for any non-CREATED status', () => {
+      for (const status of ['PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
+        expect(makeElection(status).isDeletable()).toBe(false);
+      }
+    });
+  });
 });

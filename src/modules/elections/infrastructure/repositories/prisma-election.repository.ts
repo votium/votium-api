@@ -42,6 +42,43 @@ export class PrismaElectionRepository implements ElectionRepository {
       throw error;
     }
   }
+
+  async hasCandidates(electionId: string): Promise<boolean> {
+    const count = await this.prisma.candiday.count({
+      where: { election_id: electionId },
+    });
+    return count > 0;
+  }
+
+  async hasVotes(electionId: string): Promise<boolean> {
+    const count = await this.prisma.voteMetadata.count({
+      where: { election_id: electionId },
+    });
+    return count > 0;
+  }
+
+  async delete(id: string): Promise<void> {
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Remove any child rows that may exist, in FK-safe order, before removing the
+        // election. Candidates/votes are guaranteed absent by the use-case guards, but
+        // the remaining related rows (status history, electoral rolls, notifications,
+        // reports, etc.) are removed here so no orphaned records remain.
+        await tx.electionStatusHistory.deleteMany({ where: { election_id: id } });
+        await tx.notification.deleteMany({ where: { election_id: id } });
+        await tx.report.deleteMany({ where: { election_id: id } });
+        await tx.certificate.deleteMany({ where: { election: { id } } });
+        await tx.electoralRoll.deleteMany({ where: { election_id: id } });
+        await tx.result.deleteMany({ where: { election_id: id } });
+        await tx.voteMetadata.deleteMany({ where: { election_id: id } });
+        await tx.candiday.deleteMany({ where: { election_id: id } });
+        await tx.election.delete({ where: { id } });
+      });
+    } catch (error) {
+      if (isRecordNotFoundError(error)) throw new ElectionNotFoundError(id);
+      throw error;
+    }
+  }
 }
 
 function isRecordNotFoundError(error: unknown): boolean {

@@ -1,6 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -18,6 +21,7 @@ import { CreateElectionDto } from '../../application/dtos/create-election.dto';
 import { UpdateElectionDto } from '../../application/dtos/update-election.dto';
 import { CreateElectionUseCase } from '../../application/use-cases/create-election.use-case';
 import { UpdateElectionUseCase } from '../../application/use-cases/update-election.use-case';
+import { DeleteElectionUseCase } from '../../application/use-cases/delete-election.use-case';
 import { ElectionPresenter } from '../presenters/election.presenter';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
 
@@ -36,6 +40,7 @@ export class ElectionsController {
   constructor(
     private readonly createElection: CreateElectionUseCase,
     private readonly updateElection: UpdateElectionUseCase,
+    private readonly deleteElection: DeleteElectionUseCase,
   ) {}
 
   @Post()
@@ -93,5 +98,30 @@ export class ElectionsController {
   ) {
     const election = await this.updateElection.execute(id, dto, req.user?.sub);
     return ElectionPresenter.toResponse(election);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Delete election',
+    description:
+      'Deletes a pending election only when it has no associated candidates or votes. ' +
+      'This operation is restricted to administrators.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Election successfully deleted.' })
+  @ApiResponse({ status: 400, description: 'Invalid election ID.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Election cannot be deleted because it is not in a deletable state or has associated candidates or votes.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    await this.deleteElection.execute(id, req.user?.sub);
   }
 }

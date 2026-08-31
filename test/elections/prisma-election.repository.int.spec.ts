@@ -176,4 +176,118 @@ describe('PrismaElectionRepository integration', () => {
       await expect(repository.update(saved)).rejects.toBeInstanceOf(ElectionNotFoundError);
     });
   });
+
+  describe('hasCandidates / hasVotes / delete', () => {
+    const seededCandidateIds: string[] = [];
+    const seededVoteIds: string[] = [];
+    const seededElectorIds: string[] = [];
+
+    afterEach(async () => {
+      await prisma.voteMetadata.deleteMany({ where: { id: { in: seededVoteIds } } });
+      await prisma.candiday.deleteMany({
+        where: { candidate_id: { in: seededCandidateIds } },
+      });
+      await prisma.candidate.deleteMany({ where: { id: { in: seededCandidateIds } } });
+      await prisma.electoralRoll.deleteMany({ where: { elector_id: { in: seededElectorIds } } });
+      await prisma.elector.deleteMany({ where: { id: { in: seededElectorIds } } });
+      seededCandidateIds.length = 0;
+      seededVoteIds.length = 0;
+      seededElectorIds.length = 0;
+    });
+
+    async function seedCandidacy(electionId: string): Promise<void> {
+      const candidate = await prisma.candidate.create({
+        data: {
+          first_name: 'Test',
+          last_name: 'Candidate',
+          student_code: `SC-${Date.now()}-${Math.random()}`,
+          program_code: 'PC',
+          identification_number: `ID-${Date.now()}-${Math.random()}`,
+          status: 'ACTIVE',
+        },
+      });
+      seededCandidateIds.push(candidate.id);
+      await prisma.candiday.create({
+        data: { candidate_id: candidate.id, election_id: electionId, position_number: 1 },
+      });
+    }
+
+    async function seedVote(electionId: string): Promise<void> {
+      const vote = await prisma.voteMetadata.create({
+        data: { election_id: electionId, tx_hash: `0x${Date.now()}-${Math.random()}` },
+      });
+      seededVoteIds.push(vote.id);
+    }
+
+    it('hasCandidates returns false for an empty election and true after a candidacy is added', async () => {
+      const name = `HASCAND-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const id = saved.id as string;
+
+      expect(await repository.hasCandidates(id)).toBe(false);
+
+      await seedCandidacy(id);
+      expect(await repository.hasCandidates(id)).toBe(true);
+    });
+
+    it('hasVotes returns false for an empty election and true after a vote is added', async () => {
+      const name = `HASVOTE-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const id = saved.id as string;
+
+      expect(await repository.hasVotes(id)).toBe(false);
+
+      await seedVote(id);
+      expect(await repository.hasVotes(id)).toBe(true);
+    });
+
+    it('delete removes a CREATED election with no related rows', async () => {
+      const name = `DEL-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const id = saved.id as string;
+
+      await repository.delete(id);
+
+      expect(await prisma.election.findUnique({ where: { id } })).toBeNull();
+    });
+
+    it('delete removes the election and related electoral rolls without orphans', async () => {
+      const name = `DELCHILD-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const id = saved.id as string;
+
+      const elector = await prisma.elector.create({
+        data: {
+          first_name: 'Test',
+          last_name: 'Elector',
+          email: `e2e-${suffix}-${Math.random()}@example.com`,
+          password_hash: 'hash',
+          student_code: `ELE-${Date.now()}-${Math.random()}`,
+          program_code: 'PC',
+          status: 'ACTIVE',
+        },
+      });
+      seededElectorIds.push(elector.id);
+      await prisma.electoralRoll.create({
+        data: { election_id: id, elector_id: elector.id },
+      });
+
+      await repository.delete(id);
+
+      expect(await prisma.election.findUnique({ where: { id } })).toBeNull();
+      expect(await prisma.electoralRoll.findMany({ where: { election_id: id } })).toHaveLength(0);
+      // The elector itself is preserved (no cleanup of unrelated entities).
+      expect(await prisma.elector.findUnique({ where: { id: elector.id } })).not.toBeNull();
+    });
+
+    it('delete throws ElectionNotFoundError when the election does not exist', async () => {
+      await expect(
+        repository.delete('00000000-0000-0000-0000-000000000000'),
+      ).rejects.toBeInstanceOf(ElectionNotFoundError);
+    });
+  });
 });
