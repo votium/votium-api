@@ -70,7 +70,12 @@ export class VerifyMfaUseCase {
       throw new ForbiddenException('User account is disabled.');
     }
 
-    const payload = { sub: user.id, email: user.email, role: user.role.value };
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      actorType: 'USER' as const,
+      role: user.role.value,
+    };
     const accessToken = await this.tokens.signAccessToken(payload);
 
     await this.audit.log('MFA_VERIFY_SUCCESS', user.id, { sessionId: input.sessionId });

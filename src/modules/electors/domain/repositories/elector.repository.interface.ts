@@ -30,6 +30,9 @@ export interface ElectorRepository {
   // when the id does not exist. Never performs a physical deletion.
   updateStatus(id: string, status: string): Promise<ElectorEntity | null>;
 
+  // Returns the elector whose email matches (case-insensitively), or null.
+  findByEmail(email: string): Promise<ElectorEntity | null>;
+
   // Searches electors using optional exact program_code / student_code filters and a
   // case-insensitive partial name filter. Filters combine with AND. Returns a page
   // of electors plus the total number of matching rows. Read-only.

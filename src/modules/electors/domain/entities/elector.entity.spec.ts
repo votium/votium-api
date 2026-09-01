@@ -95,6 +95,31 @@ describe('ElectorEntity', () => {
     });
   });
 
+  describe('isActive', () => {
+    it('returns true when the status is ACTIVE', () => {
+      const entity = ElectorEntity.create(baseInput);
+
+      expect(entity.isActive()).toBe(true);
+    });
+
+    it('returns false when the status is INACTIVE', () => {
+      const entity = ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        status: 'INACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      });
+
+      expect(entity.isActive()).toBe(false);
+    });
+
+    it('returns false for any other status', () => {
+      const entity = ElectorEntity.create({ ...baseInput, status: 'SUSPENDED' });
+
+      expect(entity.isActive()).toBe(false);
+    });
+  });
+
   describe('deactivate', () => {
     it('D1: changes status from ACTIVE to INACTIVE without modifying other fields', () => {
       const createdAt = new Date('2026-08-01T00:00:00.000Z');
