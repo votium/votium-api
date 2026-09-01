@@ -2,17 +2,20 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
+import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
@@ -20,10 +23,13 @@ import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { CreateElectionDto } from '../../application/dtos/create-election.dto';
 import { UpdateElectionDto } from '../../application/dtos/update-election.dto';
 import { CreateElectionUseCase } from '../../application/use-cases/create-election.use-case';
+import { GetElectionsUseCase } from '../../application/use-cases/get-elections.use-case';
 import { UpdateElectionUseCase } from '../../application/use-cases/update-election.use-case';
 import { DeleteElectionUseCase } from '../../application/use-cases/delete-election.use-case';
 import { ElectionPresenter } from '../presenters/election.presenter';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
+import { ElectionsListResponseDto } from '../dtos/elections-list-response.dto';
+import { ListElectionsQueryDto } from '../dtos/list-elections-query.dto';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -38,10 +44,44 @@ type AuthenticatedRequest = Request & {
 @Controller('elections')
 export class ElectionsController {
   constructor(
+    private readonly getElections: GetElectionsUseCase,
     private readonly createElection: CreateElectionUseCase,
     private readonly updateElection: UpdateElectionUseCase,
     private readonly deleteElection: DeleteElectionUseCase,
   ) {}
+
+  @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiOperation({
+    summary: 'Query elections',
+    description:
+      'Returns a paginated list of elections with optional filters (status, name, ' +
+      'startDate, endDate, active). Defaults to schedule-active elections. Requires ' +
+      'ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Elections retrieved successfully.',
+    type: ElectionsListResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  async list(@Query() query: ListElectionsQueryDto) {
+    const { elections, total } = await this.getElections.execute({
+      page: query.page,
+      limit: query.limit,
+      name: query.name,
+      status: query.status,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      active: query.active,
+    });
+
+    const data = ElectionPresenter.toList(elections);
+    return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
+  }
 
   @Post()
   @ApiOperation({

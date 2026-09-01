@@ -1,4 +1,6 @@
-export type ElectionStatus = 'CREATED' | 'PENDING' | 'PUBLISHED' | 'CLOSED' | 'ACTIVE';
+export const ELECTION_STATUSES = ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE'] as const;
+
+export type ElectionStatus = (typeof ELECTION_STATUSES)[number];
 
 export interface CreateElectionInput {
   name: string;

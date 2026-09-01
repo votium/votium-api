@@ -1,8 +1,41 @@
-import { ElectionEntity } from '../entities/election.entity';
+import { ElectionEntity, type ElectionStatus } from '../entities/election.entity';
 
 export const ELECTION_REPOSITORY = 'ElectionRepository';
 
+export type ElectionListParams = {
+  page: number;
+  limit: number;
+  // Partial, case-insensitive match on the election name.
+  name?: string;
+  // Lifecycle status filter.
+  status?: ElectionStatus;
+  // Election start_date >= startDate (UTC midnight).
+  startDate?: Date;
+  // Election end_date <= endDate (UTC midnight).
+  endDate?: Date;
+  // true  → election start instant <= now <= end instant (schedule-active)
+  // false → election NOT in that window
+  // undefined → no schedule filter
+  active?: boolean;
+  // Reference instant for the schedule-active window. Defaults to the current time
+  // (UTC). Primarily used by tests to exercise boundary conditions deterministically.
+  now?: Date;
+};
+
+export type ElectionListResult = {
+  elections: ElectionEntity[];
+  total: number;
+};
+
 export interface ElectionRepository {
+  // Returns a paginated list of elections matching the optional filters, with a
+  // count of the total matches (used for pagination metadata). Filters combine with
+  // AND. `active` is schedule-based: the election has started (start date+time <=
+  // now, UTC) and has not ended yet (end date+time >= now, UTC). When `active` is
+  // undefined no schedule filter is applied. `now` is the reference instant for the
+  // schedule window (defaults to the current time). Ordered by created_at desc.
+  findAll(params: ElectionListParams): Promise<ElectionListResult>;
+
   // Persists a NEW election. Prisma generates id and created_at, and the
   // database enforces name uniqueness (@@unique([name])) by rejecting duplicates
   // with P2002, which the implementation maps to ElectionNameConflictError.

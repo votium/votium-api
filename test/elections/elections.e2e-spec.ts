@@ -12,6 +12,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
 
 class FakeEmailService implements EmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -549,6 +550,289 @@ describe('Elections creation (e2e)', () => {
       const res = await deleteElection(id, adminToken).expect(409);
       expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_HAS_VOTES' });
       expect(await prisma.election.findUnique({ where: { id } })).not.toBeNull();
+    });
+  });
+
+  describe('GET /elections', () => {
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const addDays = (d: Date, days: number): Date => new Date(d.getTime() + days * 86_400_000);
+    const nextMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
+    const toDateStr = (d: Date): string =>
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(
+        d.getUTCDate(),
+      ).padStart(2, '0')}`;
+
+    type ElectionSeedOverrides = {
+      start_date?: Date;
+      start_time?: Date;
+      end_date?: Date;
+      end_time?: Date;
+      current_status?: ElectionStatus;
+      blank_vote_enabled?: boolean;
+    };
+
+    // Seeds directly via Prisma (bypassing the API) so dates can be relative to "now".
+    // Default seed is a wide schedule-active window: yesterday 00:00 → tomorrow 23:59 (UTC).
+    async function seedElection(name: string, over: ElectionSeedOverrides = {}): Promise<void> {
+      usedNames.push(name);
+      await prisma.election.create({
+        data: {
+          name,
+          description: 'E2E query seed.',
+          start_date: addDays(today, -1),
+          start_time: new Date(Date.UTC(1970, 0, 1, 0, 0, 0)),
+          end_date: addDays(today, 1),
+          end_time: new Date(Date.UTC(1970, 0, 1, 23, 59, 59)),
+          current_status: 'CREATED',
+          blank_vote_enabled: false,
+          ...over,
+        },
+      });
+    }
+
+    const getElections = (token: string, query = '') =>
+      request(app.getHttpServer())
+        .get(`/api/v1/elections${query}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    it('Q1: an authenticated ADMIN can query elections and receives the response contract', async () => {
+      await seedElection(`Q1-ACTIVE-${suffix}`);
+
+      const res = await getElections(adminToken).expect(200);
+      const body = res.body as {
+        data: Array<Record<string, unknown>>;
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.data.length).toBeGreaterThan(0);
+      expect(Object.keys(body.meta).sort()).toEqual(
+        ['limit', 'page', 'total', 'totalPages'].sort(),
+      );
+      expect(body.meta.limit).toBe(10);
+      expect(body.meta.page).toBe(1);
+      for (const item of body.data) {
+        expect(Object.keys(item).sort()).toEqual(
+          [
+            'id',
+            'name',
+            'description',
+            'startDate',
+            'startTime',
+            'endDate',
+            'endTime',
+            'currentStatus',
+            'blankVoteEnabled',
+            'createdAt',
+          ].sort(),
+        );
+      }
+    });
+
+    it('Q2: an authenticated AUDITOR can query elections with 200', async () => {
+      await getElections(auditorToken).expect(200);
+    });
+
+    it('Q3: an unauthenticated request is rejected with 401', async () => {
+      await request(app.getHttpServer()).get('/api/v1/elections').expect(401);
+    });
+
+    it('Q4: an invalid token is rejected with 401', async () => {
+      const res = await getElections('not-a-real-token').expect(401);
+      expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+
+    // Q5 (403 for a third role) is deliberately skipped: both allowed roles
+    // (ADMINISTRATOR, AUDITOR) are exercised above, the endpoint has no third-role
+    // fixture, and 403 behavior is already covered by other endpoints. Documented in
+    // the test design (plans/task-96-elections-query-endpoint-tests.spec.md).
+
+    it('Q6: the default request returns only schedule-active elections', async () => {
+      const active = `Q6-ACTIVE-${suffix}`;
+      const future = `Q6-FUTURE-${suffix}`;
+      const past = `Q6-PAST-${suffix}`;
+      await seedElection(active);
+      await seedElection(future, {
+        start_date: addDays(nextMonth, 15),
+        start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        end_date: addDays(nextMonth, 30),
+        end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+      });
+      await seedElection(past, {
+        start_date: addDays(today, -2),
+        end_date: addDays(today, -1),
+        end_time: new Date(Date.UTC(1970, 0, 1, 0, 0, 0)),
+      });
+
+      const res = await getElections(adminToken).expect(200);
+      const body = res.body as { data: Array<{ name: string }>; meta: { total: number } };
+      const names = body.data.map((e) => e.name);
+      expect(names).toContain(active);
+      expect(names).not.toContain(future);
+      expect(names).not.toContain(past);
+      expect(body.meta.total).toBeGreaterThanOrEqual(1);
+    });
+
+    it('Q7: the status filter works independently of the active default', async () => {
+      const pending = `Q7-${suffix}-PENDING`;
+      const created = `Q7-${suffix}-CREATED`;
+      await seedElection(pending, {
+        current_status: 'PENDING',
+        start_date: addDays(nextMonth, 15),
+        end_date: addDays(nextMonth, 30),
+      });
+      await seedElection(created);
+
+      const res = await getElections(adminToken, `?name=Q7-${suffix}&status=PENDING`).expect(200);
+      const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
+      expect(names).toEqual([pending]);
+    });
+
+    it('Q8: the name filter is partial and case-insensitive', async () => {
+      const active = `Q8-${suffix}-QUERY-ACTIVE`;
+      const future = `Q8-${suffix}-query-FUTURE`;
+      await seedElection(active);
+      await seedElection(future, {
+        start_date: addDays(nextMonth, 15),
+        end_date: addDays(nextMonth, 30),
+      });
+
+      const res = await getElections(adminToken, `?name=Q8-${suffix}`).expect(200);
+      const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
+      expect(names).toContain(active);
+      expect(names).not.toContain(future);
+    });
+
+    it('Q9: the startDate filter limits to elections starting on/after the date', async () => {
+      const early = `Q9-${suffix}-EARLY`;
+      const late = `Q9-${suffix}-LATE`;
+      await seedElection(early);
+      await seedElection(late, {
+        start_date: nextMonth,
+        start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        end_date: addDays(nextMonth, 30),
+        end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+      });
+
+      const res = await getElections(
+        adminToken,
+        `?name=Q9-${suffix}&status=CREATED&startDate=${toDateStr(nextMonth)}`,
+      ).expect(200);
+      const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
+      expect(names).toEqual([late]);
+    });
+
+    it('Q10: the endDate filter limits to elections ending on/before the date', async () => {
+      const early = `Q10-${suffix}-EARLY`;
+      const late = `Q10-${suffix}-LATE`;
+      await seedElection(early);
+      await seedElection(late, {
+        start_date: nextMonth,
+        end_date: addDays(nextMonth, 30),
+      });
+
+      const res = await getElections(
+        adminToken,
+        `?name=Q10-${suffix}&status=CREATED&endDate=${toDateStr(addDays(today, 1))}`,
+      ).expect(200);
+      const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
+      expect(names).toEqual([early]);
+    });
+
+    it('Q11: combined filters return only elections matching every condition', async () => {
+      const match = `Q11-${suffix}-MATCH`;
+      const decoy = `Q11-${suffix}-DECOY`;
+      await seedElection(match, { current_status: 'PENDING' });
+      await seedElection(decoy, {
+        current_status: 'PENDING',
+        start_date: addDays(nextMonth, 15),
+        end_date: addDays(nextMonth, 30),
+      });
+
+      const res = await getElections(
+        adminToken,
+        `?name=Q11-${suffix}&status=PENDING&active=true` +
+          `&startDate=${toDateStr(addDays(today, -1))}&endDate=${toDateStr(addDays(today, 1))}`,
+      ).expect(200);
+      const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
+      expect(names).toEqual([match]);
+    });
+
+    it('Q12: active=false returns the non-active complement', async () => {
+      const active = `Q12-${suffix}-ACTIVE`;
+      const future = `Q12-${suffix}-FUTURE`;
+      const past = `Q12-${suffix}-PAST`;
+      await seedElection(active);
+      await seedElection(future, {
+        start_date: addDays(nextMonth, 15),
+        end_date: addDays(nextMonth, 30),
+      });
+      await seedElection(past, {
+        start_date: addDays(today, -2),
+        end_date: addDays(today, -1),
+      });
+
+      const res = await getElections(adminToken, `?name=Q12-${suffix}&active=false`).expect(200);
+      const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
+      expect(names).toContain(future);
+      expect(names).toContain(past);
+      expect(names).not.toContain(active);
+    });
+
+    it('Q13a: unknown query parameters are rejected with 400', async () => {
+      const res = await getElections(adminToken, '?foo=1').expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('Q13b: an invalid status value is rejected with 400', async () => {
+      await getElections(adminToken, '?status=INVALID').expect(400);
+    });
+
+    it('Q13c: a malformed startDate is rejected with 400', async () => {
+      const res = await getElections(adminToken, '?startDate=2026-13-40').expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('Q13d: a malformed endDate is rejected with 400', async () => {
+      await getElections(adminToken, '?endDate=2026-02-30').expect(400);
+    });
+
+    it('Q13e: an invalid active value is rejected with 400', async () => {
+      await getElections(adminToken, '?active=yes').expect(400);
+    });
+
+    it('Q13f: active=TRUE is rejected with 400 (only literal true/false accepted)', async () => {
+      await getElections(adminToken, '?active=TRUE').expect(400);
+    });
+
+    it('Q13g: a page below the minimum is rejected with 400', async () => {
+      await getElections(adminToken, '?page=0').expect(400);
+    });
+
+    it('Q13h: a non-numeric limit is rejected with 400', async () => {
+      await getElections(adminToken, '?limit=abc').expect(400);
+    });
+
+    it('Q14: pagination returns the requested slice with correct meta', async () => {
+      for (let i = 0; i < 3; i += 1) {
+        await seedElection(`PG-${suffix}-${i}`);
+      }
+
+      const page1 = await getElections(adminToken, `?name=PG-${suffix}&limit=1&page=1`).expect(200);
+      const body1 = page1.body as {
+        data: Array<Record<string, unknown>>;
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
+      expect(body1.data).toHaveLength(1);
+      expect(body1.meta).toMatchObject({ page: 1, limit: 1, total: 3, totalPages: 3 });
+
+      const page2 = await getElections(adminToken, `?name=PG-${suffix}&limit=1&page=2`).expect(200);
+      const body2 = page2.body as {
+        data: Array<Record<string, unknown>>;
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
+      expect(body2.data).toHaveLength(1);
+      expect(body2.meta).toMatchObject({ page: 2, limit: 1, total: 3, totalPages: 3 });
     });
   });
 });

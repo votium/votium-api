@@ -22,6 +22,7 @@ function buildSavedElection(): ElectionEntity {
 
 describe('CreateElectionUseCase', () => {
   const elections: jest.Mocked<ElectionRepository> = {
+    findAll: jest.fn(),
     create: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
