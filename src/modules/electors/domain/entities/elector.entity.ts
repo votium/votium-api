@@ -78,6 +78,10 @@ export class ElectorEntity {
     return this._status;
   }
 
+  isActive(): boolean {
+    return this._status === ElectorEntity.DEFAULT_STATUS;
+  }
+
   deactivate(): void {
     if (this._status === ElectorEntity.INACTIVE_STATUS) {
       throw new ElectorAlreadyInactiveError(this.id ?? '');

@@ -172,6 +172,67 @@ describe('PrismaElectorRepository integration', () => {
     });
   });
 
+  describe('findByEmail', () => {
+    it('I1: returns the elector by exact email', async () => {
+      const code = `FEM-1-${suffix}`;
+      const email = `fem-1-${suffix}@example.com`;
+      usedStudentCodes.push(code);
+
+      await repository.create(buildEntity(code, email));
+
+      const found = await repository.findByEmail(email);
+
+      expect(found).not.toBeNull();
+      expect(found?.email).toBe(email);
+      expect(found?.studentCode).toBe(code);
+    });
+
+    it('I2: matches case-insensitively', async () => {
+      const code = `FEM-2-${suffix}`;
+      const storedEmail = `Jane.Doe@Example.COM`;
+      usedStudentCodes.push(code);
+
+      await repository.create(buildEntity(code, storedEmail));
+
+      const found = await repository.findByEmail('jane.doe@example.com');
+
+      expect(found).not.toBeNull();
+      expect(found?.email).toBe(storedEmail);
+    });
+
+    it('I3: trims surrounding whitespace in query', async () => {
+      const code = `FEM-3-${suffix}`;
+      const email = `juan-${suffix}@example.com`;
+      usedStudentCodes.push(code);
+
+      await repository.create(buildEntity(code, email));
+
+      const found = await repository.findByEmail(`  ${email}  `);
+
+      expect(found).not.toBeNull();
+      expect(found?.email).toBe(email);
+    });
+
+    it('I4: returns null when no elector matches', async () => {
+      const found = await repository.findByEmail(`nonexistent-${suffix}@example.com`);
+
+      expect(found).toBeNull();
+    });
+
+    it('I5: returns a domain ElectorEntity with id and createdAt', async () => {
+      const code = `FEM-5-${suffix}`;
+      const email = `fem-5-${suffix}@example.com`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(buildEntity(code, email));
+      const found = await repository.findByEmail(email);
+
+      expect(found).toBeInstanceOf(ElectorEntity);
+      expect(found?.id).toBe(saved.id);
+      expect(found?.createdAt).toBeInstanceOf(Date);
+    });
+  });
+
   describe('findById and updateStatus', () => {
     it('I1: returns the created elector by id', async () => {
       const code = `DEL-1-${suffix}`;

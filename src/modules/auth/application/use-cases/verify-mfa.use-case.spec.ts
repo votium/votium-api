@@ -97,6 +97,9 @@ describe('VerifyMfaUseCase', () => {
     expect(tokens.signAccessToken.mock.calls[0][0]).toEqual({
       sub: 'user-1',
       email: 'admin@example.com',
+      // Backward-compatible addition: the shared token contract now carries an
+      // actorType discriminator so USER and ELECTOR tokens can be distinguished.
+      actorType: 'USER',
       role: 'ADMINISTRATOR',
     });
   });

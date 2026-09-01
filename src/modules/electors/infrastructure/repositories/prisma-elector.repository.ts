@@ -53,6 +53,13 @@ export class PrismaElectorRepository implements ElectorRepository {
     return row ? PrismaElectorMapper.toDomain(row) : null;
   }
 
+  async findByEmail(email: string): Promise<ElectorEntity | null> {
+    const row = await this.prisma.elector.findFirst({
+      where: { email: { equals: email.trim(), mode: 'insensitive' } },
+    });
+    return row ? PrismaElectorMapper.toDomain(row) : null;
+  }
+
   async updateStatus(id: string, status: string): Promise<ElectorEntity | null> {
     try {
       const row = await this.prisma.elector.update({

@@ -1095,7 +1095,7 @@ describe('Candidates registration (e2e)', () => {
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
-      expect(hidden.body.data).toEqual([]);
+      expect((hidden.body as { data: unknown[] }).data).toEqual([]);
 
       await reactivate(id).expect(200);
 
@@ -1103,8 +1103,9 @@ describe('Candidates registration (e2e)', () => {
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
-      expect(visible.body.data).toHaveLength(1);
-      expect(visible.body.data[0].id).toBe(id);
+      const visibleBody = visible.body as { data: Array<{ id: string }> };
+      expect(visibleBody.data).toHaveLength(1);
+      expect(visibleBody.data[0].id).toBe(id);
     });
 
     it('E10: failed requests do not create or modify records', async () => {

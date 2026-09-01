@@ -27,6 +27,7 @@ describe('ImportElectoralRegistryUseCase', () => {
     findByStudentCodeOrEmail: jest.fn(),
     findById: jest.fn(),
     updateStatus: jest.fn(),
+    findByEmail: jest.fn(),
     search: jest.fn(),
   };
   const hasher: jest.Mocked<PasswordHasherPort> = { hash: jest.fn(), verify: jest.fn() };

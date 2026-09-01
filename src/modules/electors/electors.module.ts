@@ -9,8 +9,13 @@ import {
   AUDIT_LOG_PORT,
   type AuditLogPort,
 } from 'src/modules/iam/application/ports/audit-log.port';
+import {
+  TOKEN_SERVICE_PORT,
+  type TokenServicePort,
+} from 'src/modules/auth/application/ports/token-service.port';
 import { DeactivateElectorUseCase } from './application/use-cases/deactivate-elector.use-case';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
+import { LoginElectorUseCase } from './application/use-cases/login-elector.use-case';
 import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
 import { CSV_PARSER_PORT, type CsvParserPort } from './application/ports/csv-parser.port';
 import {
@@ -20,10 +25,11 @@ import {
 import { CsvFileParserService } from './infrastructure/services/csv-file-parser.service';
 import { PrismaElectorRepository } from './infrastructure/repositories/prisma-elector.repository';
 import { ElectorsController } from './presentation/controllers/electors.controller';
+import { ElectorAuthController } from './presentation/controllers/elector-auth.controller';
 
 @Module({
   imports: [IamModule, AuthModule],
-  controllers: [ElectorsController],
+  controllers: [ElectorsController, ElectorAuthController],
   providers: [
     { provide: ELECTOR_REPOSITORY, useClass: PrismaElectorRepository },
     { provide: CSV_PARSER_PORT, useClass: CsvFileParserService },
@@ -46,6 +52,15 @@ import { ElectorsController } from './presentation/controllers/electors.controll
       provide: SearchElectorsUseCase,
       useFactory: (electors: ElectorRepository) => new SearchElectorsUseCase(electors),
       inject: [ELECTOR_REPOSITORY],
+    },
+    {
+      provide: LoginElectorUseCase,
+      useFactory: (
+        electors: ElectorRepository,
+        hasher: PasswordHasherPort,
+        tokens: TokenServicePort,
+      ) => new LoginElectorUseCase(electors, hasher, tokens),
+      inject: [ELECTOR_REPOSITORY, PASSWORD_HASHER_PORT, TOKEN_SERVICE_PORT],
     },
   ],
 })
