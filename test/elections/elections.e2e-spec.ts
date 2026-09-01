@@ -433,4 +433,122 @@ describe('Elections creation (e2e)', () => {
       expect(after!.created_at.toISOString()).toBe(before!.created_at.toISOString());
     });
   });
+
+  describe('DELETE /elections/:id', () => {
+    const deleteElection = (id: string, token: string) =>
+      request(app.getHttpServer())
+        .delete(`/api/v1/elections/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    const createElectionAndGetId = async (name: string): Promise<string> => {
+      const res = await createElection(validElection(name), adminToken).expect(201);
+      return (res.body as { id: string }).id;
+    };
+
+    const seededCandidateIds: string[] = [];
+    const seededVoteIds: string[] = [];
+
+    async function seedCandidacy(electionId: string): Promise<void> {
+      const candidate = await prisma.candidate.create({
+        data: {
+          first_name: 'E2E',
+          last_name: 'Candidate',
+          student_code: `SC-${suffix}-${Math.random()}`,
+          program_code: 'PC',
+          identification_number: `ID-${suffix}-${Math.random()}`,
+          status: 'ACTIVE',
+        },
+      });
+      seededCandidateIds.push(candidate.id);
+      await prisma.candiday.create({
+        data: { candidate_id: candidate.id, election_id: electionId, position_number: 1 },
+      });
+    }
+
+    async function seedVote(electionId: string): Promise<void> {
+      const vote = await prisma.voteMetadata.create({
+        data: { election_id: electionId, tx_hash: `0x${suffix}-${Math.random()}` },
+      });
+      seededVoteIds.push(vote.id);
+    }
+
+    afterAll(async () => {
+      await prisma.voteMetadata.deleteMany({ where: { id: { in: seededVoteIds } } });
+      await prisma.candiday.deleteMany({ where: { candidate_id: { in: seededCandidateIds } } });
+      await prisma.candidate.deleteMany({ where: { id: { in: seededCandidateIds } } });
+    });
+
+    it('D1: ADMIN deletes an eligible CREATED election with 204 and removes the row', async () => {
+      const name = `DEL-OK-${suffix}`;
+      usedNames.push(name);
+      const id = await createElectionAndGetId(name);
+
+      await deleteElection(id, adminToken).expect(204);
+
+      expect(await prisma.election.findUnique({ where: { id } })).toBeNull();
+    });
+
+    it('D2: unauthenticated request is rejected with 401', async () => {
+      const id = await createElectionAndGetId(`DEL-UNAUTH-${suffix}`);
+      await deleteElection(id, '').expect(401);
+    });
+
+    it('D3: an invalid token is rejected with 401', async () => {
+      const id = await createElectionAndGetId(`DEL-BADTOKEN-${suffix}`);
+      await deleteElection(id, 'not-a-real-token').expect(401);
+    });
+
+    it('D4: a non-admin role (AUDITOR) is rejected with 403 and the election remains', async () => {
+      const name = `DEL-AUDITOR-${suffix}`;
+      usedNames.push(name);
+      const id = await createElectionAndGetId(name);
+
+      await deleteElection(id, auditorToken).expect(403);
+      expect(await prisma.election.findUnique({ where: { id } })).not.toBeNull();
+    });
+
+    it('D5: a non-UUID id is rejected with 400', async () => {
+      await deleteElection('not-a-uuid', adminToken).expect(400);
+    });
+
+    it('D6: a valid UUID that does not exist is rejected with 404', async () => {
+      const res = await deleteElection('00000000-0000-0000-0000-000000000000', adminToken).expect(
+        404,
+      );
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'ELECTION_NOT_FOUND' });
+    });
+
+    it('D7: a non-deletable election state is rejected with 409 and the row is unchanged', async () => {
+      const name = `DEL-NONPEND-${suffix}`;
+      usedNames.push(name);
+      const id = await createElectionAndGetId(name);
+      await prisma.election.update({ where: { id }, data: { current_status: 'PENDING' } });
+
+      const res = await deleteElection(id, adminToken).expect(409);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_DELETABLE' });
+      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('PENDING');
+    });
+
+    it('D8: an election with candidates is rejected with 409 and the row is unchanged', async () => {
+      const name = `DEL-CAND-${suffix}`;
+      usedNames.push(name);
+      const id = await createElectionAndGetId(name);
+      await seedCandidacy(id);
+
+      const res = await deleteElection(id, adminToken).expect(409);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_HAS_CANDIDATES' });
+      expect(await prisma.election.findUnique({ where: { id } })).not.toBeNull();
+    });
+
+    it('D9: an election with votes is rejected with 409 and the row is unchanged', async () => {
+      const name = `DEL-VOTE-${suffix}`;
+      usedNames.push(name);
+      const id = await createElectionAndGetId(name);
+      await seedVote(id);
+
+      const res = await deleteElection(id, adminToken).expect(409);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_HAS_VOTES' });
+      expect(await prisma.election.findUnique({ where: { id } })).not.toBeNull();
+    });
+  });
 });

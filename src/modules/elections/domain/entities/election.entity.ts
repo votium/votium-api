@@ -89,6 +89,13 @@ export class ElectionEntity {
     return this.currentStatus === ElectionEntity.DEFAULT_STATUS;
   }
 
+  // Whether the election can be deleted. Only the initial lifecycle state (CREATED) is
+  // deletable, mirroring isEditable(). This is the single decision point for the
+  // deletable-state rule.
+  isDeletable(): boolean {
+    return this.currentStatus === ElectionEntity.DEFAULT_STATUS;
+  }
+
   // Merges the provided partial input into the entity. Only supplied fields change;
   // `id`, `currentStatus`, and `createdAt` are immutable and never touched here.
   update(input: UpdateElectionInput): void {
