@@ -15,6 +15,7 @@ import { NodemailerEmailService } from './infrastructure/services/nodemailer-ema
 import { PrismaMfaChallengeRepository } from './infrastructure/repositories/prisma-mfa-challenge.repository';
 import { JwtAuthGuard } from './presentation/guards/jwt-auth.guard';
 import { RolesGuard } from './presentation/guards/roles.guard';
+import { ElectorGuard } from './presentation/guards/elector.guard';
 import { AuthController } from './presentation/controllers/auth.controller';
 
 @Module({
@@ -32,12 +33,18 @@ import { AuthController } from './presentation/controllers/auth.controller';
     ResendMfaUseCase,
     JwtAuthGuard,
     RolesGuard,
+    ElectorGuard,
     PrismaMfaChallengeRepository,
     { provide: MFA_CHALLENGE_REPOSITORY, useClass: PrismaMfaChallengeRepository },
     { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService },
     { provide: OTP_GENERATOR_PORT, useClass: CryptoOtpGeneratorService },
     { provide: EMAIL_SERVICE_PORT, useClass: NodemailerEmailService },
   ],
-  exports: [JwtAuthGuard, RolesGuard, { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService }],
+  exports: [
+    JwtAuthGuard,
+    RolesGuard,
+    ElectorGuard,
+    { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService },
+  ],
 })
 export class AuthModule {}
