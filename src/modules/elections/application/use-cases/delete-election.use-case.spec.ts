@@ -27,6 +27,7 @@ function buildElection(
 
 describe('DeleteElectionUseCase', () => {
   const elections: jest.Mocked<ElectionRepository> = {
+    findAll: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),
     update: jest.fn(),

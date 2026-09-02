@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { ELECTION_STATUSES, type ElectionStatus } from '../../domain/entities/election.entity';
 
 export class ElectionResponseDto {
   @ApiProperty({ example: 'uuid' })
@@ -24,9 +25,9 @@ export class ElectionResponseDto {
 
   @ApiProperty({
     example: 'CREATED',
-    enum: ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE'],
+    enum: ELECTION_STATUSES,
   })
-  currentStatus!: string;
+  currentStatus!: ElectionStatus;
 
   @ApiProperty({ example: true })
   blankVoteEnabled!: boolean;

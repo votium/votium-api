@@ -1,14 +1,44 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../../../../generated/prisma/client';
 import { PrismaService } from 'src/shared/database/prisma.service';
 import { ElectionEntity } from '../../domain/entities/election.entity';
 import { ElectionNameConflictError } from '../../domain/errors/election-name-conflict.error';
 import { ElectionNotFoundError } from '../../domain/errors/election-not-found.error';
-import { type ElectionRepository } from '../../domain/repositories/election.repository.interface';
+import {
+  type ElectionListParams,
+  type ElectionListResult,
+  type ElectionRepository,
+} from '../../domain/repositories/election.repository.interface';
 import { PrismaElectionMapper } from '../mappers/prisma-election.mapper';
 
 @Injectable()
 export class PrismaElectionRepository implements ElectionRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  async findAll(params: ElectionListParams): Promise<ElectionListResult> {
+    const skip = (params.page - 1) * params.limit;
+    const name = params.name?.trim();
+
+    const where: Prisma.ElectionWhereInput = {
+      ...(name ? { name: { contains: name, mode: 'insensitive' } } : {}),
+      ...(params.status ? { current_status: params.status } : {}),
+      ...(params.startDate ? { start_date: { gte: params.startDate } } : {}),
+      ...(params.endDate ? { end_date: { lte: params.endDate } } : {}),
+      ...(params.active !== undefined ? buildActiveFilter(params.active, params.now) : {}),
+    };
+
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.election.count({ where }),
+      this.prisma.election.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: params.limit,
+      }),
+    ]);
+
+    return { elections: rows.map((row) => PrismaElectionMapper.toDomain(row)), total };
+  }
 
   async create(entity: ElectionEntity): Promise<ElectionEntity> {
     try {
@@ -96,5 +126,43 @@ function isUniqueConstraintError(error: unknown): boolean {
     error !== null &&
     'code' in error &&
     (error as { code?: unknown }).code === 'P2002'
+  );
+}
+
+// Schedule-based "active" window (UTC): start_instant <= now <= end_instant.
+// start_instant = start_date + start_time, end_instant = end_date + end_time.
+// Because DATE and TIME are separate columns, the window is expressed as:
+//   started   = start_date < today OR (start_date = today AND start_time <= nowTime)
+//   notEnded  = end_date > today   OR (end_date = today   AND end_time >= nowTime)
+//   active    = started AND notEnded
+// `now` is the reference instant; defaults to the current time (UTC).
+function buildActiveFilter(active: boolean, now: Date = new Date()): Prisma.ElectionWhereInput {
+  const today = currentElectionDate(now);
+  const nowTime = currentElectionTime(now);
+
+  const started: Prisma.ElectionWhereInput = {
+    OR: [
+      { start_date: { lt: today } },
+      { AND: [{ start_date: today }, { start_time: { lte: nowTime } }] },
+    ],
+  };
+  const notEnded: Prisma.ElectionWhereInput = {
+    OR: [
+      { end_date: { gt: today } },
+      { AND: [{ end_date: today }, { end_time: { gte: nowTime } }] },
+    ],
+  };
+  const activeWhere: Prisma.ElectionWhereInput = { AND: [started, notEnded] };
+
+  return active ? activeWhere : { NOT: activeWhere };
+}
+
+function currentElectionDate(now: Date = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function currentElectionTime(now: Date = new Date()): Date {
+  return new Date(
+    Date.UTC(1970, 0, 1, now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()),
   );
 }
