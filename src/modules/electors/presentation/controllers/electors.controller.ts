@@ -24,6 +24,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { Request } from 'express';
+import { ElectorGuard } from 'src/modules/auth/presentation/guards/elector.guard';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
@@ -33,12 +34,14 @@ import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.d
 import { DeactivateElectorUseCase } from '../../application/use-cases/deactivate-elector.use-case';
 import { ImportElectoralRegistryUseCase } from '../../application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from '../../application/use-cases/search-electors.use-case';
+import { GetMeElectorUseCase } from '../../application/use-cases/get-me-elector.use-case';
 import { ElectoralRegistryPresenter } from '../presenters/electoral-registry.presenter';
 import { ElectorPresenter } from '../presenters/elector.presenter';
 import { DeactivateElectorResponseDto } from '../dtos/deactivate-elector-response.dto';
 import { ElectorsListResponseDto } from '../dtos/electors-list-response.dto';
 import { ImportElectoralRegistryResponseDto } from '../dtos/import-electoral-registry-response.dto';
 import { SearchElectorsQueryDto } from '../dtos/search-electors-query.dto';
+import { MeElectorResponseDto } from '../dtos/me-elector-response.dto';
 
 const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
@@ -50,6 +53,14 @@ type AuthenticatedRequest = Request & {
   };
 };
 
+type ElectorAuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    actorType: string;
+  };
+};
+
 @ApiTags('electors')
 @ApiBearerAuth()
 @Controller('electors')
@@ -58,7 +69,27 @@ export class ElectorsController {
     private readonly importRegistry: ImportElectoralRegistryUseCase,
     private readonly deactivateElector: DeactivateElectorUseCase,
     private readonly searchElectors: SearchElectorsUseCase,
+    private readonly getMeElector: GetMeElectorUseCase,
   ) {}
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard, ElectorGuard)
+  @ApiOperation({
+    summary: 'Get currently authenticated elector',
+    description: 'Returns the authenticated voter/elector resolved from the JWT.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Authenticated elector retrieved successfully.',
+    type: MeElectorResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires elector actor type.' })
+  @ApiResponse({ status: 404, description: 'Elector not found.' })
+  async me(@Req() req: ElectorAuthenticatedRequest) {
+    const elector = await this.getMeElector.execute(req.user.sub);
+    return ElectorPresenter.toMeResponse(elector);
+  }
 
   @Get()
   @ApiOperation({
