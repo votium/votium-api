@@ -59,12 +59,10 @@ class FakeEmailService implements EmailServicePort {
 }
 
 interface LoginResponseBody {
-  accessToken: string;
-  expiresIn: number;
-}
-
-interface VerifyLoginBody {
+  mfaRequired: boolean;
   sessionId: string;
+  expiresIn: number;
+  message: string;
 }
 
 interface VerifyResponseBody {
@@ -100,11 +98,28 @@ describe('ElectorGuard (e2e)', () => {
       .send({ email: adminUser.email, password: adminUser.password })
       .expect(201);
 
-    const sessionId = (loginRes.body as VerifyLoginBody).sessionId;
+    const sessionId = (loginRes.body as LoginResponseBody).sessionId;
     const code = emailService.last().code;
 
     const verifyRes = await request(app.getHttpServer())
       .post('/api/v1/auth/mfa/verify')
+      .send({ sessionId, code })
+      .expect(201);
+
+    return (verifyRes.body as VerifyResponseBody).accessToken;
+  };
+
+  const completeElectorLogin = async (): Promise<string> => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/electors/auth/login')
+      .send({ email: activeElector.email, password: activeElector.password })
+      .expect(200);
+
+    const sessionId = (loginRes.body as LoginResponseBody).sessionId;
+    const code = emailService.last().code;
+
+    const verifyRes = await request(app.getHttpServer())
+      .post('/api/v1/electors/auth/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
 
@@ -180,11 +195,7 @@ describe('ElectorGuard (e2e)', () => {
     usedUserIds.push(admin.id);
     adminUser = { id: admin.id, email: admin.email, password: 'SuperSecret123!' };
 
-    const login = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/login')
-      .send({ email: activeElector.email, password: activeElector.password })
-      .expect(200);
-    electorToken = (login.body as LoginResponseBody).accessToken;
+    electorToken = await completeElectorLogin();
 
     userToken = await completeAdminLogin();
   });

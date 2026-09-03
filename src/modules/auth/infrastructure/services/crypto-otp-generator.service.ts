@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { OTP_LENGTH } from 'src/modules/auth/domain/mfa.constants';
+import { OTP_LENGTH } from 'src/shared/constants/mfa.constants';
 import type { OtpGeneratorPort } from '../../application/ports/otp-generator.port';
 
 @Injectable()
