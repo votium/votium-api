@@ -20,7 +20,7 @@ import {
   MFA_CHALLENGE_REPOSITORY,
   type MfaChallengeRepository,
 } from 'src/modules/auth/domain/repositories/mfa-challenge.repository.interface';
-import { OTP_TTL_MS, RESEND_COOLDOWN_MS } from 'src/modules/auth/domain/mfa.constants';
+import { OTP_TTL_MS, RESEND_COOLDOWN_MS } from 'src/shared/constants/mfa.constants';
 import { EMAIL_SERVICE_PORT, type EmailServicePort } from '../ports/email-service.port';
 import { OTP_GENERATOR_PORT, type OtpGeneratorPort } from '../ports/otp-generator.port';
 

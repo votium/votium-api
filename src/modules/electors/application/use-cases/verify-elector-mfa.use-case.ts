@@ -1,37 +1,20 @@
-import { Inject, Injectable } from '@nestjs/common';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
 import { ForbiddenException } from 'src/shared/exceptions/base/forbidden.exception';
 import { GoneException } from 'src/shared/exceptions/base/gone.exception';
 import { UnauthorizedException } from 'src/shared/exceptions/base/unauthorized.exception';
 import { envs } from 'src/config';
-import {
-  USER_REPOSITORY,
-  type UserRepository,
-} from 'src/modules/iam/domain/repositories/user.repository.interface';
-import {
-  PASSWORD_HASHER_PORT,
-  type PasswordHasherPort,
-} from 'src/modules/iam/application/ports/password-hasher.port';
-import {
-  AUDIT_LOG_PORT,
-  type AuditLogPort,
-} from 'src/modules/iam/application/ports/audit-log.port';
-import { UserStatus } from 'src/modules/iam/domain/value-objects/user-status.vo';
-import {
-  MFA_CHALLENGE_REPOSITORY,
-  type MfaChallengeRepository,
-} from 'src/modules/auth/domain/repositories/mfa-challenge.repository.interface';
 import { MAX_VERIFICATION_ATTEMPTS } from 'src/shared/constants/mfa.constants';
-import { TOKEN_SERVICE_PORT, type TokenServicePort } from '../ports/token-service.port';
+import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
+import type { TokenServicePort } from 'src/modules/auth/application/ports/token-service.port';
+import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
+import type { ElectorMfaChallengeRepository } from '../../domain/repositories/elector-mfa-challenge.repository.interface';
 
-@Injectable()
-export class VerifyMfaUseCase {
+export class VerifyElectorMfaUseCase {
   constructor(
-    @Inject(MFA_CHALLENGE_REPOSITORY) private readonly challenges: MfaChallengeRepository,
-    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
-    @Inject(PASSWORD_HASHER_PORT) private readonly hasher: PasswordHasherPort,
-    @Inject(TOKEN_SERVICE_PORT) private readonly tokens: TokenServicePort,
-    @Inject(AUDIT_LOG_PORT) private readonly audit: AuditLogPort,
+    private readonly challenges: ElectorMfaChallengeRepository,
+    private readonly electors: ElectorRepository,
+    private readonly hasher: PasswordHasherPort,
+    private readonly tokens: TokenServicePort,
   ) {}
 
   async execute(input: { sessionId: string; code: string }) {
@@ -58,27 +41,23 @@ export class VerifyMfaUseCase {
         throw new BadRequestException('Maximum verification attempts exceeded.');
       }
       await this.challenges.save(challenge);
-      await this.audit.log('MFA_VERIFY_FAILED', challenge.userId, { sessionId: input.sessionId });
       throw new BadRequestException('Invalid verification code.');
     }
 
     challenge.consume(now);
     await this.challenges.save(challenge);
 
-    const user = await this.users.findById(challenge.userId);
-    if (!user || user.status === UserStatus.DISABLED) {
-      throw new ForbiddenException('User account is disabled.');
+    const elector = await this.electors.findById(challenge.electorId);
+    if (!elector || !elector.isActive()) {
+      throw new ForbiddenException('Elector account is disabled.');
     }
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      actorType: 'USER' as const,
-      role: user.role.value,
-    };
-    const accessToken = await this.tokens.signAccessToken(payload);
+    if (!elector.id) {
+      throw new ForbiddenException('Elector account is disabled.');
+    }
 
-    await this.audit.log('MFA_VERIFY_SUCCESS', user.id, { sessionId: input.sessionId });
+    const payload = { sub: elector.id, email: elector.email, actorType: 'ELECTOR' as const };
+    const accessToken = await this.tokens.signAccessToken(payload);
 
     return { accessToken, expiresIn: envs.jwtExpiresIn };
   }

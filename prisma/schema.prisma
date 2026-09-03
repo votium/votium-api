@@ -217,8 +217,26 @@ model Elector {
   created_at    DateTime @default(now())
 
   electoralRolls ElectoralRoll[]
+  mfaChallenges  ElectorMfaChallenge[]
 
   @@map("electors")
+}
+
+model ElectorMfaChallenge {
+  id          String    @id @default(uuid())
+  elector_id  String
+  session_id  String    @unique
+  otp_hash    String
+  attempts    Int       @default(0)
+  expires_at  DateTime
+  resend_at   DateTime?
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  elector Elector @relation(fields: [elector_id], references: [id], onDelete: Cascade)
+
+  @@index([elector_id])
+  @@map("elector_mfa_challenges")
 }
 
 model ElectoralRoll {

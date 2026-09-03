@@ -45,6 +45,8 @@ import { AuthController } from './presentation/controllers/auth.controller';
     RolesGuard,
     ElectorGuard,
     { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService },
+    { provide: OTP_GENERATOR_PORT, useClass: CryptoOtpGeneratorService },
+    { provide: EMAIL_SERVICE_PORT, useClass: NodemailerEmailService },
   ],
 })
 export class AuthModule {}
