@@ -27,6 +27,7 @@ import { LoginElectorUseCase } from './application/use-cases/login-elector.use-c
 import { VerifyElectorMfaUseCase } from './application/use-cases/verify-elector-mfa.use-case';
 import { ResendElectorMfaUseCase } from './application/use-cases/resend-elector-mfa.use-case';
 import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
+import { GetMeElectorUseCase } from './application/use-cases/get-me-elector.use-case';
 import { CSV_PARSER_PORT, type CsvParserPort } from './application/ports/csv-parser.port';
 import {
   ELECTOR_REPOSITORY,
@@ -70,6 +71,11 @@ import { ElectorAuthController } from './presentation/controllers/elector-auth.c
     {
       provide: SearchElectorsUseCase,
       useFactory: (electors: ElectorRepository) => new SearchElectorsUseCase(electors),
+      inject: [ELECTOR_REPOSITORY],
+    },
+    {
+      provide: GetMeElectorUseCase,
+      useFactory: (electors: ElectorRepository) => new GetMeElectorUseCase(electors),
       inject: [ELECTOR_REPOSITORY],
     },
     {

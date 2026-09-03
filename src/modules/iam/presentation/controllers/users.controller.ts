@@ -17,6 +17,7 @@ import { GetUsersUseCase } from '../../application/use-cases/get-users.use-case'
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { GetUserUseCase } from '../../application/use-cases/get-user.use-case';
 import { DisableUserUseCase } from '../../application/use-cases/disable-user.use-case';
+import { MeUserResponseDto } from '../dtos/me-user-response.dto';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -88,6 +89,28 @@ export class UsersController {
 
     const data = UserPresenter.toList(users);
     return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiOperation({
+    summary: 'Get currently authenticated user',
+    description:
+      'Returns the authenticated administrator or auditor resolved from the JWT. ' +
+      'Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Authenticated user retrieved successfully.',
+    type: MeUserResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  async me(@Req() req: AuthenticatedRequest) {
+    const user = await this.getUser.execute(req.user.sub);
+    return UserPresenter.toMeResponse(user);
   }
 
   @Get(':id')

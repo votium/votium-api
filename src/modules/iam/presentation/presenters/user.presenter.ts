@@ -1,4 +1,5 @@
 import { UserEntity } from '../../domain/entities/user.entity';
+import { MeUserResponseDto } from '../dtos/me-user-response.dto';
 import { UserResponseDto } from '../dtos/user-response.dto';
 
 export class UserPresenter {
@@ -12,6 +13,17 @@ export class UserPresenter {
       status: entity.status.value,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
+    });
+  }
+
+  static toMeResponse(entity: UserEntity): MeUserResponseDto {
+    return new MeUserResponseDto({
+      user: {
+        id: entity.id,
+        role: entity.role.value,
+        name: `${entity.firstName} ${entity.lastName}`.trim(),
+        email: entity.email,
+      },
     });
   }
 
