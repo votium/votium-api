@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../../../../generated/prisma/client';
 import { PrismaService } from 'src/shared/database/prisma.service';
-import { ElectionEntity } from '../../domain/entities/election.entity';
+import { ElectionEntity, type ElectionStatus } from '../../domain/entities/election.entity';
 import { ElectionNameConflictError } from '../../domain/errors/election-name-conflict.error';
 import { ElectionNotFoundError } from '../../domain/errors/election-not-found.error';
 import {
@@ -69,6 +69,46 @@ export class PrismaElectionRepository implements ElectionRepository {
     } catch (error) {
       if (isRecordNotFoundError(error)) throw new ElectionNotFoundError(entity.id as string);
       if (isUniqueConstraintError(error)) throw new ElectionNameConflictError();
+      throw error;
+    }
+  }
+
+  async updateStatus(
+    id: string,
+    status: ElectionStatus,
+    requestingUserId: string,
+  ): Promise<ElectionEntity | null> {
+    try {
+      const row = await this.prisma.$transaction(async (tx) => {
+        const current = await tx.election.findUnique({ where: { id } });
+        if (!current) {
+          return null;
+        }
+
+        const updated = await tx.election.update({
+          where: { id },
+          data: { current_status: status },
+        });
+
+        // Record the transition. old_status is read from the row captured before the
+        // update so the history entry always reflects the actual previous state.
+        await tx.electionStatusHistory.create({
+          data: {
+            election_id: id,
+            user_id: requestingUserId,
+            old_status: current.current_status,
+            new_status: status,
+          },
+        });
+
+        return updated;
+      });
+
+      return row ? PrismaElectionMapper.toDomain(row) : null;
+    } catch (error) {
+      // The row can disappear between the read and the update (concurrent delete);
+      // that P2025 must surface as null just like a plain missing election.
+      if (isRecordNotFoundError(error)) return null;
       throw error;
     }
   }

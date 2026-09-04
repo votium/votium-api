@@ -49,6 +49,17 @@ export interface ElectionRepository {
   // and ElectionNameConflictError when a unique constraint (name) rejects it (P2002).
   update(entity: ElectionEntity): Promise<ElectionEntity>;
 
+  // Atomically updates the election status AND records the transition in
+  // ElectionStatusHistory (election_id, user_id, old_status, new_status) within a
+  // single transaction. Returns the updated election, or null when the id does not
+  // exist (P2025). This is the dedicated lifecycle-transition path (e.g. CREATED→PENDING);
+  // the regular update() never touches current_status.
+  updateStatus(
+    id: string,
+    status: ElectionStatus,
+    requestingUserId: string,
+  ): Promise<ElectionEntity | null>;
+
   // Whether any candidate/candidacy is associated with the election. Count-based
   // existence check; does not load the collection into memory.
   hasCandidates(electionId: string): Promise<boolean>;

@@ -1,3 +1,5 @@
+import { ElectionStatusTransitionError } from '../errors/election-status-transition.error';
+
 export const ELECTION_STATUSES = ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE'] as const;
 
 export type ElectionStatus = (typeof ELECTION_STATUSES)[number];
@@ -50,10 +52,14 @@ export class ElectionEntity {
     public startTime: Date,
     public endDate: Date,
     public endTime: Date,
-    public readonly currentStatus: ElectionStatus,
+    private _currentStatus: ElectionStatus,
     public blankVoteEnabled: boolean,
     public readonly createdAt: Date | null,
   ) {}
+
+  get currentStatus(): ElectionStatus {
+    return this._currentStatus;
+  }
 
   static create(input: CreateElectionInput): ElectionEntity {
     return new ElectionEntity(
@@ -96,6 +102,30 @@ export class ElectionEntity {
   // deletable-state rule.
   isDeletable(): boolean {
     return this.currentStatus === ElectionEntity.DEFAULT_STATUS;
+  }
+
+  // Whether the election can still accept electoral-roll modifications. Only the
+  // pre-publication lifecycle states (CREATED or PENDING) are loadable; once the
+  // election is published/active/closed its roll is sealed. Single decision point
+  // for the registerable-state rule.
+  isRollLoadable(): boolean {
+    return (
+      this._currentStatus === ElectionEntity.DEFAULT_STATUS || this._currentStatus === 'PENDING'
+    );
+  }
+
+  // Transitions the election to PENDING (the state reached once a roll has been
+  // loaded). Idempotent when already PENDING. Refuses to demote a PUBLISHED, ACTIVE,
+  // or CLOSED election: those states are sealed and must never regress to PENDING.
+  markAsPending(): void {
+    if (this._currentStatus === 'PENDING') return;
+
+    if (this._currentStatus === ElectionEntity.DEFAULT_STATUS) {
+      this._currentStatus = 'PENDING';
+      return;
+    }
+
+    throw new ElectionStatusTransitionError();
   }
 
   // Merges the provided partial input into the entity. Only supplied fields change;

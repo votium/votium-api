@@ -128,5 +128,6 @@ import { ElectorAuthController } from './presentation/controllers/elector-auth.c
       ],
     },
   ],
+  exports: [ELECTOR_REPOSITORY],
 })
 export class ElectorsModule {}

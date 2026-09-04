@@ -45,5 +45,6 @@ import { ElectionsController } from './presentation/controllers/elections.contro
       inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
+  exports: [ELECTION_REPOSITORY],
 })
 export class ElectionsModule {}
