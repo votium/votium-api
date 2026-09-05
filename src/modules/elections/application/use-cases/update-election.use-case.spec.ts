@@ -33,6 +33,7 @@ describe('UpdateElectionUseCase', () => {
     update: jest.fn(),
     hasCandidates: jest.fn(),
     hasVotes: jest.fn(),
+    updateStatus: jest.fn(),
     delete: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {

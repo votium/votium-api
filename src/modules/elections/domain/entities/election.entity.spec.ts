@@ -1,4 +1,5 @@
 import { ElectionEntity } from './election.entity';
+import { ElectionStatusTransitionError } from '../errors/election-status-transition.error';
 
 describe('ElectionEntity', () => {
   const baseInput = {
@@ -188,6 +189,108 @@ describe('ElectionEntity', () => {
       for (const status of ['PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
         expect(makeElection(status).isDeletable()).toBe(false);
       }
+    });
+  });
+
+  describe('isRollLoadable', () => {
+    function makeElection(currentStatus: string): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: currentStatus as ElectionEntity['currentStatus'],
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+    }
+
+    it('TS1: is true for CREATED', () => {
+      expect(makeElection('CREATED').isRollLoadable()).toBe(true);
+    });
+
+    it('TS2: is true for PENDING', () => {
+      expect(makeElection('PENDING').isRollLoadable()).toBe(true);
+    });
+
+    it('TS3: is false for PUBLISHED', () => {
+      expect(makeElection('PUBLISHED').isRollLoadable()).toBe(false);
+    });
+
+    it('TS4: is false for ACTIVE', () => {
+      expect(makeElection('ACTIVE').isRollLoadable()).toBe(false);
+    });
+
+    it('TS5: is false for CLOSED', () => {
+      expect(makeElection('CLOSED').isRollLoadable()).toBe(false);
+    });
+  });
+
+  describe('markAsPending', () => {
+    function makeElection(currentStatus: string): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: currentStatus as ElectionEntity['currentStatus'],
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+    }
+
+    it('TS6: transitions CREATED to PENDING', () => {
+      const e = makeElection('CREATED');
+      e.markAsPending();
+      expect(e.currentStatus).toBe('PENDING');
+    });
+
+    it('TS7: is a no-op when already PENDING', () => {
+      const e = makeElection('PENDING');
+      e.markAsPending();
+      expect(e.currentStatus).toBe('PENDING');
+    });
+
+    it('TS8: throws ElectionStatusTransitionError on PUBLISHED', () => {
+      const e = makeElection('PUBLISHED');
+      expect(() => e.markAsPending()).toThrow(ElectionStatusTransitionError);
+      expect(e.currentStatus).toBe('PUBLISHED');
+    });
+
+    it('TS9: throws ElectionStatusTransitionError on ACTIVE', () => {
+      const e = makeElection('ACTIVE');
+      expect(() => e.markAsPending()).toThrow(ElectionStatusTransitionError);
+      expect(e.currentStatus).toBe('ACTIVE');
+    });
+
+    it('TS10: throws ElectionStatusTransitionError on CLOSED', () => {
+      const e = makeElection('CLOSED');
+      expect(() => e.markAsPending()).toThrow(ElectionStatusTransitionError);
+      expect(e.currentStatus).toBe('CLOSED');
+    });
+  });
+
+  describe('currentStatus getter (backward compatibility)', () => {
+    it('TS11: exposes the status through the public getter after privatization', () => {
+      const e = ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: 'PENDING',
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+      expect(e.currentStatus).toBe('PENDING');
     });
   });
 });

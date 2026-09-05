@@ -1,0 +1,21 @@
+import type { BulkRegisterElectoralRollResult } from '../../application/dtos/bulk-register-electoral-roll-result';
+import {
+  BulkRegisterElectoralRollResponseDto,
+  BulkRegisterElectoralRollErrorDto,
+} from '../dtos/bulk-register-electoral-roll-response.dto';
+
+export class ElectoralRollPresenter {
+  static toBulkRegisterResponse(
+    result: BulkRegisterElectoralRollResult,
+  ): BulkRegisterElectoralRollResponseDto {
+    return new BulkRegisterElectoralRollResponseDto({
+      message: 'Electoral roll registration completed.',
+      totalRows: result.totalRows,
+      registered: result.registered,
+      alreadyRegistered: result.alreadyRegistered,
+      notFound: result.notFound,
+      invalidRows: result.invalidRows,
+      errors: result.errors.map((e) => new BulkRegisterElectoralRollErrorDto(e)),
+    });
+  }
+}

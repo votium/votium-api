@@ -105,6 +105,23 @@ export class PrismaElectorRepository implements ElectorRepository {
 
     return { electors: rows.map((row) => PrismaElectorMapper.toDomain(row)), total };
   }
+
+  async findByStudentCodeAndProgramCode(
+    pairs: Array<{ studentCode: string; programCode: string }>,
+  ): Promise<ElectorEntity[]> {
+    if (pairs.length === 0) return [];
+
+    const rows = await this.prisma.elector.findMany({
+      where: {
+        OR: pairs.map(({ studentCode, programCode }) => ({
+          student_code: studentCode,
+          program_code: programCode,
+        })),
+      },
+    });
+
+    return rows.map((row) => PrismaElectorMapper.toDomain(row));
+  }
 }
 
 function isRecordNotFoundError(error: unknown): boolean {

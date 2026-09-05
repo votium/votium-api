@@ -37,4 +37,10 @@ export interface ElectorRepository {
   // case-insensitive partial name filter. Filters combine with AND. Returns a page
   // of electors plus the total number of matching rows. Read-only.
   search(params: ElectorSearchParams): Promise<ElectorSearchResult>;
+
+  // Find electors matching any of the given (studentCode, programCode) pairs.
+  // Returns only electors that match at least one pair exactly.
+  findByStudentCodeAndProgramCode(
+    pairs: Array<{ studentCode: string; programCode: string }>,
+  ): Promise<ElectorEntity[]>;
 }
