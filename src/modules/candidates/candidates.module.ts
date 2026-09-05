@@ -52,5 +52,6 @@ import { CandidatesController } from './presentation/controllers/candidates.cont
       inject: [CANDIDATE_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
+  exports: [CANDIDATE_REPOSITORY],
 })
 export class CandidatesModule {}

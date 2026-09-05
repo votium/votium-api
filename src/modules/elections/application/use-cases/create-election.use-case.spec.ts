@@ -24,6 +24,12 @@ describe('CreateElectionUseCase', () => {
   const elections: jest.Mocked<ElectionRepository> = {
     findAll: jest.fn(),
     create: jest.fn(),
+    findById: jest.fn(),
+    update: jest.fn(),
+    updateStatus: jest.fn(),
+    hasCandidates: jest.fn(),
+    hasVotes: jest.fn(),
+    delete: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),

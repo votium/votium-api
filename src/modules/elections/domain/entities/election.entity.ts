@@ -114,6 +114,13 @@ export class ElectionEntity {
     );
   }
 
+  // Whether the election can still accept candidate registrations. Only the
+  // PENDING lifecycle state may receive candidacies. Single decision point for
+  // the candidacy-eligibility rule.
+  canAcceptCandidacy(): boolean {
+    return this._currentStatus === 'PENDING';
+  }
+
   // Transitions the election to PENDING (the state reached once a roll has been
   // loaded). Idempotent when already PENDING. Refuses to demote a PUBLISHED, ACTIVE,
   // or CLOSED election: those states are sealed and must never regress to PENDING.

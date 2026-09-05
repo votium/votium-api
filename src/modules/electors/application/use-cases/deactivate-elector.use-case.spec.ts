@@ -13,6 +13,7 @@ describe('DeactivateElectorUseCase', () => {
     updateStatus: jest.fn(),
     findByEmail: jest.fn(),
     search: jest.fn(),
+    findByStudentCodeAndProgramCode: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),
