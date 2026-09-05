@@ -254,7 +254,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       ).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 3,
           registered: 3,
           alreadyRegistered: 0,
@@ -399,7 +399,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       ).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 2,
           registered: 2,
         }),
@@ -422,16 +422,18 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const electionId = await seedElection('CREATED');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
+      const body = res.body as BulkRegisterResponse;
 
-      expect(res.body.registered).toBe(1);
+      expect(body.registered).toBe(1);
     });
 
     it('EE3: a PENDING election accepts the registration', async () => {
       const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
+      const body = res.body as BulkRegisterResponse;
 
-      expect(res.body.registered).toBe(1);
+      expect(body.registered).toBe(1);
     });
 
     it('EE4: a PUBLISHED election is rejected with 409', async () => {
@@ -476,7 +478,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
         adminToken,
       ).expect(409);
 
-      expect(res.body.statusCode).toBe(409);
+      expect((res.body as { statusCode: number }).statusCode).toBe(409);
 
       const rolls = await prisma.electoralRoll.count({ where: { election_id: electionId } });
       expect(rolls).toBe(0);
@@ -609,7 +611,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       ).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 3,
           registered: 3,
           notFound: 0,
@@ -627,13 +629,13 @@ describe('Electoral roll bulk registration (e2e)', () => {
       ).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 2,
           registered: 1,
           notFound: 1,
           errors: expect.arrayContaining([
             { row: 2, reason: 'Elector not found for the provided student code and program code.' },
-          ]),
+          ]) as BulkRegisterResponse['errors'],
         }),
       );
     });
@@ -648,7 +650,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       ).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 2,
           registered: 0,
           notFound: 2,
@@ -660,18 +662,20 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const electionId = await seedElection('CREATED');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2711')), adminToken).expect(200);
+      const body = res.body as BulkRegisterResponse;
 
-      expect(res.body.notFound).toBe(1);
-      expect(res.body.registered).toBe(0);
+      expect(body.notFound).toBe(1);
+      expect(body.registered).toBe(0);
     });
 
     it('EM5: matching a student code with the wrong program code is not matched', async () => {
       const electionId = await seedElection('CREATED');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '9999')), adminToken).expect(200);
+      const body = res.body as BulkRegisterResponse;
 
-      expect(res.body.notFound).toBe(1);
-      expect(res.body.registered).toBe(0);
+      expect(body.notFound).toBe(1);
+      expect(body.registered).toBe(0);
     });
 
     it('EM6: an INACTIVE elector is reported as an invalid row', async () => {
@@ -680,7 +684,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const res = await bulkRegister(electionId, toCsv(row(codeD, '2710')), adminToken).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 1,
           registered: 0,
           invalidRows: 1,
@@ -698,7 +702,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 1,
           registered: 0,
           alreadyRegistered: 1,
@@ -717,7 +721,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       ).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 2,
           registered: 1,
           alreadyRegistered: 0,
@@ -734,7 +738,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const res = await bulkRegister(electionId, csv, adminToken).expect(200);
 
       expect(res.body).toEqual(
-        expect.objectContaining<BulkRegisterResponse>({
+        expect.objectContaining<Partial<BulkRegisterResponse>>({
           totalRows: 2,
           registered: 0,
           alreadyRegistered: 2,
@@ -763,8 +767,9 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const electionId = await seedElection('CREATED');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
+      const body = res.body as BulkRegisterResponse;
 
-      expect(Object.keys(res.body).sort()).toEqual(
+      expect(Object.keys(body).sort()).toEqual(
         [
           'message',
           'totalRows',
@@ -775,7 +780,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
           'errors',
         ].sort(),
       );
-      expect(res.body.message).toBe('Electoral roll registration completed.');
+      expect(body.message).toBe('Electoral roll registration completed.');
     });
 
     it('ER2: the counts reflect the processed file accurately', async () => {
@@ -803,8 +808,9 @@ describe('Electoral roll bulk registration (e2e)', () => {
         toCsv(row('GHOST-1', '2710'), row(codeD, '2710'), row('GHOST-2', '2711')),
         adminToken,
       ).expect(200);
+      const body = res.body as BulkRegisterResponse;
 
-      expect(res.body.errors).toEqual([
+      expect(body.errors).toEqual([
         { row: 1, reason: 'Elector not found for the provided student code and program code.' },
         { row: 2, reason: 'Elector is not active.' },
         { row: 3, reason: 'Elector not found for the provided student code and program code.' },
@@ -881,7 +887,10 @@ describe('Electoral roll bulk registration (e2e)', () => {
         where: { user_id: adminUser.id, action: 'BULK_REGISTER_ELECTORAL_ROLL' },
       });
       const matching = audit
-        .map((entry) => ({ entry, details: JSON.parse(entry.details ?? '{}') }))
+        .map((entry) => ({
+          entry,
+          details: JSON.parse(entry.details ?? '{}') as Record<string, unknown>,
+        }))
         .filter(({ details }) => details.electionId === electionId);
 
       expect(matching).toHaveLength(1);
