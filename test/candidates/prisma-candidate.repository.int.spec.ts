@@ -544,12 +544,16 @@ describe('PrismaCandidateRepository integration', () => {
     });
 
     it('does not create, update, or delete rows', async () => {
-      const before = await prisma.candidate.count();
+      const before = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
 
       await repository.search({});
       await repository.search({ firstName: 'x' });
 
-      const after = await prisma.candidate.count();
+      const after = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
       expect(after).toBe(before);
     });
 

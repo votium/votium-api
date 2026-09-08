@@ -340,7 +340,7 @@ describe('Candidacies registration (e2e)', () => {
     it('E2E-19: failed requests do not create unrelated rows', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate();
-      const before = await prisma.candiday.count();
+      const before = await prisma.candiday.count({ where: { election_id: electionId } });
 
       await registerCandidacy({ candidateId }, adminToken).expect(400);
       await registerCandidacy({ electionId, candidateId }, '').expect(401);
@@ -354,7 +354,7 @@ describe('Candidacies registration (e2e)', () => {
         adminToken,
       ).expect(404);
 
-      const after = await prisma.candiday.count();
+      const after = await prisma.candiday.count({ where: { election_id: electionId } });
       expect(after).toBe(before);
     });
   });

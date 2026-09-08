@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -27,7 +28,9 @@ import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
 import { BulkRegisterElectoralRollUseCase } from '../../application/use-cases/bulk-register-electoral-roll.use-case';
+import { GetElectoralRollSummaryUseCase } from '../../application/use-cases/get-electoral-roll-summary.use-case';
 import { BulkRegisterElectoralRollResponseDto } from '../dtos/bulk-register-electoral-roll-response.dto';
+import { ElectoralRollSummaryResponseDto } from '../dtos/electoral-roll-summary-response.dto';
 import { ElectoralRollPresenter } from '../presenters/electoral-roll.presenter';
 
 const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -44,7 +47,10 @@ type AuthenticatedRequest = Request & {
 @ApiBearerAuth()
 @Controller('electoral-rolls')
 export class ElectoralRollsController {
-  constructor(private readonly bulkRegisterRoll: BulkRegisterElectoralRollUseCase) {}
+  constructor(
+    private readonly bulkRegisterRoll: BulkRegisterElectoralRollUseCase,
+    private readonly getSummary: GetElectoralRollSummaryUseCase,
+  ) {}
 
   @Post('bulk-register/:electionId')
   @HttpCode(HttpStatus.OK)
@@ -95,5 +101,30 @@ export class ElectoralRollsController {
     });
 
     return ElectoralRollPresenter.toBulkRegisterResponse(result);
+  }
+
+  @Get(':electionId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get electoral roll summary for an election',
+    description:
+      'Returns the election name and the total number of registered voters ' +
+      'for the given election. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiParam({ name: 'electionId', description: 'UUID of the target election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Electoral roll summary retrieved successfully.',
+    type: ElectoralRollSummaryResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  async getElectoralRollSummary(@Param('electionId', ParseUUIDPipe) electionId: string) {
+    const result = await this.getSummary.execute(electionId);
+    return ElectoralRollPresenter.toSummary(result);
   }
 }
