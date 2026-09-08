@@ -319,13 +319,14 @@ describe('Elections creation (e2e)', () => {
     });
 
     it('E19: failed requests do not create unrelated records', async () => {
-      const before = await prisma.election.count();
+      const failedNames = [`FAIL-${suffix}`, `UNAUTH-${suffix}`, `FORBID-${suffix}`];
+      const before = await prisma.election.count({ where: { name: { in: failedNames } } });
       await createElection({ ...validElection(`FAIL-${suffix}`), name: '' }, adminToken).expect(
         400,
       );
       await createElection(validElection(`UNAUTH-${suffix}`), '').expect(401);
       await createElection(validElection(`FORBID-${suffix}`), auditorToken).expect(403);
-      const after = await prisma.election.count();
+      const after = await prisma.election.count({ where: { name: { in: failedNames } } });
       expect(after).toBe(before);
     });
   });

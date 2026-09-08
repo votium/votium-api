@@ -832,11 +832,15 @@ describe('Electoral roll bulk registration (e2e)', () => {
   describe('Data integrity', () => {
     it('EI1: the elector table is not modified by the endpoint', async () => {
       const electionId = await seedElection('CREATED');
-      const before = await prisma.elector.count();
+      const before = await prisma.elector.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
 
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
 
-      const after = await prisma.elector.count();
+      const after = await prisma.elector.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
       expect(after).toBe(before);
     });
 

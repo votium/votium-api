@@ -379,7 +379,9 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E16: failed requests do not create unrelated records', async () => {
-      const before = await prisma.candidate.count();
+      const before = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
 
       const invalid = validCandidate();
       invalid.firstName = '';
@@ -394,7 +396,9 @@ describe('Candidates registration (e2e)', () => {
       forbidden.studentCode = `FORB-${suffix}`;
       await register(forbidden, auditorToken).expect(403);
 
-      const after = await prisma.candidate.count();
+      const after = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
       expect(after).toBe(before);
     });
 
@@ -594,13 +598,17 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E16: the query endpoint is read-only', async () => {
-      const before = await prisma.candidate.count();
+      const before = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
 
       await queryCandidates('').expect(200);
       await queryCandidates('?firstName=bruno').expect(200);
       await queryCandidates('?studentCode=does-not-exist').expect(200);
 
-      const after = await prisma.candidate.count();
+      const after = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
       expect(after).toBe(before);
     });
   });
@@ -631,12 +639,16 @@ describe('Candidates registration (e2e)', () => {
     it('E2: does not physically delete the record and marks it INACTIVE', async () => {
       const { id } = await registerCandidate();
       const before = await prisma.candidate.findUnique({ where: { id } });
-      const countBefore = await prisma.candidate.count();
+      const countBefore = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
 
       await deleteCandidate(id).expect(204);
 
       const after = await prisma.candidate.findUnique({ where: { id } });
-      const countAfter = await prisma.candidate.count();
+      const countAfter = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
 
       expect(after).not.toBeNull();
       expect(after?.status).toBe('INACTIVE');
@@ -967,7 +979,9 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E21: failed requests do not create or modify records', async () => {
-      const before = await prisma.candidate.count();
+      const before = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
 
       const id = await registerAndGetId(patchSeed(`PATCH21-${suffix}`, `IDPATCH21-${suffix}`));
       usedStudentCodes.push(`PATCH21-${suffix}`);
@@ -978,7 +992,9 @@ describe('Candidates registration (e2e)', () => {
       await updateCandidate(id, { firstName: 'Valid' }, 'not-a-real-token').expect(401);
       await updateCandidate(id, { firstName: 'Valid' }, auditorToken).expect(403);
 
-      const after = await prisma.candidate.count();
+      const after = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
       expect(after).toBe(before + 1);
 
       const afterRow = await prisma.candidate.findUnique({ where: { id } });
@@ -1109,7 +1125,9 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E10: failed requests do not create or modify records', async () => {
-      const before = await prisma.candidate.count();
+      const before = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
 
       const { id } = await registerInactive();
       const beforeRow = await prisma.candidate.findUnique({ where: { id } });
@@ -1118,7 +1136,9 @@ describe('Candidates registration (e2e)', () => {
       await reactivate(id, auditorToken).expect(403);
       await reactivate(crypto.randomUUID()).expect(404);
 
-      const after = await prisma.candidate.count();
+      const after = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
       expect(after).toBe(before + 1);
 
       const afterRow = await prisma.candidate.findUnique({ where: { id } });

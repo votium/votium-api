@@ -16,6 +16,7 @@ import {
   type ElectionRepository,
 } from 'src/modules/elections/domain/repositories/election.repository.interface';
 import { BulkRegisterElectoralRollUseCase } from './application/use-cases/bulk-register-electoral-roll.use-case';
+import { GetElectoralRollSummaryUseCase } from './application/use-cases/get-electoral-roll-summary.use-case';
 import {
   ELECTORAL_ROLL_CSV_PARSER_PORT,
   type ElectoralRollCsvParserPort,
@@ -57,6 +58,12 @@ import { ElectoralRollsController } from './presentation/controllers/electoral-r
         ELECTORAL_ROLL_REPOSITORY,
         AUDIT_LOG_PORT,
       ],
+    },
+    {
+      provide: GetElectoralRollSummaryUseCase,
+      useFactory: (electionRepo: ElectionRepository, electoralRollRepo: ElectoralRollRepository) =>
+        new GetElectoralRollSummaryUseCase(electionRepo, electoralRollRepo),
+      inject: [ELECTION_REPOSITORY, ELECTORAL_ROLL_REPOSITORY],
     },
   ],
 })
