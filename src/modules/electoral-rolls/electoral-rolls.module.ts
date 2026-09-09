@@ -17,10 +17,12 @@ import {
 } from 'src/modules/elections/domain/repositories/election.repository.interface';
 import { BulkRegisterElectoralRollUseCase } from './application/use-cases/bulk-register-electoral-roll.use-case';
 import { GetElectoralRollSummaryUseCase } from './application/use-cases/get-electoral-roll-summary.use-case';
+import { ManualRegisterElectoralRollUseCase } from './application/use-cases/manual-register-electoral-roll.use-case';
 import {
   ELECTORAL_ROLL_CSV_PARSER_PORT,
   type ElectoralRollCsvParserPort,
 } from './application/ports/electoral-roll-csv-parser.port';
+import { ElectoralRollRegistrationService } from './application/services/electoral-roll-registration.service';
 import {
   ELECTORAL_ROLL_REPOSITORY,
   type ElectoralRollRepository,
@@ -36,28 +38,29 @@ import { ElectoralRollsController } from './presentation/controllers/electoral-r
     { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
     { provide: ELECTORAL_ROLL_CSV_PARSER_PORT, useClass: ElectoralRollCsvFileParserService },
     {
-      provide: BulkRegisterElectoralRollUseCase,
+      provide: ElectoralRollRegistrationService,
       useFactory: (
-        parser: ElectoralRollCsvParserPort,
         electionRepo: ElectionRepository,
         electorRepo: ElectorRepository,
         electoralRollRepo: ElectoralRollRepository,
         audit: AuditLogPort,
       ) =>
-        new BulkRegisterElectoralRollUseCase(
-          parser,
-          electionRepo,
-          electorRepo,
-          electoralRollRepo,
-          audit,
-        ),
-      inject: [
-        ELECTORAL_ROLL_CSV_PARSER_PORT,
-        ELECTION_REPOSITORY,
-        ELECTOR_REPOSITORY,
-        ELECTORAL_ROLL_REPOSITORY,
-        AUDIT_LOG_PORT,
-      ],
+        new ElectoralRollRegistrationService(electionRepo, electorRepo, electoralRollRepo, audit),
+      inject: [ELECTION_REPOSITORY, ELECTOR_REPOSITORY, ELECTORAL_ROLL_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: BulkRegisterElectoralRollUseCase,
+      useFactory: (
+        parser: ElectoralRollCsvParserPort,
+        registration: ElectoralRollRegistrationService,
+      ) => new BulkRegisterElectoralRollUseCase(parser, registration),
+      inject: [ELECTORAL_ROLL_CSV_PARSER_PORT, ElectoralRollRegistrationService],
+    },
+    {
+      provide: ManualRegisterElectoralRollUseCase,
+      useFactory: (registration: ElectoralRollRegistrationService) =>
+        new ManualRegisterElectoralRollUseCase(registration),
+      inject: [ElectoralRollRegistrationService],
     },
     {
       provide: GetElectoralRollSummaryUseCase,

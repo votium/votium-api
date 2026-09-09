@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -29,8 +30,10 @@ import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
 import { BulkRegisterElectoralRollUseCase } from '../../application/use-cases/bulk-register-electoral-roll.use-case';
 import { GetElectoralRollSummaryUseCase } from '../../application/use-cases/get-electoral-roll-summary.use-case';
+import { ManualRegisterElectoralRollUseCase } from '../../application/use-cases/manual-register-electoral-roll.use-case';
 import { BulkRegisterElectoralRollResponseDto } from '../dtos/bulk-register-electoral-roll-response.dto';
 import { ElectoralRollSummaryResponseDto } from '../dtos/electoral-roll-summary-response.dto';
+import { RegisterElectoralRollDto } from '../dtos/register-electoral-roll.dto';
 import { ElectoralRollPresenter } from '../presenters/electoral-roll.presenter';
 
 const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -49,6 +52,7 @@ type AuthenticatedRequest = Request & {
 export class ElectoralRollsController {
   constructor(
     private readonly bulkRegisterRoll: BulkRegisterElectoralRollUseCase,
+    private readonly manualRegisterRoll: ManualRegisterElectoralRollUseCase,
     private readonly getSummary: GetElectoralRollSummaryUseCase,
   ) {}
 
@@ -97,6 +101,55 @@ export class ElectoralRollsController {
       electionId,
       originalName: file.originalname,
       buffer: file.buffer,
+      requestingUserId: req.user.sub,
+    });
+
+    return ElectoralRollPresenter.toBulkRegisterResponse(result);
+  }
+
+  @Post('register/:electionId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually register existing electors to an election electoral roll',
+    description:
+      'Registers one or more existing electors in the electoral roll of the target election. ' +
+      'Electors are identified by their student code and program code and must already exist in ' +
+      'the system; this endpoint never creates elector accounts. Requires ADMINISTRATOR role. ' +
+      'Reported errors refer to the submitted entries: errors[].row is the 1-based position of the ' +
+      'failing entry in the electors array, and totalRows always equals the number of submitted ' +
+      'entries (duplicates included).',
+  })
+  @ApiParam({
+    name: 'electionId',
+    description: 'UUID of the target election.',
+  })
+  @ApiBody({ type: RegisterElectoralRollDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Electoral roll registration completed.',
+    type: BulkRegisterElectoralRollResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Missing, empty, or invalid elector entries or election identifier.',
+  })
+  @ApiResponse({ status: 401, description: 'Authentication required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Election cannot accept registrations in its current state.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async manualRegisterElectors(
+    @Param('electionId', ParseUUIDPipe) electionId: string,
+    @Body() dto: RegisterElectoralRollDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const result = await this.manualRegisterRoll.execute({
+      electionId,
+      electors: dto.electors,
       requestingUserId: req.user.sub,
     });
 

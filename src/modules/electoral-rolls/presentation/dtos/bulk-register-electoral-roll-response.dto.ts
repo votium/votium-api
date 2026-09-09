@@ -1,7 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class BulkRegisterElectoralRollErrorDto {
-  @ApiProperty({ example: 14 })
+  @ApiProperty({
+    example: 14,
+    description:
+      '1-based row number in the source file, or 1-based position in the submitted electors array for manual registrations.',
+  })
   row!: number;
 
   @ApiProperty({ example: 'Elector not found for the provided student code and program code.' })
