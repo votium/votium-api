@@ -14,6 +14,11 @@ export type PrismaElectorRow = {
 
 export type PrismaElectorCreateData = Omit<PrismaElectorRow, 'id' | 'created_at'>;
 
+export type PrismaElectorUpdateData = Pick<
+  PrismaElectorRow,
+  'first_name' | 'last_name' | 'email' | 'student_code' | 'program_code'
+>;
+
 export class PrismaElectorMapper {
   static toDomain(row: PrismaElectorRow): ElectorEntity {
     return ElectorEntity.restore({
@@ -38,6 +43,16 @@ export class PrismaElectorMapper {
       student_code: entity.studentCode,
       program_code: entity.programCode,
       status: entity.status,
+    };
+  }
+
+  static toUpdateData(entity: ElectorEntity): PrismaElectorUpdateData {
+    return {
+      first_name: entity.firstName,
+      last_name: entity.lastName,
+      email: entity.email,
+      student_code: entity.studentCode,
+      program_code: entity.programCode,
     };
   }
 }

@@ -168,6 +168,91 @@ describe('ElectorEntity', () => {
     });
   });
 
+  describe('update', () => {
+    function restoredEntity() {
+      return ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      });
+    }
+
+    it('EU1: updates only the provided fields', () => {
+      const entity = restoredEntity();
+
+      entity.update({ firstName: 'Maria', studentCode: '202099999' });
+
+      expect(entity.firstName).toBe('Maria');
+      expect(entity.studentCode).toBe('202099999');
+      expect(entity.lastName).toBe('Garcia Saenz');
+      expect(entity.email).toBe('juan.garcia@correounivalle.edu.co');
+      expect(entity.programCode).toBe('2710');
+    });
+
+    it('EU2: trims whitespace on updated fields', () => {
+      const entity = restoredEntity();
+
+      entity.update({
+        firstName: '  Maria  ',
+        lastName: ' Rodriguez ',
+        email: '  maria@example.com ',
+        studentCode: ' 202099999 ',
+        programCode: ' 2710 ',
+      });
+
+      expect(entity.firstName).toBe('Maria');
+      expect(entity.lastName).toBe('Rodriguez');
+      expect(entity.email).toBe('maria@example.com');
+      expect(entity.studentCode).toBe('202099999');
+      expect(entity.programCode).toBe('2710');
+    });
+
+    it('EU3: leaves unprovided fields unchanged', () => {
+      const entity = restoredEntity();
+
+      entity.update({ lastName: 'Rodriguez' });
+
+      expect(entity.lastName).toBe('Rodriguez');
+      expect(entity.firstName).toBe('Juan Camilo');
+      expect(entity.email).toBe('juan.garcia@correounivalle.edu.co');
+      expect(entity.studentCode).toBe('202012345');
+      expect(entity.programCode).toBe('2710');
+    });
+
+    it('EU4: does not touch id, passwordHash, status, or createdAt', () => {
+      const entity = restoredEntity();
+
+      entity.update({
+        firstName: 'Maria',
+        lastName: 'Rodriguez',
+        email: 'maria@example.com',
+        studentCode: '202099999',
+        programCode: '2715',
+      });
+
+      expect(entity.id).toBe('elector-1');
+      expect(entity.passwordHash).toBe('pbkdf2$210000$salt$hash');
+      expect(entity.status).toBe('ACTIVE');
+      expect(entity.createdAt).toEqual(new Date('2026-08-01T00:00:00.000Z'));
+    });
+
+    it('EU5: an empty input leaves the entity unchanged', () => {
+      const entity = restoredEntity();
+
+      entity.update({});
+
+      expect(entity.firstName).toBe('Juan Camilo');
+      expect(entity.lastName).toBe('Garcia Saenz');
+      expect(entity.email).toBe('juan.garcia@correounivalle.edu.co');
+      expect(entity.passwordHash).toBe('pbkdf2$210000$salt$hash');
+      expect(entity.studentCode).toBe('202012345');
+      expect(entity.programCode).toBe('2710');
+      expect(entity.status).toBe('ACTIVE');
+      expect(entity.id).toBe('elector-1');
+    });
+  });
+
   describe('buildTemporaryPassword', () => {
     it('generates the password from the spec example 1', () => {
       expect(ElectorEntity.buildTemporaryPassword('Juan Camilo', 'Garcia Saenz', '202012345')).toBe(

@@ -15,4 +15,8 @@ export interface ElectoralRollRepository {
 
   // Count existing rolls for an election.
   countByElection(electionId: string): Promise<number>;
+
+  // Removes the association between an election and an elector. Returns true
+  // when a row was deleted, false when no association existed.
+  deleteByElectionAndElectorId(electionId: string, electorId: string): Promise<boolean>;
 }

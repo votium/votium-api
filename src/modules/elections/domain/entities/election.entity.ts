@@ -114,6 +114,13 @@ export class ElectionEntity {
     );
   }
 
+  // Whether the electoral roll of this election can be modified. Only the
+  // PENDING lifecycle state allows roll modifications; CREATED/PUBLISHED/
+  // ACTIVE/CLOSED are sealed. Single decision point for the modifiable rule.
+  isRollModifiable(): boolean {
+    return this._currentStatus === 'PENDING';
+  }
+
   // Whether the election can still accept candidate registrations. Only the
   // PENDING lifecycle state may receive candidacies. Single decision point for
   // the candidacy-eligibility rule.

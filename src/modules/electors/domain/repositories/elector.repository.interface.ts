@@ -30,6 +30,12 @@ export interface ElectorRepository {
   // when the id does not exist. Never performs a physical deletion.
   updateStatus(id: string, status: string): Promise<ElectorEntity | null>;
 
+  // Updates the elector's editable fields (firstName, lastName, email,
+  // studentCode, programCode). Returns the updated elector, or null when the
+  // id does not exist. Throws ElectorDuplicateError on unique conflicts
+  // (email, student_code).
+  update(entity: ElectorEntity): Promise<ElectorEntity | null>;
+
   // Returns the elector whose email matches (case-insensitively), or null.
   findByEmail(email: string): Promise<ElectorEntity | null>;
 

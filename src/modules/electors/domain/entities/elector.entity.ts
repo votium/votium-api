@@ -22,18 +22,26 @@ export interface RestoreElectorInput {
   createdAt: Date;
 }
 
+export interface UpdateElectorInput {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  studentCode?: string;
+  programCode?: string;
+}
+
 export class ElectorEntity {
   static readonly DEFAULT_STATUS = 'ACTIVE';
   static readonly INACTIVE_STATUS = 'INACTIVE';
 
   private constructor(
     public readonly id: string | null,
-    public readonly firstName: string,
-    public readonly lastName: string,
-    public readonly email: string,
+    public firstName: string,
+    public lastName: string,
+    public email: string,
     public readonly passwordHash: string,
-    public readonly studentCode: string,
-    public readonly programCode: string,
+    public studentCode: string,
+    public programCode: string,
     private _status: string,
     public readonly createdAt: Date | null,
   ) {}
@@ -88,6 +96,26 @@ export class ElectorEntity {
     }
 
     this._status = ElectorEntity.INACTIVE_STATUS;
+  }
+
+  // Merges the provided partial input into the entity. Only supplied fields
+  // change; `id`, `passwordHash`, `status`, and `createdAt` are immutable.
+  update(input: UpdateElectorInput): void {
+    if (input.firstName !== undefined) {
+      this.firstName = input.firstName.trim();
+    }
+    if (input.lastName !== undefined) {
+      this.lastName = input.lastName.trim();
+    }
+    if (input.email !== undefined) {
+      this.email = input.email.trim();
+    }
+    if (input.studentCode !== undefined) {
+      this.studentCode = input.studentCode.trim();
+    }
+    if (input.programCode !== undefined) {
+      this.programCode = input.programCode.trim();
+    }
   }
 }
 

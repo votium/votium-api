@@ -32,6 +32,7 @@ function makeElectorRepo(electors: ElectorEntity[]): ElectorRepository {
     findByStudentCodeOrEmail: jest.fn(),
     findById: jest.fn(),
     updateStatus: jest.fn(),
+    update: jest.fn(),
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn().mockResolvedValue(electors),
@@ -46,6 +47,7 @@ function makeElectoralRollRepo(
     findByElectionAndElectorIds: jest.fn().mockResolvedValue(existingRolls),
     createMany: jest.fn().mockResolvedValue(createdCount),
     countByElection: jest.fn(),
+    deleteByElectionAndElectorId: jest.fn(),
   };
 }
 

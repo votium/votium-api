@@ -9,6 +9,7 @@ describe('GetMeElectorUseCase', () => {
     findByStudentCodeOrEmail: jest.fn(),
     findById: jest.fn(),
     updateStatus: jest.fn(),
+    update: jest.fn(),
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn(),
