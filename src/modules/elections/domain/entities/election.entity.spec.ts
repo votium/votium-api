@@ -229,6 +229,43 @@ describe('ElectionEntity', () => {
     });
   });
 
+  describe('isRollModifiable', () => {
+    function makeElection(currentStatus: string): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: currentStatus as ElectionEntity['currentStatus'],
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+    }
+
+    it('TM1: is true for PENDING', () => {
+      expect(makeElection('PENDING').isRollModifiable()).toBe(true);
+    });
+
+    it('TM2: is false for CREATED', () => {
+      expect(makeElection('CREATED').isRollModifiable()).toBe(false);
+    });
+
+    it('TM3: is false for PUBLISHED', () => {
+      expect(makeElection('PUBLISHED').isRollModifiable()).toBe(false);
+    });
+
+    it('TM4: is false for ACTIVE', () => {
+      expect(makeElection('ACTIVE').isRollModifiable()).toBe(false);
+    });
+
+    it('TM5: is false for CLOSED', () => {
+      expect(makeElection('CLOSED').isRollModifiable()).toBe(false);
+    });
+  });
+
   describe('markAsPending', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({

@@ -43,4 +43,15 @@ export class PrismaElectoralRollRepository implements ElectoralRollRepository {
       where: { election_id: electionId },
     });
   }
+
+  async deleteByElectionAndElectorId(electionId: string, electorId: string): Promise<boolean> {
+    const result = await this.prisma.electoralRoll.deleteMany({
+      where: {
+        election_id: electionId,
+        elector_id: electorId,
+      },
+    });
+
+    return result.count > 0;
+  }
 }

@@ -384,4 +384,111 @@ describe('PrismaElectorRepository integration', () => {
       expect(found?.status).toBe(ElectorEntity.INACTIVE_STATUS);
     });
   });
+
+  describe('update', () => {
+    async function buildSavedElector(code: string, email: string): Promise<ElectorEntity> {
+      usedStudentCodes.push(code);
+      return repository.create(buildEntity(code, email));
+    }
+
+    it('IE1: persists changed editable fields and returns the updated entity', async () => {
+      const code = `UPD-1-${suffix}`;
+      const saved = await buildSavedElector(code, `upd-1-${suffix}@example.com`);
+
+      const loaded = await repository.findById(saved.id as string);
+      loaded!.update({
+        firstName: 'Maria',
+        lastName: 'Rodriguez',
+        studentCode: `UPD-1B-${suffix}`,
+        programCode: '2715',
+      });
+      usedStudentCodes.push(`UPD-1B-${suffix}`);
+
+      const updated = await repository.update(loaded!);
+
+      expect(updated).not.toBeNull();
+      expect(updated?.id).toBe(saved.id);
+      expect(updated?.firstName).toBe('Maria');
+      expect(updated?.lastName).toBe('Rodriguez');
+      expect(updated?.studentCode).toBe(`UPD-1B-${suffix}`);
+      expect(updated?.programCode).toBe('2715');
+      expect(updated?.email).toBe(`upd-1-${suffix}@example.com`);
+    });
+
+    it('IE2: only updates the targeted elector', async () => {
+      const codeA = `UPD-2A-${suffix}`;
+      const codeB = `UPD-2B-${suffix}`;
+      const savedA = await buildSavedElector(codeA, `upd-2a-${suffix}@example.com`);
+      const savedB = await buildSavedElector(codeB, `upd-2b-${suffix}@example.com`);
+
+      const loadedA = await repository.findById(savedA.id as string);
+      loadedA!.update({ firstName: 'Maria' });
+      await repository.update(loadedA!);
+
+      const untouched = await repository.findById(savedB.id as string);
+      expect(untouched?.firstName).toBe('Juan');
+      expect(untouched?.id).toBe(savedB.id);
+    });
+
+    it('IE3: returns null for a nonexistent id', async () => {
+      const entity = buildEntity(`UPD-3-${suffix}`, `upd-3-${suffix}@example.com`);
+      usedStudentCodes.push(`UPD-3-${suffix}`);
+      const missing = ElectorEntity.restore({
+        id: crypto.randomUUID(),
+        firstName: entity.firstName,
+        lastName: entity.lastName,
+        email: entity.email,
+        passwordHash: entity.passwordHash,
+        studentCode: entity.studentCode,
+        programCode: entity.programCode,
+        status: entity.status,
+        createdAt: new Date(),
+      });
+
+      const updated = await repository.update(missing);
+
+      expect(updated).toBeNull();
+    });
+
+    it('IE4: throws ElectorDuplicateError when the email conflicts', async () => {
+      const targetCode = `UPD-4A-${suffix}`;
+      const conflictCode = `UPD-4B-${suffix}`;
+      const conflictEmail = `upd-4-conflict-${suffix}@example.com`;
+      const target = await buildSavedElector(targetCode, `upd-4a-${suffix}@example.com`);
+      await buildSavedElector(conflictCode, conflictEmail);
+
+      const loaded = await repository.findById(target.id as string);
+      loaded!.update({ email: conflictEmail });
+
+      await expect(repository.update(loaded!)).rejects.toBeInstanceOf(ElectorDuplicateError);
+    });
+
+    it('IE5: throws ElectorDuplicateError when the student code conflicts', async () => {
+      const targetCode = `UPD-5A-${suffix}`;
+      const conflictCode = `UPD-5B-${suffix}`;
+      const target = await buildSavedElector(targetCode, `upd-5a-${suffix}@example.com`);
+      await buildSavedElector(conflictCode, `upd-5b-${suffix}@example.com`);
+
+      const loaded = await repository.findById(target.id as string);
+      loaded!.update({ studentCode: conflictCode });
+
+      await expect(repository.update(loaded!)).rejects.toBeInstanceOf(ElectorDuplicateError);
+    });
+
+    it('IE6: keeps id, createdAt, status, and passwordHash unchanged', async () => {
+      const code = `UPD-6-${suffix}`;
+      const saved = await buildSavedElector(code, `upd-6-${suffix}@example.com`);
+
+      const loaded = await repository.findById(saved.id as string);
+      const createdAt = loaded!.createdAt as Date;
+      loaded!.update({ firstName: 'Maria' });
+
+      const updated = await repository.update(loaded!);
+
+      expect(updated?.id).toBe(saved.id);
+      expect(updated?.createdAt).toEqual(createdAt);
+      expect(updated?.status).toBe(ElectorEntity.DEFAULT_STATUS);
+      expect(updated?.passwordHash).toBe('pbkdf2$210000$salt$hash');
+    });
+  });
 });

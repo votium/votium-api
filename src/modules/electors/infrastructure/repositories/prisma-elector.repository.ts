@@ -73,6 +73,23 @@ export class PrismaElectorRepository implements ElectorRepository {
     }
   }
 
+  async update(entity: ElectorEntity): Promise<ElectorEntity | null> {
+    if (!entity.id) return null;
+    try {
+      const row = await this.prisma.elector.update({
+        where: { id: entity.id },
+        data: PrismaElectorMapper.toUpdateData(entity),
+      });
+      return PrismaElectorMapper.toDomain(row);
+    } catch (error) {
+      if (isRecordNotFoundError(error)) return null;
+      if (isUniqueConstraintError(error)) {
+        throw new ElectorDuplicateError();
+      }
+      throw error;
+    }
+  }
+
   async search(params: ElectorSearchParams): Promise<ElectorSearchResult> {
     const skip = (params.page - 1) * params.limit;
 

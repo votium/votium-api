@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   UploadedFile,
@@ -27,13 +29,18 @@ import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guar
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
+import { ElectorPresenter } from 'src/modules/electors/presentation/presenters/elector.presenter';
+import { ElectorResponseDto } from 'src/modules/electors/presentation/dtos/elector-response.dto';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
 import { BulkRegisterElectoralRollUseCase } from '../../application/use-cases/bulk-register-electoral-roll.use-case';
 import { GetElectoralRollSummaryUseCase } from '../../application/use-cases/get-electoral-roll-summary.use-case';
 import { ManualRegisterElectoralRollUseCase } from '../../application/use-cases/manual-register-electoral-roll.use-case';
+import { RemoveElectorFromElectoralRollUseCase } from '../../application/use-cases/remove-elector-from-electoral-roll.use-case';
+import { UpdateElectoralRollElectorUseCase } from '../../application/use-cases/update-electoral-roll-elector.use-case';
 import { BulkRegisterElectoralRollResponseDto } from '../dtos/bulk-register-electoral-roll-response.dto';
 import { ElectoralRollSummaryResponseDto } from '../dtos/electoral-roll-summary-response.dto';
 import { RegisterElectoralRollDto } from '../dtos/register-electoral-roll.dto';
+import { UpdateElectoralRollElectorDto } from '../dtos/update-electoral-roll-elector.dto';
 import { ElectoralRollPresenter } from '../presenters/electoral-roll.presenter';
 
 const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -54,6 +61,8 @@ export class ElectoralRollsController {
     private readonly bulkRegisterRoll: BulkRegisterElectoralRollUseCase,
     private readonly manualRegisterRoll: ManualRegisterElectoralRollUseCase,
     private readonly getSummary: GetElectoralRollSummaryUseCase,
+    private readonly updateRollElector: UpdateElectoralRollElectorUseCase,
+    private readonly removeRollElector: RemoveElectorFromElectoralRollUseCase,
   ) {}
 
   @Post('bulk-register/:electionId')
@@ -179,5 +188,101 @@ export class ElectoralRollsController {
   async getElectoralRollSummary(@Param('electionId', ParseUUIDPipe) electionId: string) {
     const result = await this.getSummary.execute(electionId);
     return ElectoralRollPresenter.toSummary(result);
+  }
+
+  @Patch(':electionId/electors/:electorId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Update an elector in an election electoral roll',
+    description:
+      'Updates the editable fields (firstName, lastName, email, studentCode, programCode) of ' +
+      'the elector associated with the given election electoral roll. The election must be in ' +
+      'PENDING state. Only the provided fields are updated. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'electionId', description: 'UUID of the target election.', example: 'uuid' })
+  @ApiParam({ name: 'electorId', description: 'UUID of the elector.', example: 'uuid' })
+  @ApiBody({ type: UpdateElectoralRollElectorDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Elector updated successfully.',
+    type: ElectorResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid election or elector identifier, or invalid request body.',
+  })
+  @ApiResponse({ status: 401, description: 'Authentication required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Election, elector, or electoral roll association not found.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Election is not modifiable in its current state, or a duplicate email/student code conflict.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async updateElectoralRollElector(
+    @Param('electionId', ParseUUIDPipe) electionId: string,
+    @Param('electorId', ParseUUIDPipe) electorId: string,
+    @Body() dto: UpdateElectoralRollElectorDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const updated = await this.updateRollElector.execute({
+      electionId,
+      electorId,
+      data: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        studentCode: dto.studentCode,
+        programCode: dto.programCode,
+      },
+      requestingUserId: req.user.sub,
+    });
+
+    return ElectorPresenter.toResponse(updated);
+  }
+
+  @Delete(':electionId/electors/:electorId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Remove an elector from an election electoral roll',
+    description:
+      'Removes the association between the elector and the election electoral roll. The ' +
+      'election must be in PENDING state. The elector account itself is never deleted. ' +
+      'Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'electionId', description: 'UUID of the target election.', example: 'uuid' })
+  @ApiParam({ name: 'electorId', description: 'UUID of the elector.', example: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Elector removed from the electoral roll.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid election or elector identifier.',
+  })
+  @ApiResponse({ status: 401, description: 'Authentication required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Election, elector, or electoral roll association not found.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Election is not modifiable in its current state.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async removeElectorFromElectoralRoll(
+    @Param('electionId', ParseUUIDPipe) electionId: string,
+    @Param('electorId', ParseUUIDPipe) electorId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    await this.removeRollElector.execute({
+      electionId,
+      electorId,
+      requestingUserId: req.user.sub,
+    });
   }
 }

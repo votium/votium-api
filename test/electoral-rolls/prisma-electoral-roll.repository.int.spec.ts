@@ -164,6 +164,70 @@ describe('PrismaElectoralRollRepository integration', () => {
     });
   });
 
+  describe('deleteByElectionAndElectorId', () => {
+    it('IR1: deletes only the targeted election–elector pair, leaving others untouched', async () => {
+      const electionA = await seedElection();
+      const electionB = await seedElection();
+      const electorA = await seedElector();
+      const electorB = await seedElector();
+      await repository.createMany(electionA, [electorA, electorB]);
+      await repository.createMany(electionB, [electorA]);
+
+      const deleted = await repository.deleteByElectionAndElectorId(electionA, electorA);
+
+      expect(deleted).toBe(true);
+      expect(await repository.countByElection(electionA)).toBe(1);
+      expect(await repository.countByElection(electionB)).toBe(1);
+      const remainingA = await prisma.electoralRoll.findMany({
+        where: { election_id: electionA },
+      });
+      expect(remainingA[0].elector_id).toBe(electorB);
+    });
+
+    it('IR2: returns true when a row is deleted', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await repository.createMany(electionId, [electorId]);
+
+      const deleted = await repository.deleteByElectionAndElectorId(electionId, electorId);
+
+      expect(deleted).toBe(true);
+    });
+
+    it('IR3: returns false when no association exists', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+
+      const deleted = await repository.deleteByElectionAndElectorId(electionId, electorId);
+
+      expect(deleted).toBe(false);
+    });
+
+    it('IR4: leaves the elector row itself in the database', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await repository.createMany(electionId, [electorId]);
+
+      await repository.deleteByElectionAndElectorId(electionId, electorId);
+
+      const elector = await prisma.elector.findUnique({ where: { id: electorId } });
+      expect(elector).not.toBeNull();
+    });
+
+    it('IR5: is idempotent — a second call returns false', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await repository.createMany(electionId, [electorId]);
+
+      await expect(repository.deleteByElectionAndElectorId(electionId, electorId)).resolves.toBe(
+        true,
+      );
+      await expect(repository.deleteByElectionAndElectorId(electionId, electorId)).resolves.toBe(
+        false,
+      );
+    });
+  });
+
   describe('persisted defaults', () => {
     it('I10: persists default values (hasVoted=false, voteAttempts=0)', async () => {
       const electionId = await seedElection();
