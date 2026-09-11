@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CandidateEntity } from 'src/modules/candidates/domain/entities/candidate.entity';
 import { PrismaService } from 'src/shared/database/prisma.service';
-import { CandidacyEntity } from '../../domain/entities/candidacy.entity';
+import type { CandidacyEntity, UpdateCandidacyInput } from '../../domain/entities/candidacy.entity';
 import { CandidacyDuplicateError } from '../../domain/errors/candidacy-duplicate.error';
 import type {
   CandidacyListParams,
@@ -74,6 +74,34 @@ export class PrismaCandidacyRepository implements CandidacyRepository {
       createdAt: row.created_at,
     }));
   }
+
+  async findById(id: string): Promise<CandidacyEntity | null> {
+    const row = await this.prisma.candiday.findUnique({ where: { id } });
+    return row ? PrismaCandidacyMapper.toDomain(row) : null;
+  }
+
+  async update(id: string, input: UpdateCandidacyInput): Promise<CandidacyEntity | null> {
+    try {
+      const row = await this.prisma.candiday.update({
+        where: { id },
+        data: PrismaCandidacyMapper.toUpdateData(input),
+      });
+      return PrismaCandidacyMapper.toDomain(row);
+    } catch (error) {
+      if (isRecordNotFoundError(error)) return null;
+      if (isUniqueConstraintError(error)) throw new CandidacyDuplicateError();
+      throw error;
+    }
+  }
+}
+
+function isRecordNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2025'
+  );
 }
 
 function isUniqueConstraintError(error: unknown): boolean {

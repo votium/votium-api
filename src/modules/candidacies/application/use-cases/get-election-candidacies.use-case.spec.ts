@@ -52,6 +52,8 @@ describe('GetElectionCandidaciesUseCase', () => {
     findMaxPosition: jest.fn(),
     create: jest.fn(),
     findByElection: jest.fn(),
+    findById: jest.fn(),
+    update: jest.fn(),
   };
 
   beforeEach(() => {
