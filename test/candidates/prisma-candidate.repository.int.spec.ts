@@ -412,11 +412,11 @@ describe('PrismaCandidateRepository integration', () => {
     }
 
     beforeAll(async () => {
-      // Start from a clean slate: this is the only integration spec that writes candidates,
-      // so removing all rows makes the search assertions deterministic even if a previous run
-      // left stray rows behind.
-      await prisma.candidate.deleteMany({});
-
+      // Assertions below are scoped to this suite's own seeded rows via
+      // searchCodes, so they stay deterministic even when other integration
+      // suites seed candidates concurrently. Do NOT wipe the global candidates
+      // table here: the tests run in parallel over a shared database and such a
+      // wipe can delete rows another suite depends on.
       candidateA = await seedSearchCandidate({
         firstName: 'Juan',
         lastName: 'Garcia',
@@ -456,18 +456,17 @@ describe('PrismaCandidateRepository integration', () => {
     it('returns all candidates ordered by created_at desc when no filters are provided', async () => {
       const rows = await repository.search({});
 
-      const codes = rows.map((row) => row.studentCode);
-      expect(codes).toHaveLength(4);
-      expect(codes).toEqual(
-        expect.arrayContaining([
+      const own = rows.filter((row) => searchCodes.includes(row.studentCode));
+      expect(own.map((row) => row.studentCode).sort()).toEqual(
+        [
           candidateA.studentCode,
           candidateB.studentCode,
           candidateC.studentCode,
           candidateD.studentCode,
-        ]),
+        ].sort(),
       );
 
-      const times = rows.map((row) => row.createdAt!.getTime());
+      const times = own.map((row) => row.createdAt!.getTime());
       for (let i = 1; i < times.length; i++) {
         expect(times[i]).toBeLessThanOrEqual(times[i - 1]);
       }
@@ -475,26 +474,37 @@ describe('PrismaCandidateRepository integration', () => {
 
     it('filters firstName with a case-insensitive partial match', async () => {
       const byLower = await repository.search({ firstName: 'jua' });
-      expect(byLower.map((row) => row.studentCode).sort()).toEqual(
-        [candidateA.studentCode, candidateC.studentCode].sort(),
-      );
+      expect(
+        byLower
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
 
       const byUpper = await repository.search({ firstName: 'JUAN' });
-      expect(byUpper.map((row) => row.studentCode).sort()).toEqual(
-        [candidateA.studentCode, candidateC.studentCode].sort(),
-      );
+      expect(
+        byUpper
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
     });
 
     it('filters lastName with a case-insensitive partial match', async () => {
       const rows = await repository.search({ lastName: 'rodri' });
-      expect(rows.map((row) => row.studentCode)).toEqual([candidateB.studentCode]);
+      expect(
+        rows.filter((row) => searchCodes.includes(row.studentCode)).map((row) => row.studentCode),
+      ).toEqual([candidateB.studentCode]);
     });
 
     it('filters studyPlanCode with an exact match', async () => {
       const exact = await repository.search({ studyPlanCode: '1234' });
-      expect(exact.map((row) => row.studentCode).sort()).toEqual(
-        [candidateA.studentCode, candidateC.studentCode].sort(),
-      );
+      expect(
+        exact
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
 
       const partial = await repository.search({ studyPlanCode: '123' });
       expect(partial).toEqual([]);
@@ -514,9 +524,12 @@ describe('PrismaCandidateRepository integration', () => {
 
     it('combines multiple filters with AND semantics', async () => {
       const byNameAndPlan = await repository.search({ firstName: 'Juan', studyPlanCode: '1234' });
-      expect(byNameAndPlan.map((row) => row.studentCode).sort()).toEqual(
-        [candidateA.studentCode, candidateC.studentCode].sort(),
-      );
+      expect(
+        byNameAndPlan
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
 
       const allThree = await repository.search({
         firstName: 'Juan',
@@ -528,14 +541,17 @@ describe('PrismaCandidateRepository integration', () => {
 
     it('ignores empty and whitespace-only filter values', async () => {
       const rows = await repository.search({ firstName: '   ', studentCode: '' });
-      expect(rows).toHaveLength(4);
+      expect(rows.filter((row) => searchCodes.includes(row.studentCode))).toHaveLength(4);
     });
 
     it('trims filter values before matching', async () => {
       const rows = await repository.search({ studyPlanCode: ' 1234 ', firstName: ' Juan ' });
-      expect(rows.map((row) => row.studentCode).sort()).toEqual(
-        [candidateA.studentCode, candidateC.studentCode].sort(),
-      );
+      expect(
+        rows
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
     });
 
     it('returns an empty array when no candidate matches', async () => {
@@ -575,7 +591,8 @@ describe('PrismaCandidateRepository integration', () => {
 
       const all = await repository.search({});
       expect(all.map((row) => row.studentCode)).not.toContain(inactive.student_code);
-      expect(all).toHaveLength(4);
+      const own = all.filter((row) => searchCodes.includes(row.studentCode));
+      expect(own).toHaveLength(4);
     });
   });
 });

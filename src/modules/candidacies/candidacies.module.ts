@@ -15,6 +15,7 @@ import {
 } from 'src/modules/elections/domain/repositories/election.repository.interface';
 import { CandidatesModule } from 'src/modules/candidates/candidates.module';
 import { ElectionsModule } from 'src/modules/elections/elections.module';
+import { GetElectionCandidaciesUseCase } from './application/use-cases/get-election-candidacies.use-case';
 import { RegisterCandidacyUseCase } from './application/use-cases/register-candidacy.use-case';
 import {
   CANDIDACY_REPOSITORY,
@@ -22,10 +23,11 @@ import {
 } from './domain/repositories/candidacy.repository.interface';
 import { PrismaCandidacyRepository } from './infrastructure/repositories/prisma-candidacy.repository';
 import { CandidaciesController } from './presentation/controllers/candidacies.controller';
+import { ElectionCandidaciesController } from './presentation/controllers/election-candidacies.controller';
 
 @Module({
   imports: [IamModule, AuthModule, ElectionsModule, CandidatesModule],
-  controllers: [CandidaciesController],
+  controllers: [CandidaciesController, ElectionCandidaciesController],
   providers: [
     { provide: CANDIDACY_REPOSITORY, useClass: PrismaCandidacyRepository },
     {
@@ -37,6 +39,12 @@ import { CandidaciesController } from './presentation/controllers/candidacies.co
         audit: AuditLogPort,
       ) => new RegisterCandidacyUseCase(candidates, elections, candidacies, audit),
       inject: [CANDIDATE_REPOSITORY, ELECTION_REPOSITORY, CANDIDACY_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: GetElectionCandidaciesUseCase,
+      useFactory: (elections: ElectionRepository, candidacies: CandidacyRepository) =>
+        new GetElectionCandidaciesUseCase(elections, candidacies),
+      inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY],
     },
   ],
 })
