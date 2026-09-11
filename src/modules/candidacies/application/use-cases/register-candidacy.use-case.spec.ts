@@ -54,6 +54,7 @@ function makeCandidacyRepo(
           createdAt: new Date('2026-08-29T15:00:00.000Z'),
         }),
     ),
+    findByElection: jest.fn(),
   };
 }
 
@@ -214,6 +215,7 @@ describe('RegisterCandidacyUseCase', () => {
       const candidacyRepo: CandidacyRepository = {
         findMaxPosition: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockRejectedValue(new CandidacyDuplicateError()),
+        findByElection: jest.fn(),
       };
       const audit = makeAudit();
       const useCase = new RegisterCandidacyUseCase(
@@ -232,6 +234,7 @@ describe('RegisterCandidacyUseCase', () => {
       const candidacyRepo: CandidacyRepository = {
         findMaxPosition: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockRejectedValue(new Error('database exploded')),
+        findByElection: jest.fn(),
       };
       const useCase = new RegisterCandidacyUseCase(
         makeCandidateRepo(buildCandidate()),
