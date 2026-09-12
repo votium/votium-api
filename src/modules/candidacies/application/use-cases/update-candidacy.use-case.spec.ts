@@ -62,11 +62,12 @@ describe('UpdateCandidacyUseCase', () => {
       delete: jest.fn(),
     };
     candidacies = {
-      findMaxPosition: jest.fn(),
+      findUsedPositions: jest.fn(),
       create: jest.fn(),
       findByElection: jest.fn(),
       findById: jest.fn(),
       update: jest.fn(),
+      deleteByElectionAndCandidacyId: jest.fn(),
     };
     audit = { log: jest.fn() };
     jest.clearAllMocks();

@@ -12,6 +12,7 @@ import { CandidacyEntity } from '../../domain/entities/candidacy.entity';
 import { CandidacyDuplicateError } from '../../domain/errors/candidacy-duplicate.error';
 import { ElectionNotEligibleForCandidacyError } from '../../domain/errors/election-not-eligible-for-candidacy.error';
 import type { CandidacyRepository } from '../../domain/repositories/candidacy.repository.interface';
+import { lowestAvailablePosition } from '../position.util';
 import { RegisterCandidacyUseCase } from './register-candidacy.use-case';
 
 function makeCandidateRepo(candidate: CandidateEntity | null): CandidateRepository {
@@ -38,18 +39,19 @@ function makeElectionRepo(election: ElectionEntity | null): ElectionRepository {
 }
 
 function makeCandidacyRepo(
-  maxPosition = 0,
+  usedPositions: number[] = [],
   saved: CandidacyEntity | null = null,
 ): CandidacyRepository {
+  const positionNumber = lowestAvailablePosition(usedPositions);
   return {
-    findMaxPosition: jest.fn().mockResolvedValue(maxPosition),
+    findUsedPositions: jest.fn().mockResolvedValue(usedPositions),
     create: jest.fn().mockResolvedValue(
       saved ??
         CandidacyEntity.restore({
           id: 'candidacy-uuid',
           electionId: 'election-uuid',
           candidateId: 'candidate-uuid',
-          positionNumber: maxPosition + 1,
+          positionNumber,
           imageUrl: null,
           createdAt: new Date('2026-08-29T15:00:00.000Z'),
         }),
@@ -57,6 +59,7 @@ function makeCandidacyRepo(
     findByElection: jest.fn(),
     findById: jest.fn(),
     update: jest.fn(),
+    deleteByElectionAndCandidacyId: jest.fn(),
   };
 }
 
@@ -100,14 +103,60 @@ const baseInput = {
 
 describe('RegisterCandidacyUseCase', () => {
   describe('happy path and position computation', () => {
-    it('U-01: registers a candidate in a Pending election with the next available position (max + 1)', async () => {
-      const candidacyRepo = makeCandidacyRepo(3);
+    it('U-01: reuses the lowest available position (1,3 -> 2) after a deletion', async () => {
+      const candidacyRepo = makeCandidacyRepo([1, 3]);
       const audit = makeAudit();
       const useCase = new RegisterCandidacyUseCase(
         makeCandidateRepo(buildCandidate()),
         makeElectionRepo(buildElection('PENDING')),
         candidacyRepo,
         audit,
+      );
+
+      const result = await useCase.execute(baseInput);
+
+      expect(result.positionNumber).toBe(2);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(candidacyRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          electionId: 'election-uuid',
+          candidateId: 'candidate-uuid',
+          positionNumber: 2,
+          id: null,
+        }),
+      );
+    });
+
+    it('U-02: assigns position 1 when no prior candidacy exists (empty election, zero-candidate reset)', async () => {
+      const candidacyRepo = makeCandidacyRepo([]);
+      const useCase = new RegisterCandidacyUseCase(
+        makeCandidateRepo(buildCandidate()),
+        makeElectionRepo(buildElection('PENDING')),
+        candidacyRepo,
+        makeAudit(),
+      );
+
+      const result = await useCase.execute(baseInput);
+
+      expect(result.positionNumber).toBe(1);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(candidacyRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          electionId: 'election-uuid',
+          candidateId: 'candidate-uuid',
+          positionNumber: 1,
+          id: null,
+        }),
+      );
+    });
+
+    it('U-03: appends after the existing max when there are no gaps (1,2,3 -> 4)', async () => {
+      const candidacyRepo = makeCandidacyRepo([1, 2, 3]);
+      const useCase = new RegisterCandidacyUseCase(
+        makeCandidateRepo(buildCandidate()),
+        makeElectionRepo(buildElection('PENDING')),
+        candidacyRepo,
+        makeAudit(),
       );
 
       const result = await useCase.execute(baseInput);
@@ -122,34 +171,6 @@ describe('RegisterCandidacyUseCase', () => {
           id: null,
         }),
       );
-    });
-
-    it('U-02: assigns position 1 when no prior candidacy exists (max 0)', async () => {
-      const candidacyRepo = makeCandidacyRepo(0);
-      const useCase = new RegisterCandidacyUseCase(
-        makeCandidateRepo(buildCandidate()),
-        makeElectionRepo(buildElection('PENDING')),
-        candidacyRepo,
-        makeAudit(),
-      );
-
-      const result = await useCase.execute(baseInput);
-
-      expect(result.positionNumber).toBe(1);
-    });
-
-    it('U-03: appends after an existing max', async () => {
-      const candidacyRepo = makeCandidacyRepo(3);
-      const useCase = new RegisterCandidacyUseCase(
-        makeCandidateRepo(buildCandidate()),
-        makeElectionRepo(buildElection('PENDING')),
-        candidacyRepo,
-        makeAudit(),
-      );
-
-      const result = await useCase.execute(baseInput);
-
-      expect(result.positionNumber).toBe(4);
     });
   });
 
@@ -166,7 +187,7 @@ describe('RegisterCandidacyUseCase', () => {
 
       await expect(useCase.execute(baseInput)).rejects.toBeInstanceOf(ElectionNotFoundError);
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(candidacyRepo.findMaxPosition).not.toHaveBeenCalled();
+      expect(candidacyRepo.findUsedPositions).not.toHaveBeenCalled();
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(candidacyRepo.create).not.toHaveBeenCalled();
     });
@@ -182,7 +203,7 @@ describe('RegisterCandidacyUseCase', () => {
 
       await expect(useCase.execute(baseInput)).rejects.toBeInstanceOf(CandidateNotFoundError);
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(candidacyRepo.findMaxPosition).not.toHaveBeenCalled();
+      expect(candidacyRepo.findUsedPositions).not.toHaveBeenCalled();
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(candidacyRepo.create).not.toHaveBeenCalled();
     });
@@ -203,7 +224,7 @@ describe('RegisterCandidacyUseCase', () => {
           ElectionNotEligibleForCandidacyError,
         );
         // eslint-disable-next-line @typescript-eslint/unbound-method
-        expect(candidacyRepo.findMaxPosition).not.toHaveBeenCalled();
+        expect(candidacyRepo.findUsedPositions).not.toHaveBeenCalled();
         // eslint-disable-next-line @typescript-eslint/unbound-method
         expect(candidacyRepo.create).not.toHaveBeenCalled();
         // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -215,11 +236,12 @@ describe('RegisterCandidacyUseCase', () => {
   describe('persistence and errors', () => {
     it('U-08: propagates CandidacyDuplicateError from the repository', async () => {
       const candidacyRepo: CandidacyRepository = {
-        findMaxPosition: jest.fn().mockResolvedValue(0),
+        findUsedPositions: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockRejectedValue(new CandidacyDuplicateError()),
         findByElection: jest.fn(),
         findById: jest.fn(),
         update: jest.fn(),
+        deleteByElectionAndCandidacyId: jest.fn(),
       };
       const audit = makeAudit();
       const useCase = new RegisterCandidacyUseCase(
@@ -236,11 +258,12 @@ describe('RegisterCandidacyUseCase', () => {
 
     it('U-09: propagates unexpected repository failures unchanged', async () => {
       const candidacyRepo: CandidacyRepository = {
-        findMaxPosition: jest.fn().mockResolvedValue(0),
+        findUsedPositions: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockRejectedValue(new Error('database exploded')),
         findByElection: jest.fn(),
         findById: jest.fn(),
         update: jest.fn(),
+        deleteByElectionAndCandidacyId: jest.fn(),
       };
       const useCase = new RegisterCandidacyUseCase(
         makeCandidateRepo(buildCandidate()),
@@ -259,7 +282,7 @@ describe('RegisterCandidacyUseCase', () => {
       const useCase = new RegisterCandidacyUseCase(
         makeCandidateRepo(buildCandidate()),
         makeElectionRepo(buildElection('PENDING')),
-        makeCandidacyRepo(0),
+        makeCandidacyRepo([]),
         audit,
       );
 
@@ -284,7 +307,7 @@ describe('RegisterCandidacyUseCase', () => {
       const useCase = new RegisterCandidacyUseCase(
         makeCandidateRepo(buildCandidate()),
         makeElectionRepo(buildElection('PENDING')),
-        makeCandidacyRepo(0),
+        makeCandidacyRepo([]),
         audit,
       );
 
