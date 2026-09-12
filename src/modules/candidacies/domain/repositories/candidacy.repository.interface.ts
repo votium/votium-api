@@ -1,4 +1,4 @@
-import { CandidacyEntity } from '../entities/candidacy.entity';
+import { CandidacyEntity, UpdateCandidacyInput } from '../entities/candidacy.entity';
 
 export const CANDIDACY_REPOSITORY = 'CandidacyRepository';
 
@@ -42,4 +42,14 @@ export interface CandidacyRepository {
     electionId: string,
     params?: CandidacyListParams,
   ): Promise<CandidacyWithCandidate[]>;
+
+  // Returns the candidacy with the given id, or null when it does not exist.
+  findById(id: string): Promise<CandidacyEntity | null>;
+
+  // Updates ONLY the editable fields present in input (positionNumber,
+  // imageUrl). `imageUrl: null` clears the stored image; `undefined` leaves
+  // it unchanged. Returns the updated candidacy, or null when the id does
+  // not exist. Throws CandidacyDuplicateError when the unique constraint
+  // (position_number, election_id) rejects the row.
+  update(id: string, input: UpdateCandidacyInput): Promise<CandidacyEntity | null>;
 }

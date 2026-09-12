@@ -1,5 +1,5 @@
 import { Prisma } from '../../../../../generated/prisma/client';
-import { CandidacyEntity } from '../../domain/entities/candidacy.entity';
+import { CandidacyEntity, type UpdateCandidacyInput } from '../../domain/entities/candidacy.entity';
 
 export type PrismaCandidacyRow = {
   id: string;
@@ -9,6 +9,11 @@ export type PrismaCandidacyRow = {
   image_url: string | null;
   created_at: Date;
 };
+
+// Update payload restricted to the editable columns of the Candiday table.
+export type PrismaCandidacyUpdateData = Partial<
+  Pick<PrismaCandidacyRow, 'position_number' | 'image_url'>
+>;
 
 export class PrismaCandidacyMapper {
   static toDomain(row: PrismaCandidacyRow): CandidacyEntity {
@@ -29,5 +34,16 @@ export class PrismaCandidacyMapper {
       position_number: entity.positionNumber,
       image_url: entity.imageUrl,
     };
+  }
+
+  static toUpdateData(input: UpdateCandidacyInput): PrismaCandidacyUpdateData {
+    const data: PrismaCandidacyUpdateData = {};
+    // `positionNumber: null` is a no-op (the column is non-nullable).
+    if (input.positionNumber !== undefined && input.positionNumber !== null) {
+      data.position_number = input.positionNumber;
+    }
+    // Explicit null is preserved so Prisma clears the stored image.
+    if (input.imageUrl !== undefined) data.image_url = input.imageUrl;
+    return data;
   }
 }

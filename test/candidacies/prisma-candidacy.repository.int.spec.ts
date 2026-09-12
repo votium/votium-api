@@ -324,4 +324,162 @@ describe('PrismaCandidacyRepository integration', () => {
 
     expect(result).toEqual([]);
   });
+
+  it('I-19: findById returns the fully-mapped entity for an existing row', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate();
+    const saved = await repository.create(buildEntity(electionId, candidateId, 1));
+
+    const entity = await repository.findById(saved.id as string);
+
+    expect(entity).not.toBeNull();
+    expect(entity!.id).toBe(saved.id);
+    expect(entity!.electionId).toBe(electionId);
+    expect(entity!.candidateId).toBe(candidateId);
+    expect(entity!.positionNumber).toBe(1);
+    expect(entity!.imageUrl).toBeNull();
+    expect(entity!.createdAt).toBeInstanceOf(Date);
+  });
+
+  it('I-20: findById returns null for an unknown id', async () => {
+    const entity = await repository.findById('00000000-0000-0000-0000-000000000000');
+
+    expect(entity).toBeNull();
+  });
+
+  it('I-21: update persists a new positionNumber', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate();
+    const saved = await repository.create(buildEntity(electionId, candidateId, 1));
+
+    const updated = await repository.update(saved.id as string, { positionNumber: 5 });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.positionNumber).toBe(5);
+
+    const row = await prisma.candiday.findUnique({ where: { id: saved.id as string } });
+    expect(row!.position_number).toBe(5);
+    expect(row!.image_url).toBeNull();
+  });
+
+  it('I-22: update sets the imageUrl', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate();
+    const saved = await repository.create(buildEntity(electionId, candidateId, 1));
+
+    const updated = await repository.update(saved.id as string, {
+      imageUrl: 'https://example.com/photo.png',
+    });
+
+    expect(updated!.imageUrl).toBe('https://example.com/photo.png');
+
+    const row = await prisma.candiday.findUnique({ where: { id: saved.id as string } });
+    expect(row!.image_url).toBe('https://example.com/photo.png');
+    expect(row!.position_number).toBe(1);
+  });
+
+  it('I-23: update clears the imageUrl with null', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate();
+    const saved = await repository.create(
+      CandidacyEntity.create({
+        electionId,
+        candidateId,
+        positionNumber: 1,
+        imageUrl: 'https://example.com/photo.png',
+      }),
+    );
+
+    const updated = await repository.update(saved.id as string, { imageUrl: null });
+
+    expect(updated!.imageUrl).toBeNull();
+
+    const row = await prisma.candiday.findUnique({ where: { id: saved.id as string } });
+    expect(row!.image_url).toBeNull();
+  });
+
+  it('I-24: a partial update preserves the unset columns', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate();
+    const saved = await repository.create(
+      CandidacyEntity.create({
+        electionId,
+        candidateId,
+        positionNumber: 1,
+        imageUrl: 'https://example.com/photo.png',
+      }),
+    );
+
+    await repository.update(saved.id as string, { positionNumber: 2 });
+
+    const row = await prisma.candiday.findUnique({ where: { id: saved.id as string } });
+    expect(row!.position_number).toBe(2);
+    expect(row!.image_url).toBe('https://example.com/photo.png');
+  });
+
+  it('I-25: update leaves unrelated fields untouched', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate();
+    const saved = await repository.create(buildEntity(electionId, candidateId, 1));
+
+    await repository.update(saved.id as string, { positionNumber: 7 });
+
+    const row = await prisma.candiday.findUnique({ where: { id: saved.id as string } });
+    expect(row!.election_id).toBe(electionId);
+    expect(row!.candidate_id).toBe(candidateId);
+    expect(row!.created_at).toEqual(saved.createdAt);
+  });
+
+  it('I-26: update to a position used by another candidacy rejects with CandidacyDuplicateError', async () => {
+    const electionId = await seedElection();
+    const candidateA = await seedCandidate();
+    const candidateB = await seedCandidate();
+    const rowA = await repository.create(buildEntity(electionId, candidateA, 1));
+    const rowB = await repository.create(buildEntity(electionId, candidateB, 2));
+
+    await expect(
+      repository.update(rowB.id as string, { positionNumber: 1 }),
+    ).rejects.toBeInstanceOf(CandidacyDuplicateError);
+
+    const rows = await prisma.candiday.findMany({
+      where: { election_id: electionId },
+      orderBy: { position_number: 'asc' },
+    });
+    expect(rows.map((row) => row.position_number)).toEqual([1, 2]);
+    expect(rows.map((row) => row.id)).toEqual([rowA.id, rowB.id]);
+  });
+
+  it('I-27: update to the same position of the same candidacy succeeds', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate();
+    const saved = await repository.create(buildEntity(electionId, candidateId, 1));
+
+    const updated = await repository.update(saved.id as string, { positionNumber: 1 });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.positionNumber).toBe(1);
+  });
+
+  it('I-28: same position in a different election does not conflict', async () => {
+    const electionA = await seedElection();
+    const electionB = await seedElection();
+    const candidateA = await seedCandidate();
+    const candidateB = await seedCandidate();
+    await repository.create(buildEntity(electionA, candidateA, 1));
+    const rowB = await repository.create(buildEntity(electionB, candidateB, 1));
+
+    const updated = await repository.update(rowB.id as string, { positionNumber: 1 });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.positionNumber).toBe(1);
+    expect(updated!.electionId).toBe(electionB);
+  });
+
+  it('I-29: update for a missing id resolves to null', async () => {
+    const updated = await repository.update('00000000-0000-0000-0000-000000000000', {
+      positionNumber: 3,
+    });
+
+    expect(updated).toBeNull();
+  });
 });

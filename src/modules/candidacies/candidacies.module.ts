@@ -17,6 +17,7 @@ import { CandidatesModule } from 'src/modules/candidates/candidates.module';
 import { ElectionsModule } from 'src/modules/elections/elections.module';
 import { GetElectionCandidaciesUseCase } from './application/use-cases/get-election-candidacies.use-case';
 import { RegisterCandidacyUseCase } from './application/use-cases/register-candidacy.use-case';
+import { UpdateCandidacyUseCase } from './application/use-cases/update-candidacy.use-case';
 import {
   CANDIDACY_REPOSITORY,
   type CandidacyRepository,
@@ -45,6 +46,15 @@ import { ElectionCandidaciesController } from './presentation/controllers/electi
       useFactory: (elections: ElectionRepository, candidacies: CandidacyRepository) =>
         new GetElectionCandidaciesUseCase(elections, candidacies),
       inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY],
+    },
+    {
+      provide: UpdateCandidacyUseCase,
+      useFactory: (
+        elections: ElectionRepository,
+        candidacies: CandidacyRepository,
+        audit: AuditLogPort,
+      ) => new UpdateCandidacyUseCase(elections, candidacies, audit),
+      inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
 })
