@@ -25,9 +25,11 @@ export interface CandidacyListParams {
 }
 
 export interface CandidacyRepository {
-  // Returns the highest positionNumber already assigned for the election, for
-  // computing the next available position. Returns 0 when no candidacy exists.
-  findMaxPosition(electionId: string): Promise<number>;
+  // Returns every positionNumber currently used by candidacies of the election,
+  // ascending. Includes candidacy rows of INACTIVE candidates: the unique
+  // constraint (position_number, election_id) still occupies the number. Used
+  // by registration to compute the lowest available position.
+  findUsedPositions(electionId: string): Promise<number[]>;
 
   // Persists a NEW candidacy. Prisma generates id and created_at. Maps the
   // unique (candidate_id, election_id) / (position_number, election_id)
@@ -52,4 +54,11 @@ export interface CandidacyRepository {
   // not exist. Throws CandidacyDuplicateError when the unique constraint
   // (position_number, election_id) rejects the row.
   update(id: string, input: UpdateCandidacyInput): Promise<CandidacyEntity | null>;
+
+  // Physically removes ONLY the candidacy that has BOTH the given id and
+  // election_id. Composite-scoped: a candidacy from another election is never
+  // touched. Returns true when a row was removed, false otherwise. Never
+  // touches other candidacies, never renumbers, and never touches the
+  // Candidate record.
+  deleteByElectionAndCandidacyId(electionId: string, candidacyId: string): Promise<boolean>;
 }

@@ -126,36 +126,37 @@ describe('PrismaCandidacyRepository integration', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('I-04: findMaxPosition returns 0 for an election with no candidacies', async () => {
+  it('I-04: findUsedPositions returns an empty list for an election with no candidacies', async () => {
     const electionId = await seedElection();
 
-    const max = await repository.findMaxPosition(electionId);
+    const used = await repository.findUsedPositions(electionId);
 
-    expect(max).toBe(0);
+    expect(used).toEqual([]);
   });
 
-  it('I-05: findMaxPosition returns the maximum position_number when rows exist', async () => {
+  it('I-05: findUsedPositions returns the used position_numbers ascending', async () => {
     const electionId = await seedElection();
     const candidateA = await seedCandidate();
     const candidateB = await seedCandidate();
     await repository.create(buildEntity(electionId, candidateA, 1));
     await repository.create(buildEntity(electionId, candidateB, 3));
 
-    const max = await repository.findMaxPosition(electionId);
+    const used = await repository.findUsedPositions(electionId);
 
-    expect(max).toBe(3);
+    expect(used).toEqual([1, 3]);
   });
 
-  it('I-06: findMaxPosition is scoped per election', async () => {
+  it('I-06: findUsedPositions is scoped per election', async () => {
     const electionA = await seedElection();
     const electionB = await seedElection();
     const candidateA = await seedCandidate();
     const candidateB = await seedCandidate();
     await repository.create(buildEntity(electionA, candidateA, 5));
-    await repository.create(buildEntity(electionB, candidateB, 2));
+    await repository.create(buildEntity(electionB, candidateB, 8));
+    await repository.create(buildEntity(electionB, candidateA, 1));
 
-    expect(await repository.findMaxPosition(electionA)).toBe(5);
-    expect(await repository.findMaxPosition(electionB)).toBe(2);
+    expect(await repository.findUsedPositions(electionA)).toEqual([5]);
+    expect(await repository.findUsedPositions(electionB)).toEqual([1, 8]);
   });
 
   it('I-07: returns candidacies ordered by position_number ascending', async () => {
@@ -481,5 +482,90 @@ describe('PrismaCandidacyRepository integration', () => {
     });
 
     expect(updated).toBeNull();
+  });
+
+  it('I-30: deleteByElectionAndCandidacyId removes only the matching row and preserves the other positions', async () => {
+    const electionId = await seedElection();
+    const candidateA = await seedCandidate();
+    const candidateB = await seedCandidate();
+    const candidateC = await seedCandidate();
+    const rowA = await repository.create(buildEntity(electionId, candidateA, 1));
+    const rowB = await repository.create(buildEntity(electionId, candidateB, 2));
+    const rowC = await repository.create(buildEntity(electionId, candidateC, 3));
+
+    const deleted = await repository.deleteByElectionAndCandidacyId(electionId, rowB.id as string);
+
+    expect(deleted).toBe(true);
+    expect(await prisma.candiday.findUnique({ where: { id: rowB.id as string } })).toBeNull();
+    const rows = await prisma.candiday.findMany({
+      where: { election_id: electionId },
+      orderBy: { position_number: 'asc' },
+    });
+    expect(rows.map((row) => row.position_number)).toEqual([1, 3]);
+    expect(rows.map((row) => row.id)).toEqual([rowA.id, rowC.id]);
+  });
+
+  it('I-31: deleteByElectionAndCandidacyId with a wrong election id returns false and preserves the row', async () => {
+    const electionA = await seedElection();
+    const electionB = await seedElection();
+    const candidateA = await seedCandidate();
+    const rowA = await repository.create(buildEntity(electionA, candidateA, 1));
+
+    const deleted = await repository.deleteByElectionAndCandidacyId(electionB, rowA.id as string);
+
+    expect(deleted).toBe(false);
+    expect(await prisma.candiday.findUnique({ where: { id: rowA.id as string } })).not.toBeNull();
+  });
+
+  it('I-32: deleteByElectionAndCandidacyId for an unknown id returns false', async () => {
+    const electionId = await seedElection();
+
+    const deleted = await repository.deleteByElectionAndCandidacyId(
+      electionId,
+      '00000000-0000-0000-0000-000000000000',
+    );
+
+    expect(deleted).toBe(false);
+  });
+
+  it('I-33: after deleting position 2 from 1,2,3, findUsedPositions reports the freed number', async () => {
+    const electionId = await seedElection();
+    const candidateA = await seedCandidate();
+    const candidateB = await seedCandidate();
+    const candidateC = await seedCandidate();
+    await repository.create(buildEntity(electionId, candidateA, 1));
+    const rowB = await repository.create(buildEntity(electionId, candidateB, 2));
+    await repository.create(buildEntity(electionId, candidateC, 3));
+
+    await repository.deleteByElectionAndCandidacyId(electionId, rowB.id as string);
+
+    expect(await repository.findUsedPositions(electionId)).toEqual([1, 3]);
+  });
+
+  it('I-34: findUsedPositions includes candidacy rows of INACTIVE candidates', async () => {
+    const electionId = await seedElection();
+    const active = await seedCandidate({ status: 'ACTIVE' });
+    const inactive = await seedCandidate({ status: 'INACTIVE' });
+    await repository.create(buildEntity(electionId, active, 1));
+    await repository.create(buildEntity(electionId, inactive, 2));
+
+    const used = await repository.findUsedPositions(electionId);
+
+    expect(used).toEqual([1, 2]);
+  });
+
+  it('I-35: deleteByElectionAndCandidacyId never touches the Candidate person record', async () => {
+    const electionA = await seedElection();
+    const electionB = await seedElection();
+    const candidateId = await seedCandidate();
+    const rowA = await repository.create(buildEntity(electionA, candidateId, 1));
+    await repository.create(buildEntity(electionB, candidateId, 1));
+
+    await repository.deleteByElectionAndCandidacyId(electionA, rowA.id as string);
+
+    const candidate = await prisma.candidate.findUnique({ where: { id: candidateId } });
+    expect(candidate).not.toBeNull();
+    const remaining = await prisma.candiday.findMany({ where: { election_id: electionB } });
+    expect(remaining).toHaveLength(1);
   });
 });

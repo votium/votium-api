@@ -14,12 +14,13 @@ import { PrismaCandidacyMapper } from '../mappers/prisma-candidacy.mapper';
 export class PrismaCandidacyRepository implements CandidacyRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findMaxPosition(electionId: string): Promise<number> {
-    const result = await this.prisma.candiday.aggregate({
+  async findUsedPositions(electionId: string): Promise<number[]> {
+    const rows = await this.prisma.candiday.findMany({
       where: { election_id: electionId },
-      _max: { position_number: true },
+      select: { position_number: true },
+      orderBy: { position_number: 'asc' },
     });
-    return result._max?.position_number ?? 0;
+    return rows.map((row) => row.position_number);
   }
 
   async create(entity: CandidacyEntity): Promise<CandidacyEntity> {
@@ -92,6 +93,13 @@ export class PrismaCandidacyRepository implements CandidacyRepository {
       if (isUniqueConstraintError(error)) throw new CandidacyDuplicateError();
       throw error;
     }
+  }
+
+  async deleteByElectionAndCandidacyId(electionId: string, candidacyId: string): Promise<boolean> {
+    const result = await this.prisma.candiday.deleteMany({
+      where: { id: candidacyId, election_id: electionId },
+    });
+    return result.count > 0;
   }
 }
 

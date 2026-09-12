@@ -6,6 +6,7 @@ import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.p
 import { CandidacyEntity } from '../../domain/entities/candidacy.entity';
 import { ElectionNotEligibleForCandidacyError } from '../../domain/errors/election-not-eligible-for-candidacy.error';
 import type { CandidacyRepository } from '../../domain/repositories/candidacy.repository.interface';
+import { lowestAvailablePosition } from '../position.util';
 
 export class RegisterCandidacyUseCase {
   constructor(
@@ -33,9 +34,14 @@ export class RegisterCandidacyUseCase {
       throw new ElectionNotEligibleForCandidacyError();
     }
 
-    // 4. Compute the next available position within the election.
-    const maxPosition = await this.candidacies.findMaxPosition(input.electionId);
-    const positionNumber = maxPosition + 1;
+    // 4. Compute the lowest available position within the election. Used
+    //    positions reflect all candidacy rows (including INACTIVE candidates'
+    //    rows); deleting a candidacy frees its number, and an empty election
+    //    restarts at 1. Concurrent registrations may compute the same number,
+    //    but the unique constraint (position_number, election_id) rejects the
+    //    second with CandidacyDuplicateError.
+    const usedPositions = await this.candidacies.findUsedPositions(input.electionId);
+    const positionNumber = lowestAvailablePosition(usedPositions);
 
     // 5. Create and persist the association.
     const entity = CandidacyEntity.create({
