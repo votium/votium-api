@@ -64,6 +64,7 @@ describe('UpdateElectoralRollElectorUseCase', () => {
     updateStatus: jest.fn(),
     hasCandidates: jest.fn(),
     hasVotes: jest.fn(),
+    hasElectoralRoll: jest.fn(),
     delete: jest.fn(),
   };
 

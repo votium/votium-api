@@ -313,6 +313,121 @@ describe('ElectionEntity', () => {
     });
   });
 
+  describe('markAsActive', () => {
+    function makeElection(currentStatus: string): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: currentStatus as ElectionEntity['currentStatus'],
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+    }
+
+    it('MAA-1: transitions a PENDING election to ACTIVE', () => {
+      const e = makeElection('PENDING');
+      e.markAsActive();
+      expect(e.currentStatus).toBe('ACTIVE');
+    });
+
+    it('MAA-2: throws ElectionStatusTransitionError on CREATED and leaves it unchanged', () => {
+      const e = makeElection('CREATED');
+      expect(() => e.markAsActive()).toThrow(ElectionStatusTransitionError);
+      expect(e.currentStatus).toBe('CREATED');
+    });
+
+    it('MAA-3: throws ElectionStatusTransitionError on PUBLISHED and leaves it unchanged', () => {
+      const e = makeElection('PUBLISHED');
+      expect(() => e.markAsActive()).toThrow(ElectionStatusTransitionError);
+      expect(e.currentStatus).toBe('PUBLISHED');
+    });
+
+    it('MAA-4: throws ElectionStatusTransitionError on CLOSED and leaves it unchanged', () => {
+      const e = makeElection('CLOSED');
+      expect(() => e.markAsActive()).toThrow(ElectionStatusTransitionError);
+      expect(e.currentStatus).toBe('CLOSED');
+    });
+
+    it('MAA-5: throws ElectionStatusTransitionError on ACTIVE (no silent restarts)', () => {
+      const e = makeElection('ACTIVE');
+      expect(() => e.markAsActive()).toThrow(ElectionStatusTransitionError);
+      expect(e.currentStatus).toBe('ACTIVE');
+    });
+  });
+
+  describe('isWithinSchedule', () => {
+    // Window: 2026-10-01 08:00:00Z .. 2026-10-01 18:00:00Z.
+    function makeElection(
+      over: Partial<Parameters<typeof ElectionEntity.restore>[0]> = {},
+    ): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: 'PENDING',
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        ...over,
+      });
+    }
+
+    it('WS-1: returns true for a now strictly inside the window', () => {
+      expect(makeElection().isWithinSchedule(new Date(Date.UTC(2026, 9, 1, 12, 0, 0)))).toBe(true);
+    });
+
+    it('WS-2: returns false one second before the start instant', () => {
+      expect(makeElection().isWithinSchedule(new Date(Date.UTC(2026, 9, 1, 7, 59, 59)))).toBe(
+        false,
+      );
+    });
+
+    it('WS-3: returns false one second after the end instant', () => {
+      expect(makeElection().isWithinSchedule(new Date(Date.UTC(2026, 9, 1, 18, 0, 1)))).toBe(false);
+    });
+
+    it('WS-4: returns true exactly at the start instant (start boundary inclusive)', () => {
+      expect(makeElection().isWithinSchedule(new Date(Date.UTC(2026, 9, 1, 8, 0, 0)))).toBe(true);
+    });
+
+    it('WS-5: returns true exactly at the end instant (end boundary inclusive)', () => {
+      expect(makeElection().isWithinSchedule(new Date(Date.UTC(2026, 9, 1, 18, 0, 0)))).toBe(true);
+    });
+
+    it('WS-6: combines date and time across different calendar days (multi-day window)', () => {
+      const e = makeElection({
+        startDate: new Date(Date.UTC(2026, 9, 30)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 22, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 10, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 2, 0, 0)),
+      });
+      // Inside the overnight window 2026-09-30T22:00:00Z .. 2026-10-01T02:00:00Z.
+      expect(e.isWithinSchedule(new Date(Date.UTC(2026, 9, 30, 23, 30, 0)))).toBe(true);
+      // One second before the start instant.
+      expect(e.isWithinSchedule(new Date(Date.UTC(2026, 9, 30, 21, 59, 59)))).toBe(false);
+      // One second after the end instant.
+      expect(e.isWithinSchedule(new Date(Date.UTC(2026, 10, 1, 2, 0, 1)))).toBe(false);
+    });
+
+    it('WS-7: multi-day end boundary is inclusive', () => {
+      const e = makeElection({
+        startDate: new Date(Date.UTC(2026, 9, 30)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 22, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 10, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 2, 0, 0)),
+      });
+      expect(e.isWithinSchedule(new Date(Date.UTC(2026, 10, 1, 2, 0, 0)))).toBe(true);
+    });
+  });
+
   describe('currentStatus getter (backward compatibility)', () => {
     it('TS11: exposes the status through the public getter after privatization', () => {
       const e = ElectionEntity.restore({

@@ -64,6 +64,16 @@ export interface ElectionRepository {
   // existence check; does not load the collection into memory.
   hasCandidates(electionId: string): Promise<boolean>;
 
+  // Whether the election has an associated electoral roll (padron electoral).
+  // Count-based existence check on the persisted electoral_rolls relationship;
+  // does not load the collection into memory.
+  //
+  // NOTE: intentionally lives on ElectionRepository (not ElectoralRollRepository):
+  // ElectoralRollsModule already imports ElectionsModule, so injecting the
+  // electoral-roll repository here would create a circular module dependency.
+  // It mirrors the cross-model hasCandidates/hasVotes count checks below.
+  hasElectoralRoll(electionId: string): Promise<boolean>;
+
   // Whether any vote (voteMetadata) is associated with the election. Count-based
   // existence check; does not load the collection into memory.
   hasVotes(electionId: string): Promise<boolean>;

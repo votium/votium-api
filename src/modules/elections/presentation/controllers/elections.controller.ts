@@ -26,6 +26,7 @@ import { CreateElectionUseCase } from '../../application/use-cases/create-electi
 import { GetElectionsUseCase } from '../../application/use-cases/get-elections.use-case';
 import { UpdateElectionUseCase } from '../../application/use-cases/update-election.use-case';
 import { DeleteElectionUseCase } from '../../application/use-cases/delete-election.use-case';
+import { StartElectionUseCase } from '../../application/use-cases/start-election.use-case';
 import { ElectionPresenter } from '../presenters/election.presenter';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
 import { ElectionsListResponseDto } from '../dtos/elections-list-response.dto';
@@ -48,6 +49,7 @@ export class ElectionsController {
     private readonly createElection: CreateElectionUseCase,
     private readonly updateElection: UpdateElectionUseCase,
     private readonly deleteElection: DeleteElectionUseCase,
+    private readonly startElection: StartElectionUseCase,
   ) {}
 
   @Get()
@@ -163,5 +165,43 @@ export class ElectionsController {
   @Roles(RoleName.ADMINISTRATOR)
   async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
     await this.deleteElection.execute(id, req.user?.sub);
+  }
+
+  @Post(':id/start')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually start an election',
+    description:
+      'Starts a PENDING election whose schedule window includes the current date/time and ' +
+      'which has an associated electoral roll and at least one registered candidacy. ' +
+      'Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election started successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Election is not PENDING, does not have an electoral roll, or has no registered candidacies.',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'Current date/time is outside the election start and closing range.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async start(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.startElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
   }
 }
