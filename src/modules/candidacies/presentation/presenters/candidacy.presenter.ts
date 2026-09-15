@@ -19,25 +19,30 @@ export class CandidacyPresenter {
     });
   }
 
+  static toCandidacyWithCandidate(
+    candidacy: CandidacyWithCandidate,
+  ): CandidacyWithCandidateResponseDto {
+    return new CandidacyWithCandidateResponseDto({
+      id: candidacy.id,
+      positionNumber: candidacy.positionNumber,
+      imageUrl: candidacy.imageUrl,
+      createdAt: candidacy.createdAt.toISOString(),
+      candidate: new CandidateBriefResponseDto({
+        id: candidacy.candidateId,
+        firstName: candidacy.candidateFirstName,
+        lastName: candidacy.candidateLastName,
+      }),
+    });
+  }
+
   static toElectionCandidacies(result: {
     electionName: string;
     candidacies: CandidacyWithCandidate[];
   }): ElectionCandidaciesResponseDto {
     return new ElectionCandidaciesResponseDto({
       electionName: result.electionName,
-      candidacies: result.candidacies.map(
-        (candidacy) =>
-          new CandidacyWithCandidateResponseDto({
-            id: candidacy.id,
-            positionNumber: candidacy.positionNumber,
-            imageUrl: candidacy.imageUrl,
-            createdAt: candidacy.createdAt.toISOString(),
-            candidate: new CandidateBriefResponseDto({
-              id: candidacy.candidateId,
-              firstName: candidacy.candidateFirstName,
-              lastName: candidacy.candidateLastName,
-            }),
-          }),
+      candidacies: result.candidacies.map((candidacy) =>
+        CandidacyPresenter.toCandidacyWithCandidate(candidacy),
       ),
     });
   }
