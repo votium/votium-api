@@ -16,6 +16,7 @@ import { PrismaMfaChallengeRepository } from './infrastructure/repositories/pris
 import { JwtAuthGuard } from './presentation/guards/jwt-auth.guard';
 import { RolesGuard } from './presentation/guards/roles.guard';
 import { ElectorGuard } from './presentation/guards/elector.guard';
+import { BallotAccessGuard } from './presentation/guards/ballot-access.guard';
 import { AuthController } from './presentation/controllers/auth.controller';
 
 @Module({
@@ -34,6 +35,7 @@ import { AuthController } from './presentation/controllers/auth.controller';
     JwtAuthGuard,
     RolesGuard,
     ElectorGuard,
+    BallotAccessGuard,
     PrismaMfaChallengeRepository,
     { provide: MFA_CHALLENGE_REPOSITORY, useClass: PrismaMfaChallengeRepository },
     { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService },
@@ -44,6 +46,7 @@ import { AuthController } from './presentation/controllers/auth.controller';
     JwtAuthGuard,
     RolesGuard,
     ElectorGuard,
+    BallotAccessGuard,
     { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService },
     { provide: OTP_GENERATOR_PORT, useClass: CryptoOtpGeneratorService },
     { provide: EMAIL_SERVICE_PORT, useClass: NodemailerEmailService },
