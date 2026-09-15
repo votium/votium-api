@@ -61,6 +61,33 @@ export class ElectionEntity {
     return this._currentStatus;
   }
 
+  // Combines a calendar date (UTC midnight) and a time-of-day (epoch-based) into a
+  // comparable instant. Single source of truth for the date+time combination used by
+  // the schedule-window rules (assertElectionInterval and isWithinSchedule).
+  static toInstant(date: Date, time: Date): number {
+    return Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      time.getUTCHours(),
+      time.getUTCMinutes(),
+      time.getUTCSeconds(),
+    );
+  }
+
+  // Whether `now` falls inside the configured start/closing window
+  // (start_instant <= now <= end_instant). Both boundaries are inclusive, matching
+  // the repository's buildActiveFilter semantics and the manual-start rule
+  // `startDate <= currentDateTime <= endDate`. Single decision point for the
+  // schedule-eligibility rule.
+  isWithinSchedule(now: Date): boolean {
+    const t = now.getTime();
+    return (
+      ElectionEntity.toInstant(this.startDate, this.startTime) <= t &&
+      t <= ElectionEntity.toInstant(this.endDate, this.endTime)
+    );
+  }
+
   static create(input: CreateElectionInput): ElectionEntity {
     return new ElectionEntity(
       null,
@@ -139,6 +166,17 @@ export class ElectionEntity {
       return;
     }
 
+    throw new ElectionStatusTransitionError();
+  }
+
+  // Transitions the election to ACTIVE (the state reached once an eligible PENDING
+  // election is manually started). Refuses any other status: only PENDING may start,
+  // and an already-active election must never be silently restarted.
+  markAsActive(): void {
+    if (this._currentStatus === 'PENDING') {
+      this._currentStatus = 'ACTIVE';
+      return;
+    }
     throw new ElectionStatusTransitionError();
   }
 

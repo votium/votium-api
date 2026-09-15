@@ -1,4 +1,5 @@
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
+import { ElectionEntity } from '../domain/entities/election.entity';
 
 // Shared election date/time parsing + validation helpers.
 //
@@ -34,28 +35,15 @@ export function parseElectionTime(timeStr: string): Date {
   return time;
 }
 
-// Combines the date part (UTC midnight) and the time part (epoch) of a start/end pair
-// into a single comparable instant.
-function toInstant(date: Date, time: Date): number {
-  return new Date(
-    Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate(),
-      time.getUTCHours(),
-      time.getUTCMinutes(),
-      time.getUTCSeconds(),
-    ),
-  ).getTime();
-}
-
 export function assertElectionInterval(
   startDate: Date,
   startTime: Date,
   endDate: Date,
   endTime: Date,
 ): void {
-  if (toInstant(startDate, startTime) >= toInstant(endDate, endTime)) {
+  if (
+    ElectionEntity.toInstant(startDate, startTime) >= ElectionEntity.toInstant(endDate, endTime)
+  ) {
     throw new BadRequestException(
       'Election end must be strictly after start.',
       'ELECTION_INVALID_DATE_RANGE',

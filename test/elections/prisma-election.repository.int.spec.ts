@@ -601,6 +601,84 @@ describe('PrismaElectionRepository integration', () => {
     });
   });
 
+  describe('hasElectoralRoll', () => {
+    const seededElectorIds: string[] = [];
+
+    afterEach(async () => {
+      await prisma.electoralRoll.deleteMany({ where: { elector_id: { in: seededElectorIds } } });
+      await prisma.elector.deleteMany({ where: { id: { in: seededElectorIds } } });
+      seededElectorIds.length = 0;
+    });
+
+    async function seedElector(): Promise<string> {
+      const elector = await prisma.elector.create({
+        data: {
+          first_name: 'Test',
+          last_name: 'Elector',
+          email: `roll-${suffix}-${Math.random()}@example.com`,
+          password_hash: 'hash',
+          student_code: `RL-${Date.now()}-${Math.random()}`,
+          program_code: 'PC',
+          status: 'ACTIVE',
+        },
+      });
+      seededElectorIds.push(elector.id);
+      return elector.id;
+    }
+
+    async function seedRoll(electionId: string, electorId: string): Promise<void> {
+      await prisma.electoralRoll.create({
+        data: { election_id: electionId, elector_id: electorId },
+      });
+    }
+
+    it('R-1: returns false for a fresh election with no roll rows', async () => {
+      const name = `HASROLL-EMPTY-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+
+      expect(await repository.hasElectoralRoll(saved.id as string)).toBe(false);
+    });
+
+    it('R-2: returns true once a single roll row exists', async () => {
+      const name = `HASROLL-ONE-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const electorId = await seedElector();
+      await seedRoll(saved.id as string, electorId);
+
+      expect(await repository.hasElectoralRoll(saved.id as string)).toBe(true);
+    });
+
+    it('R-3: returns true when multiple roll rows exist (count-gated existence)', async () => {
+      const name = `HASROLL-MANY-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const electorA = await seedElector();
+      const electorB = await seedElector();
+      await seedRoll(saved.id as string, electorA);
+      await seedRoll(saved.id as string, electorB);
+
+      expect(await repository.hasElectoralRoll(saved.id as string)).toBe(true);
+    });
+
+    it('R-4: returns false again after all roll rows are removed (current persisted state)', async () => {
+      const name = `HASROLL-GONE-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const electorId = await seedElector();
+      await seedRoll(saved.id as string, electorId);
+      expect(await repository.hasElectoralRoll(saved.id as string)).toBe(true);
+
+      await prisma.electoralRoll.deleteMany({ where: { election_id: saved.id as string } });
+      expect(await repository.hasElectoralRoll(saved.id as string)).toBe(false);
+    });
+
+    it('R-5: returns false without throwing for a nonexistent election id', async () => {
+      expect(await repository.hasElectoralRoll('00000000-0000-0000-0000-000000000000')).toBe(false);
+    });
+  });
+
   describe('hasCandidates / hasVotes / delete', () => {
     const seededCandidateIds: string[] = [];
     const seededVoteIds: string[] = [];

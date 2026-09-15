@@ -120,6 +120,13 @@ export class PrismaElectionRepository implements ElectionRepository {
     return count > 0;
   }
 
+  async hasElectoralRoll(electionId: string): Promise<boolean> {
+    const count = await this.prisma.electoralRoll.count({
+      where: { election_id: electionId },
+    });
+    return count > 0;
+  }
+
   async hasVotes(electionId: string): Promise<boolean> {
     const count = await this.prisma.voteMetadata.count({
       where: { election_id: electionId },
@@ -176,6 +183,11 @@ function isUniqueConstraintError(error: unknown): boolean {
 //   notEnded  = end_date > today   OR (end_date = today   AND end_time >= nowTime)
 //   active    = started AND notEnded
 // `now` is the reference instant; defaults to the current time (UTC).
+//
+// THIS is the same inclusive-boundary rule as ElectionEntity.isWithinSchedule
+// (the domain decision point used by the manual-start use case). The two must
+// stay consistent: if one changes (e.g. an exclusive end boundary), change the
+// other accordingly.
 function buildActiveFilter(active: boolean, now: Date = new Date()): Prisma.ElectionWhereInput {
   const today = currentElectionDate(now);
   const nowTime = currentElectionTime(now);
