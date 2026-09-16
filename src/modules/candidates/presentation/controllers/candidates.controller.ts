@@ -19,6 +19,7 @@ import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guar
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
+import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { CreateCandidateDto } from '../../application/dtos/create-candidate.dto';
 import { UpdateCandidateDto } from '../../application/dtos/update-candidate.dto';
 import { DeactivateCandidateUseCase } from '../../application/use-cases/deactivate-candidate.use-case';
@@ -28,6 +29,7 @@ import { SearchCandidatesUseCase } from '../../application/use-cases/search-cand
 import { UpdateCandidateUseCase } from '../../application/use-cases/update-candidate.use-case';
 import { CandidatePresenter } from '../presenters/candidate.presenter';
 import { CandidateResponseDto } from '../dtos/candidate-response.dto';
+import { CandidatesListResponseDto } from '../dtos/candidates-list-response.dto';
 import { SearchCandidatesQueryDto } from '../dtos/search-candidates-query.dto';
 
 type AuthenticatedRequest = Request & {
@@ -54,12 +56,14 @@ export class CandidatesController {
   @ApiOperation({
     summary: 'Query candidates by optional filters',
     description:
-      'Returns candidates matching the provided filters. Requires ADMINISTRATOR or AUDITOR role.',
+      'Returns a paginated list of candidates matching the provided filters. Active candidates ' +
+      'are returned by default; pass includeInactive=true to also include logically deleted (INACTIVE) ' +
+      'candidates. Requires ADMINISTRATOR or AUDITOR role.',
   })
   @ApiResponse({
     status: 200,
     description: 'Candidates retrieved successfully.',
-    type: [CandidateResponseDto],
+    type: CandidatesListResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
   @ApiResponse({ status: 401, description: 'Authentication is required.' })
@@ -67,14 +71,23 @@ export class CandidatesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
   async search(@Query() query: SearchCandidatesQueryDto) {
-    const candidates = await this.searchCandidates.execute({
+    const { candidates, total } = await this.searchCandidates.execute({
+      page: query.page,
+      limit: query.limit,
       firstName: query.firstName,
       lastName: query.lastName,
+      name: query.name,
       studyPlanCode: query.studyPlanCode,
       studentCode: query.studentCode,
       identificationNumber: query.identificationNumber,
+      includeInactive: query.includeInactive,
     });
-    return { data: CandidatePresenter.toList(candidates) };
+    return new PaginatedResponseDto({
+      data: CandidatePresenter.toList(candidates),
+      total,
+      page: query.page,
+      limit: query.limit,
+    });
   }
 
   @Post()

@@ -4,11 +4,20 @@ import type { UpdateCandidateInput } from '../entities/update-candidate-input';
 export const CANDIDATE_REPOSITORY = 'CandidateRepository';
 
 export interface CandidateSearchParams {
+  page: number;
+  limit: number;
   firstName?: string;
   lastName?: string;
+  name?: string;
   studyPlanCode?: string;
   studentCode?: string;
   identificationNumber?: string;
+  includeInactive?: boolean;
+}
+
+export interface CandidateSearchResult {
+  candidates: CandidateEntity[];
+  total: number;
 }
 
 export interface CandidateRepository {
@@ -29,9 +38,12 @@ export interface CandidateRepository {
   // when a unique constraint (e.g. identificationNumber) rejects the row.
   update(id: string, input: UpdateCandidateInput): Promise<CandidateEntity | null>;
 
-  // Returns all candidates matching the optional filters, EXCLUDING logically
-  // deleted (INACTIVE) candidates. Filters combine with AND. firstName/lastName
-  // match case-insensitively and partially; code fields match exactly. Empty or
-  // whitespace-only values are ignored. Read-only, ordered by created_at desc.
-  search(params: CandidateSearchParams): Promise<CandidateEntity[]>;
+  // Returns a page of candidates matching the optional filters plus the total
+  // number of matches (unpaginated). Filters combine with AND. firstName/lastName
+  // match case-insensitively and partially; `name` matches either firstName or
+  // lastName (partial, case-insensitive); code fields match exactly. Empty or
+  // whitespace-only values are ignored. Logically deleted (INACTIVE) candidates
+  // are EXCLUDED unless includeInactive is true. page/limit are 1-based; rows are
+  // ordered by created_at desc. Read-only.
+  search(params: CandidateSearchParams): Promise<CandidateSearchResult>;
 }
