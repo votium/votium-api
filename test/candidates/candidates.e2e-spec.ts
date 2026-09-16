@@ -450,6 +450,10 @@ describe('Candidates registration (e2e)', () => {
       },
     ];
 
+    const pgCodes: string[] = [];
+    let inactiveStudentCode = '';
+    const q10pCodes: string[] = [];
+
     beforeAll(async () => {
       for (const seed of querySeed) {
         await prisma.candidate.create({
@@ -464,12 +468,70 @@ describe('Candidates registration (e2e)', () => {
         });
         usedStudentCodes.push(seed.studentCode);
       }
+
+      // Pagination seeds with explicit staggered created_at for deterministic order.
+      const now = Date.now();
+      for (let i = 0; i < 3; i++) {
+        const row = await prisma.candidate.create({
+          data: {
+            first_name: `PG-${suffix}-${i}`,
+            last_name: `RowP${i}`,
+            student_code: `PG-${suffix}-${i}`,
+            program_code: '7777',
+            identification_number: `IDPG-${suffix}-${i}`,
+            status: 'ACTIVE',
+            created_at: new Date(now - (3 - i) * 60_000),
+          },
+        });
+        pgCodes.push(row.student_code);
+        usedStudentCodes.push(row.student_code);
+      }
+
+      // Inactive seed used by the includeInactive cases.
+      const inactive = await prisma.candidate.create({
+        data: {
+          first_name: 'InactiveSeed',
+          last_name: 'Row',
+          student_code: `INAC-${suffix}`,
+          program_code: '1234',
+          identification_number: `IDINAC-${suffix}`,
+          status: 'INACTIVE',
+        },
+      });
+      inactiveStudentCode = inactive.student_code;
+      usedStudentCodes.push(inactive.student_code);
+
+      // 2 ACTIVE + 1 INACTIVE rows sharing a common prefix (includeInactive + pagination).
+      for (const tag of ['1', '2', '3']) {
+        const row = await prisma.candidate.create({
+          data: {
+            first_name: `Q10P-${suffix}-${tag}`,
+            last_name: `Combo${tag}`,
+            student_code: `Q10P-${suffix}-${tag}`,
+            program_code: '8000',
+            identification_number: `IDQ10P-${suffix}-${tag}`,
+            status: tag === '3' ? 'INACTIVE' : 'ACTIVE',
+          },
+        });
+        q10pCodes.push(row.student_code);
+        usedStudentCodes.push(row.student_code);
+      }
     });
 
-    it('E1: returns all registered candidates without filters', async () => {
-      const res = await queryCandidates('').expect(200);
-      const body = res.body as { data: Array<Record<string, unknown>> };
+    it('E1: returns all registered candidates without filters (paged envelope)', async () => {
+      const res = await queryCandidates('?limit=100').expect(200);
+      const body = res.body as {
+        data: Array<Record<string, unknown>>;
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
       const data = body.data;
+
+      expect(Array.isArray(data)).toBe(true);
+      expect(Object.keys(body.meta).sort()).toEqual(
+        ['limit', 'page', 'total', 'totalPages'].sort(),
+      );
+      expect(body.meta.page).toBe(1);
+      expect(body.meta.limit).toBe(100);
 
       const codes = data.map((item) => item.studentCode);
       expect(codes).toEqual(expect.arrayContaining(querySeed.map((s) => s.studentCode)));
@@ -526,7 +588,7 @@ describe('Candidates registration (e2e)', () => {
 
     it('E8: returns an empty collection when nothing matches (not an error)', async () => {
       const res = await queryCandidates('?studentCode=does-not-exist').expect(200);
-      expect(res.body).toEqual({ data: [] });
+      expect(res.body).toMatchObject({ data: [], meta: { total: 0 } });
     });
 
     it('E9: ignores empty and whitespace-only filter values', async () => {
@@ -551,7 +613,7 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E12: allows the auditor role', async () => {
-      const res = await queryCandidates('', auditorToken).expect(200);
+      const res = await queryCandidates('?limit=100', auditorToken).expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
       expect(codes).toEqual(expect.arrayContaining(querySeed.map((s) => s.studentCode)));
@@ -602,9 +664,200 @@ describe('Candidates registration (e2e)', () => {
         where: { student_code: { in: usedStudentCodes } },
       });
 
-      await queryCandidates('').expect(200);
+      await queryCandidates('?limit=10&page=1').expect(200);
       await queryCandidates('?firstName=bruno').expect(200);
       await queryCandidates('?studentCode=does-not-exist').expect(200);
+
+      const after = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+      expect(after).toBe(before);
+    });
+
+    it('Q1: the default response exposes the paginated envelope', async () => {
+      const res = await queryCandidates('').expect(200);
+      const body = res.body as {
+        data: unknown[];
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
+
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(Object.keys(body.meta).sort()).toEqual(
+        ['limit', 'page', 'total', 'totalPages'].sort(),
+      );
+      expect(body.meta.page).toBe(1);
+      expect(body.meta.limit).toBe(10);
+      expect(body.meta.total).toBeGreaterThanOrEqual(querySeed.length);
+    });
+
+    it('Q2: paginates end-to-end with the name filter', async () => {
+      type PagedBody = {
+        data: Array<{ studentCode: string }>;
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
+
+      const page1 = await queryCandidates(`?name=PG-${suffix}&limit=1&page=1`).expect(200);
+      const body1 = page1.body as PagedBody;
+      expect(body1.data).toHaveLength(1);
+      expect(body1.meta).toEqual({ page: 1, limit: 1, total: 3, totalPages: 3 });
+
+      const page2 = await queryCandidates(`?name=PG-${suffix}&limit=1&page=2`).expect(200);
+      const body2 = page2.body as PagedBody;
+      expect(body2.data).toHaveLength(1);
+      expect(body2.meta).toEqual({ page: 2, limit: 1, total: 3, totalPages: 3 });
+
+      const page3 = await queryCandidates(`?name=PG-${suffix}&limit=1&page=3`).expect(200);
+      const body3 = page3.body as PagedBody;
+      expect(body3.data).toHaveLength(1);
+      expect(body3.meta).toEqual({ page: 3, limit: 1, total: 3, totalPages: 3 });
+
+      const codes = [
+        body1.data[0].studentCode,
+        body2.data[0].studentCode,
+        body3.data[0].studentCode,
+      ];
+      expect(codes).toHaveLength(3);
+      expect(new Set(codes).size).toBe(3);
+      expect(new Set(codes)).toEqual(new Set(pgCodes));
+    });
+
+    it('Q3: an out-of-range page returns an empty slice but keeps the real total', async () => {
+      const res = await queryCandidates(`?name=PG-${suffix}&page=99&limit=1`).expect(200);
+      const body = res.body as {
+        data: unknown[];
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
+      expect(body.data).toEqual([]);
+      expect(body.meta).toEqual({ page: 99, limit: 1, total: 3, totalPages: 3 });
+    });
+
+    it('Q4: a limit larger than the total returns everything in one page', async () => {
+      const res = await queryCandidates(`?name=PG-${suffix}&limit=100`).expect(200);
+      const body = res.body as {
+        data: unknown[];
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
+      expect(body.data).toHaveLength(3);
+      expect(body.data.length).toBe(body.meta.total);
+      expect(body.meta).toEqual({ page: 1, limit: 100, total: 3, totalPages: 1 });
+    });
+
+    it('Q5: rejects invalid page and limit values with 400', async () => {
+      await queryCandidates('?page=0').expect(400);
+      await queryCandidates('?page=-1').expect(400);
+      await queryCandidates('?page=1.5').expect(400);
+      await queryCandidates('?limit=0').expect(400);
+      await queryCandidates('?limit=abc').expect(400);
+    });
+
+    it('Q6: excludes INACTIVE candidates by default', async () => {
+      const res = await queryCandidates(`?studentCode=${inactiveStudentCode}`).expect(200);
+      const body = res.body as { data: unknown[]; meta: { total: number } };
+      expect(body.data).toEqual([]);
+      expect(body.meta.total).toBe(0);
+    });
+
+    it('Q7: includeInactive=true includes INACTIVE candidates and counts them in total', async () => {
+      const res = await queryCandidates(
+        `?studentCode=${inactiveStudentCode}&includeInactive=true`,
+      ).expect(200);
+      const body = res.body as {
+        data: Array<{ status: string }>;
+        meta: { total: number };
+      };
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].status).toBe('INACTIVE');
+      expect(body.meta.total).toBe(1);
+    });
+
+    it('Q8: includeInactive=false behaves like the default', async () => {
+      const res = await queryCandidates(
+        `?studentCode=${inactiveStudentCode}&includeInactive=false`,
+      ).expect(200);
+      const body = res.body as { data: unknown[]; meta: { total: number } };
+      expect(body.data).toEqual([]);
+      expect(body.meta.total).toBe(0);
+    });
+
+    it('Q9: rejects non-literal boolean values for includeInactive with 400', async () => {
+      await queryCandidates(`?studentCode=${inactiveStudentCode}&includeInactive=1`).expect(400);
+      await queryCandidates(`?studentCode=${inactiveStudentCode}&includeInactive=TRUE`).expect(400);
+      await queryCandidates(`?studentCode=${inactiveStudentCode}&includeInactive=`).expect(400);
+    });
+
+    it('Q10: includeInactive combined with pagination keeps total consistent', async () => {
+      const page1 = await queryCandidates(
+        `?name=Q10P-${suffix}&includeInactive=true&limit=2`,
+      ).expect(200);
+      const body1 = page1.body as { data: unknown[]; meta: { total: number } };
+      expect(body1.data).toHaveLength(2);
+      expect(body1.meta.total).toBe(3);
+
+      const page2 = await queryCandidates(
+        `?name=Q10P-${suffix}&includeInactive=true&limit=2&page=2`,
+      ).expect(200);
+      const body2 = page2.body as { data: unknown[]; meta: { total: number } };
+      expect(body2.data).toHaveLength(1);
+      expect(body2.meta.total).toBe(3);
+
+      const disabled = await queryCandidates(`?name=Q10P-${suffix}&limit=10`).expect(200);
+      const disabledBody = disabled.body as { data: unknown[]; meta: { total: number } };
+      expect(disabledBody.data).toHaveLength(2);
+      expect(disabledBody.meta.total).toBe(2);
+    });
+
+    it('Q11: the name filter matches a partial first name', async () => {
+      const res = await queryCandidates('?name=bruno').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode).sort();
+      expect(codes).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
+    });
+
+    it('Q12: the name filter matches a partial last name', async () => {
+      const res = await queryCandidates('?name=molina').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes).toEqual([`Q2-${suffix}`]);
+    });
+
+    it('Q13: the name filter is partial and case-insensitive', async () => {
+      const byShort = await queryCandidates('?name=br').expect(200);
+      const shortBody = byShort.body as { data: Array<{ studentCode: string }> };
+      expect(shortBody.data.map((c) => c.studentCode).sort()).toEqual(
+        [`Q1-${suffix}`, `Q3-${suffix}`].sort(),
+      );
+
+      const byUpper = await queryCandidates('?name=FERN').expect(200);
+      const upperBody = byUpper.body as { data: Array<{ studentCode: string }> };
+      expect(upperBody.data.map((c) => c.studentCode)).toEqual([`Q1-${suffix}`]);
+    });
+
+    it('Q14: whitespace-only name is ignored', async () => {
+      const withFilter = await queryCandidates('?name=%20%20&limit=100').expect(200);
+      const withoutFilter = await queryCandidates('?limit=100').expect(200);
+
+      const filteredBody = withFilter.body as { data: Array<{ studentCode: string }> };
+      const unfilteredBody = withoutFilter.body as { data: Array<{ studentCode: string }> };
+      expect(filteredBody.data.map((c) => c.studentCode)).toEqual(
+        unfilteredBody.data.map((c) => c.studentCode),
+      );
+    });
+
+    it('Q15: the name filter combines with other filters via AND', async () => {
+      const res = await queryCandidates('?name=bruno&studyPlanCode=5001').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode).sort();
+      expect(codes).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
+    });
+
+    it('Q16: the paginated/name/includeInactive flow remains read-only', async () => {
+      const before = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+
+      await queryCandidates(`?name=PG-${suffix}&limit=1&page=2`).expect(200);
+      await queryCandidates(`?studentCode=${inactiveStudentCode}&includeInactive=true`).expect(200);
+      await queryCandidates('?name=bruno&limit=10&page=1').expect(200);
 
       const after = await prisma.candidate.count({
         where: { student_code: { in: usedStudentCodes } },

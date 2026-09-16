@@ -18,7 +18,7 @@ function buildCandidate(id: string): CandidateEntity {
 describe('SearchCandidatesUseCase', () => {
   const candidates: jest.Mocked<CandidateRepository> = {
     create: jest.fn(),
-    search: jest.fn(),
+    search: jest.fn().mockResolvedValue({ candidates: [], total: 0 }),
     findById: jest.fn(),
     updateStatus: jest.fn(),
     update: jest.fn(),
@@ -26,75 +26,116 @@ describe('SearchCandidatesUseCase', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('forwards all provided filters to the repository', async () => {
-    candidates.search.mockResolvedValue([]);
-
+  it('U1: forwards all provided filters and paging to the repository', async () => {
     const useCase = new SearchCandidatesUseCase(candidates);
 
     await useCase.execute({
+      page: 2,
+      limit: 25,
       firstName: 'Juan',
       lastName: 'Garcia',
+      name: 'Juan',
       studyPlanCode: '1234',
-      studentCode: '202012345',
-      identificationNumber: '1000000000',
+      studentCode: 'C-1',
+      identificationNumber: 'ID-1',
+      includeInactive: true,
     });
 
     expect(candidates.search.mock.calls).toHaveLength(1);
     expect(candidates.search.mock.calls[0][0]).toEqual({
+      page: 2,
+      limit: 25,
       firstName: 'Juan',
       lastName: 'Garcia',
+      name: 'Juan',
       studyPlanCode: '1234',
-      studentCode: '202012345',
-      identificationNumber: '1000000000',
+      studentCode: 'C-1',
+      identificationNumber: 'ID-1',
+      includeInactive: true,
     });
   });
 
-  it('calls the repository with an empty params object when no filters are provided', async () => {
-    candidates.search.mockResolvedValue([]);
-
+  it('U2: defaults page and limit to 1 and 10 when they are missing', async () => {
     const useCase = new SearchCandidatesUseCase(candidates);
 
-    await useCase.execute({});
-
-    expect(candidates.search.mock.calls).toHaveLength(1);
-    expect(candidates.search.mock.calls[0][0]).toEqual({});
-  });
-
-  it('does not trim or transform filter values (the repository owns normalization)', async () => {
-    candidates.search.mockResolvedValue([]);
-
-    const useCase = new SearchCandidatesUseCase(candidates);
-
-    await useCase.execute({ firstName: '  Juan  ', studentCode: ' 123 ' });
+    await useCase.execute({ firstName: 'Juan' });
 
     expect(candidates.search.mock.calls).toHaveLength(1);
     expect(candidates.search.mock.calls[0][0]).toEqual({
-      firstName: '  Juan  ',
-      studentCode: ' 123 ',
+      firstName: 'Juan',
+      page: 1,
+      limit: 10,
     });
   });
 
-  it('returns the repository result unchanged', async () => {
-    const results = [buildCandidate('candidate-1'), buildCandidate('candidate-2')];
+  it('U3: normalizes non-positive page and limit to their defaults', async () => {
+    const useCase = new SearchCandidatesUseCase(candidates);
+
+    await useCase.execute({ page: 0, limit: -5 });
+
+    expect(candidates.search.mock.calls[0][0]).toEqual({ page: 1, limit: 10 });
+  });
+
+  it('U4: normalizes NaN page and limit to their defaults', async () => {
+    const useCase = new SearchCandidatesUseCase(candidates);
+
+    await useCase.execute({ page: NaN, limit: NaN });
+
+    expect(candidates.search.mock.calls[0][0]).toEqual({ page: 1, limit: 10 });
+  });
+
+  it('U5: keeps valid page and limit intact', async () => {
+    const useCase = new SearchCandidatesUseCase(candidates);
+
+    await useCase.execute({ page: 3, limit: 50 });
+
+    expect(candidates.search.mock.calls[0][0]).toEqual({ page: 3, limit: 50 });
+  });
+
+  it('U6: forwards the name filter as-is (the repository owns normalization)', async () => {
+    const useCase = new SearchCandidatesUseCase(candidates);
+
+    await useCase.execute({ page: 1, limit: 10, name: '  bruno ' });
+
+    expect(candidates.search.mock.calls[0][0]).toEqual({ page: 1, limit: 10, name: '  bruno ' });
+  });
+
+  it('U7: forwards includeInactive as-is (true/false/undefined)', async () => {
+    const useCase = new SearchCandidatesUseCase(candidates);
+
+    for (const includeInactive of [true, false, undefined]) {
+      await useCase.execute({ page: 1, limit: 10, includeInactive });
+    }
+
+    expect(candidates.search.mock.calls).toHaveLength(3);
+    expect(candidates.search.mock.calls[0][0]).toMatchObject({ includeInactive: true });
+    expect(candidates.search.mock.calls[1][0]).toMatchObject({ includeInactive: false });
+    expect(candidates.search.mock.calls[2][0]).toMatchObject({ includeInactive: undefined });
+  });
+
+  it('U8: returns the repository result unchanged', async () => {
+    const results = { candidates: [buildCandidate('candidate-1')], total: 1 };
     candidates.search.mockResolvedValue(results);
 
     const useCase = new SearchCandidatesUseCase(candidates);
 
-    const result = await useCase.execute({});
+    const result = await useCase.execute({ page: 1, limit: 10 });
 
     expect(result).toBe(results);
-    expect(result).toHaveLength(2);
   });
 
-  it('returns an empty array when the repository finds no matches', async () => {
-    candidates.search.mockResolvedValue([]);
+  it('U9: returns an empty result when the repository finds no matches', async () => {
+    candidates.search.mockResolvedValue({ candidates: [], total: 0 });
 
     const useCase = new SearchCandidatesUseCase(candidates);
 
-    await expect(useCase.execute({ firstName: 'nobody' })).resolves.toEqual([]);
+    await expect(useCase.execute({ firstName: 'nobody' })).resolves.toEqual({
+      candidates: [],
+      total: 0,
+    });
   });
 
-  it('propagates repository failures unchanged', async () => {
+  it('U10: propagates repository failures unchanged', async () => {
     candidates.search.mockRejectedValue(new Error('database exploded'));
 
     const useCase = new SearchCandidatesUseCase(candidates);

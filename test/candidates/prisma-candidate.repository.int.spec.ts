@@ -1,6 +1,7 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { CandidateEntity } from '../../src/modules/candidates/domain/entities/candidate.entity';
 import { CandidateDuplicateError } from '../../src/modules/candidates/domain/errors/candidate-duplicate.error';
+import type { CandidateSearchParams } from '../../src/modules/candidates/domain/repositories/candidate.repository.interface';
 import { PrismaCandidateRepository } from '../../src/modules/candidates/infrastructure/repositories/prisma-candidate.repository';
 
 describe('PrismaCandidateRepository integration', () => {
@@ -277,14 +278,16 @@ describe('PrismaCandidateRepository integration', () => {
       const saved = await repository.create(buildEntity(code, `ID-REACTSRCH-${suffix}`));
       await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
 
-      const hidden = await repository.search({ studentCode: code });
-      expect(hidden).toEqual([]);
+      const hidden = await repository.search({ page: 1, limit: 100, studentCode: code });
+      expect(hidden.candidates).toEqual([]);
+      expect(hidden.total).toBe(0);
 
       await repository.updateStatus(saved.id!, CandidateEntity.DEFAULT_STATUS);
 
-      const visible = await repository.search({ studentCode: code });
-      expect(visible).toHaveLength(1);
-      expect(visible[0].id).toBe(saved.id);
+      const visible = await repository.search({ page: 1, limit: 100, studentCode: code });
+      expect(visible.candidates).toHaveLength(1);
+      expect(visible.candidates[0].id).toBe(saved.id);
+      expect(visible.total).toBe(1);
     });
   });
 
@@ -391,6 +394,23 @@ describe('PrismaCandidateRepository integration', () => {
     let candidateC: CandidateEntity;
     let candidateD: CandidateEntity;
 
+    // Pagination seeds with explicit staggered created_at (deterministic order:
+    // pgSeeds[2] newest, pgSeeds[0] oldest).
+    const pgSeeds: Array<{ studentCode: string }> = [];
+    // Inactive seed used by the includeInactive cases.
+    let inactiveRow: { id: string; studentCode: string };
+    // 2 ACTIVE + 1 INACTIVE rows sharing the same prefix (includeInactive + pagination).
+    const comboSeeds: Array<{ studentCode: string }> = [];
+
+    // search helper: page/limit are required by the contract, so they default to
+    // generous values here to keep existing assertions scoped to the suite's own
+    // rows (the pagination slices are exercised by the dedicated page/limit cases).
+    const search = (
+      params: Omit<CandidateSearchParams, 'page' | 'limit'> = {},
+      page = 1,
+      limit = 100,
+    ) => repository.search({ ...params, page, limit });
+
     async function seedSearchCandidate(data: {
       firstName: string;
       lastName: string;
@@ -445,138 +465,34 @@ describe('PrismaCandidateRepository integration', () => {
         studentCode: `SRCH-D-${suffix}`,
         identificationNumber: `ID-D-${suffix}`,
       });
-    });
 
-    afterAll(async () => {
-      if (searchCodes.length > 0) {
-        await prisma.candidate.deleteMany({ where: { student_code: { in: searchCodes } } });
+      // Pagination seeds (ACTIVE) with explicit staggered created_at.
+      const now = Date.now();
+      const pgRows = [
+        { tag: 'A', createdAt: new Date(now - 3 * 60_000) },
+        { tag: 'B', createdAt: new Date(now - 2 * 60_000) },
+        { tag: 'C', createdAt: new Date(now - 1 * 60_000) },
+      ];
+      for (const { tag, createdAt } of pgRows) {
+        const row = await prisma.candidate.create({
+          data: {
+            first_name: `PG-${suffix}-${tag}`,
+            last_name: `Row${tag}`,
+            student_code: `PG-${suffix}-${tag}`,
+            program_code: '7777',
+            identification_number: `IDPG-${suffix}-${tag}`,
+            status: 'ACTIVE',
+            created_at: createdAt,
+          },
+        });
+        searchCodes.push(row.student_code);
+        pgSeeds.push({ studentCode: row.student_code });
       }
-    });
 
-    it('returns all candidates ordered by created_at desc when no filters are provided', async () => {
-      const rows = await repository.search({});
-
-      const own = rows.filter((row) => searchCodes.includes(row.studentCode));
-      expect(own.map((row) => row.studentCode).sort()).toEqual(
-        [
-          candidateA.studentCode,
-          candidateB.studentCode,
-          candidateC.studentCode,
-          candidateD.studentCode,
-        ].sort(),
-      );
-
-      const times = own.map((row) => row.createdAt!.getTime());
-      for (let i = 1; i < times.length; i++) {
-        expect(times[i]).toBeLessThanOrEqual(times[i - 1]);
-      }
-    });
-
-    it('filters firstName with a case-insensitive partial match', async () => {
-      const byLower = await repository.search({ firstName: 'jua' });
-      expect(
-        byLower
-          .filter((row) => searchCodes.includes(row.studentCode))
-          .map((row) => row.studentCode)
-          .sort(),
-      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
-
-      const byUpper = await repository.search({ firstName: 'JUAN' });
-      expect(
-        byUpper
-          .filter((row) => searchCodes.includes(row.studentCode))
-          .map((row) => row.studentCode)
-          .sort(),
-      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
-    });
-
-    it('filters lastName with a case-insensitive partial match', async () => {
-      const rows = await repository.search({ lastName: 'rodri' });
-      expect(
-        rows.filter((row) => searchCodes.includes(row.studentCode)).map((row) => row.studentCode),
-      ).toEqual([candidateB.studentCode]);
-    });
-
-    it('filters studyPlanCode with an exact match', async () => {
-      const exact = await repository.search({ studyPlanCode: '1234' });
-      expect(
-        exact
-          .filter((row) => searchCodes.includes(row.studentCode))
-          .map((row) => row.studentCode)
-          .sort(),
-      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
-
-      const partial = await repository.search({ studyPlanCode: '123' });
-      expect(partial).toEqual([]);
-    });
-
-    it('filters studentCode with an exact match', async () => {
-      const rows = await repository.search({ studentCode: candidateB.studentCode });
-      expect(rows.map((row) => row.studentCode)).toEqual([candidateB.studentCode]);
-    });
-
-    it('filters identificationNumber with an exact match', async () => {
-      const rows = await repository.search({
-        identificationNumber: candidateD.identificationNumber,
-      });
-      expect(rows.map((row) => row.studentCode)).toEqual([candidateD.studentCode]);
-    });
-
-    it('combines multiple filters with AND semantics', async () => {
-      const byNameAndPlan = await repository.search({ firstName: 'Juan', studyPlanCode: '1234' });
-      expect(
-        byNameAndPlan
-          .filter((row) => searchCodes.includes(row.studentCode))
-          .map((row) => row.studentCode)
-          .sort(),
-      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
-
-      const allThree = await repository.search({
-        firstName: 'Juan',
-        studyPlanCode: '1234',
-        studentCode: candidateA.studentCode,
-      });
-      expect(allThree.map((row) => row.studentCode)).toEqual([candidateA.studentCode]);
-    });
-
-    it('ignores empty and whitespace-only filter values', async () => {
-      const rows = await repository.search({ firstName: '   ', studentCode: '' });
-      expect(rows.filter((row) => searchCodes.includes(row.studentCode))).toHaveLength(4);
-    });
-
-    it('trims filter values before matching', async () => {
-      const rows = await repository.search({ studyPlanCode: ' 1234 ', firstName: ' Juan ' });
-      expect(
-        rows
-          .filter((row) => searchCodes.includes(row.studentCode))
-          .map((row) => row.studentCode)
-          .sort(),
-      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
-    });
-
-    it('returns an empty array when no candidate matches', async () => {
-      const rows = await repository.search({ identificationNumber: 'NOPE' });
-      expect(rows).toEqual([]);
-    });
-
-    it('does not create, update, or delete rows', async () => {
-      const before = await prisma.candidate.count({
-        where: { student_code: { in: usedStudentCodes } },
-      });
-
-      await repository.search({});
-      await repository.search({ firstName: 'x' });
-
-      const after = await prisma.candidate.count({
-        where: { student_code: { in: usedStudentCodes } },
-      });
-      expect(after).toBe(before);
-    });
-
-    it('excludes logically deleted (INACTIVE) candidates from results', async () => {
+      // Inactive seed (lastName 'Row') used by the includeInactive cases.
       const inactive = await prisma.candidate.create({
         data: {
-          first_name: 'Inactive',
+          first_name: `INAC-${suffix}`,
           last_name: 'Row',
           student_code: `SRCH-IN-${suffix}`,
           program_code: '1234',
@@ -585,14 +501,302 @@ describe('PrismaCandidateRepository integration', () => {
         },
       });
       searchCodes.push(inactive.student_code);
+      inactiveRow = { id: inactive.id, studentCode: inactive.student_code };
 
-      const byLastName = await repository.search({ lastName: 'Row' });
-      expect(byLastName).toEqual([]);
+      // 2 ACTIVE + 1 INACTIVE rows sharing the same prefix (I10).
+      for (const tag of ['1', '2', '3']) {
+        const row = await prisma.candidate.create({
+          data: {
+            first_name: `C10-${suffix}-${tag}`,
+            last_name: `Combo${tag}`,
+            student_code: `C10-${suffix}-${tag}`,
+            program_code: '8888',
+            identification_number: `IDC10-${suffix}-${tag}`,
+            status: tag === '3' ? 'INACTIVE' : 'ACTIVE',
+          },
+        });
+        searchCodes.push(row.student_code);
+        comboSeeds.push({ studentCode: row.student_code });
+      }
+    });
 
-      const all = await repository.search({});
-      expect(all.map((row) => row.studentCode)).not.toContain(inactive.student_code);
-      const own = all.filter((row) => searchCodes.includes(row.studentCode));
-      expect(own).toHaveLength(4);
+    afterAll(async () => {
+      if (searchCodes.length > 0) {
+        await prisma.candidate.deleteMany({ where: { student_code: { in: searchCodes } } });
+      }
+    });
+
+    it('I1: returns all owned candidates with the correct total when no filters are provided', async () => {
+      const result = await search({});
+
+      const own = result.candidates.filter((row) => searchCodes.includes(row.studentCode));
+      expect(own.map((row) => row.studentCode)).toEqual(
+        expect.arrayContaining([
+          candidateA.studentCode,
+          candidateB.studentCode,
+          candidateC.studentCode,
+          candidateD.studentCode,
+        ]),
+      );
+      expect(result.total).toBeGreaterThanOrEqual(searchCodes.length);
+
+      const times = own.map((row) => row.createdAt!.getTime());
+      for (let i = 1; i < times.length; i++) {
+        expect(times[i]).toBeLessThanOrEqual(times[i - 1]);
+      }
+    });
+
+    it('filters firstName with a case-insensitive partial match', async () => {
+      const byLower = await search({ firstName: 'jua' });
+      expect(
+        byLower.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+
+      const byUpper = await search({ firstName: 'JUAN' });
+      expect(
+        byUpper.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+    });
+
+    it('filters lastName with a case-insensitive partial match', async () => {
+      const rows = await search({ lastName: 'rodri' });
+      expect(
+        rows.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode),
+      ).toEqual([candidateB.studentCode]);
+    });
+
+    it('filters studyPlanCode with an exact match', async () => {
+      const exact = await search({ studyPlanCode: '1234' });
+      expect(
+        exact.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+
+      const partial = await search({ studyPlanCode: '123' });
+      expect(partial.candidates).toEqual([]);
+      expect(partial.total).toBe(0);
+    });
+
+    it('filters studentCode with an exact match', async () => {
+      const rows = await search({ studentCode: candidateB.studentCode });
+      expect(rows.candidates.map((row) => row.studentCode)).toEqual([candidateB.studentCode]);
+    });
+
+    it('filters identificationNumber with an exact match', async () => {
+      const rows = await search({ identificationNumber: candidateD.identificationNumber });
+      expect(rows.candidates.map((row) => row.studentCode)).toEqual([candidateD.studentCode]);
+    });
+
+    it('combines multiple filters with AND semantics', async () => {
+      const byNameAndPlan = await search({ firstName: 'Juan', studyPlanCode: '1234' });
+      expect(
+        byNameAndPlan.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+
+      const allThree = await search({
+        firstName: 'Juan',
+        studyPlanCode: '1234',
+        studentCode: candidateA.studentCode,
+      });
+      expect(allThree.candidates.map((row) => row.studentCode)).toEqual([candidateA.studentCode]);
+    });
+
+    it('ignores empty and whitespace-only filter values', async () => {
+      const result = await search({ firstName: '   ', studentCode: '' });
+
+      const own = result.candidates
+        .filter((row) => searchCodes.includes(row.studentCode))
+        .map((row) => row.studentCode)
+        .sort();
+
+      // Every owned row except the INACTIVE one (excluded by default).
+      const expected = [
+        candidateA.studentCode,
+        candidateB.studentCode,
+        candidateC.studentCode,
+        candidateD.studentCode,
+        ...pgSeeds.map((s) => s.studentCode),
+        ...comboSeeds.slice(0, 2).map((s) => s.studentCode),
+      ].sort();
+      expect(own).toEqual(expected);
+    });
+
+    it('trims filter values before matching', async () => {
+      const rows = await search({ studyPlanCode: ' 1234 ', firstName: ' Juan ' });
+      expect(
+        rows.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+    });
+
+    it('I19: returns an empty page when no candidate matches', async () => {
+      const rows = await search({ identificationNumber: 'NOPE' });
+      expect(rows.candidates).toEqual([]);
+      expect(rows.total).toBe(0);
+    });
+
+    it('I18: does not create, update, or delete rows', async () => {
+      const before = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+
+      await search({});
+      await search({ firstName: 'x' });
+
+      const after = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+      expect(after).toBe(before);
+    });
+
+    it('I6: excludes logically deleted (INACTIVE) candidates by default', async () => {
+      const byCode = await search({ studentCode: inactiveRow.studentCode });
+      expect(byCode.candidates).toEqual([]);
+      expect(byCode.total).toBe(0);
+
+      const all = await search({});
+      expect(all.candidates.map((row) => row.studentCode)).not.toContain(inactiveRow.studentCode);
+    });
+
+    it('I2: pages through results with a stable slice and consistent total', async () => {
+      const page1 = await search({ name: `PG-${suffix}` }, 1, 1);
+      expect(page1.candidates.map((row) => row.studentCode)).toEqual([pgSeeds[2].studentCode]);
+      expect(page1.total).toBe(3);
+
+      const page2 = await search({ name: `PG-${suffix}` }, 2, 1);
+      expect(page2.candidates.map((row) => row.studentCode)).toEqual([pgSeeds[1].studentCode]);
+      expect(page2.total).toBe(3);
+
+      const page3 = await search({ name: `PG-${suffix}` }, 3, 1);
+      expect(page3.candidates.map((row) => row.studentCode)).toEqual([pgSeeds[0].studentCode]);
+      expect(page3.total).toBe(3);
+    });
+
+    it('I3: total reflects the whole filtered set, not the paginated slice', async () => {
+      const page1 = await search({ name: `PG-${suffix}` }, 1, 1);
+      expect(page1.candidates).toHaveLength(1);
+      expect(page1.total).toBe(3);
+
+      const withoutFilter = await search({});
+      expect(withoutFilter.total).toBeGreaterThanOrEqual(searchCodes.length);
+    });
+
+    it('I4: an out-of-range page returns an empty slice but keeps the real total', async () => {
+      const result = await search({ name: `PG-${suffix}` }, 999, 1);
+      expect(result.candidates).toEqual([]);
+      expect(result.total).toBe(3);
+    });
+
+    it('I5: a limit larger than the total returns everything in one page', async () => {
+      const result = await search({ name: `PG-${suffix}` }, 1, 100);
+      expect(result.candidates).toHaveLength(3);
+      expect(result.candidates.length).toBe(result.total);
+    });
+
+    it('I7: includeInactive=false behaves like the default', async () => {
+      const result = await search({ studentCode: inactiveRow.studentCode, includeInactive: false });
+      expect(result.candidates).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+
+    it('I8: includeInactive=true includes INACTIVE candidates and counts them in total', async () => {
+      const result = await search({ studentCode: inactiveRow.studentCode, includeInactive: true });
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0].status).toBe(CandidateEntity.INACTIVE_STATUS);
+      expect(result.total).toBe(1);
+    });
+
+    it('I9: inactive candidates still respect the other AND filters', async () => {
+      const byName = await search({ name: `INAC-${suffix}`, includeInactive: true });
+      expect(byName.candidates.map((row) => row.studentCode)).toEqual([inactiveRow.studentCode]);
+      expect(byName.total).toBe(1);
+    });
+
+    it('I10: includeInactive combined with pagination keeps total consistent', async () => {
+      const page1 = await search({ name: `C10-${suffix}`, includeInactive: true }, 1, 2);
+      expect(page1.candidates).toHaveLength(2);
+      expect(page1.total).toBe(3);
+
+      const page2 = await search({ name: `C10-${suffix}`, includeInactive: true }, 2, 2);
+      expect(page2.candidates).toHaveLength(1);
+      expect(page2.total).toBe(3);
+
+      const page3 = await search({ name: `C10-${suffix}`, includeInactive: true }, 3, 2);
+      expect(page3.candidates).toHaveLength(0);
+      expect(page3.total).toBe(3);
+    });
+
+    it('I11: the name filter matches a partial first name', async () => {
+      const rows = await search({ name: 'jua' });
+      expect(
+        rows.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+    });
+
+    it('I12: the name filter matches a partial last name', async () => {
+      const rows = await search({ name: 'rodri' });
+      expect(
+        rows.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode),
+      ).toEqual([candidateB.studentCode]);
+    });
+
+    it('I13: the name filter is case-insensitive and partial', async () => {
+      const byUpper = await search({ name: 'JUAN' });
+      expect(
+        byUpper.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+
+      const byPartial = await search({ name: 'per' });
+      expect(
+        byPartial.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode),
+      ).toEqual([candidateC.studentCode]);
+    });
+
+    it('I14: the name filter combines with other filters via AND and pagination', async () => {
+      const page1 = await search({ name: `PG-${suffix}`, studyPlanCode: '7777' }, 1, 1);
+      expect(page1.candidates).toHaveLength(1);
+      expect(page1.candidates[0].studentCode).toBe(pgSeeds[2].studentCode);
+      expect(page1.total).toBe(3);
+    });
+
+    it('I20: total is consistent with the same where used for the page', async () => {
+      const byName = await search({ name: `PG-${suffix}` }, 1, 1);
+      const count = await prisma.candidate.count({
+        where: { first_name: { contains: `PG-${suffix}`, mode: 'insensitive' } },
+      });
+      expect(byName.total).toBe(count);
+
+      const byNameInactive = await search({ name: `INAC-${suffix}`, includeInactive: true });
+      const countInactive = await prisma.candidate.count({
+        where: { first_name: { contains: `INAC-${suffix}`, mode: 'insensitive' } },
+      });
+      expect(byNameInactive.total).toBe(countInactive);
+      expect(byNameInactive.total).toBe(1);
     });
   });
 });
