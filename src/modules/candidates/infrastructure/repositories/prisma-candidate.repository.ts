@@ -5,6 +5,7 @@ import type { UpdateCandidateInput } from '../../domain/entities/update-candidat
 import { CandidateDuplicateError } from '../../domain/errors/candidate-duplicate.error';
 import {
   CandidateSearchParams,
+  CandidateSearchResult,
   CandidateRepository,
 } from '../../domain/repositories/candidate.repository.interface';
 import { PrismaCandidateMapper } from '../mappers/prisma-candidate.mapper';
@@ -16,6 +17,10 @@ type PrismaCandidateWhere = {
   program_code?: string;
   student_code?: string;
   identification_number?: string;
+  OR?: Array<{
+    first_name?: { contains: string; mode: 'insensitive' };
+    last_name?: { contains: string; mode: 'insensitive' };
+  }>;
 };
 
 @Injectable()
@@ -68,27 +73,42 @@ export class PrismaCandidateRepository implements CandidateRepository {
     }
   }
 
-  async search(params: CandidateSearchParams): Promise<CandidateEntity[]> {
+  async search(params: CandidateSearchParams): Promise<CandidateSearchResult> {
+    const skip = (params.page - 1) * params.limit;
     const firstName = params.firstName?.trim();
     const lastName = params.lastName?.trim();
+    const name = params.name?.trim();
     const studyPlanCode = params.studyPlanCode?.trim();
     const studentCode = params.studentCode?.trim();
     const identificationNumber = params.identificationNumber?.trim();
 
     const where: PrismaCandidateWhere = {
-      status: { not: CandidateEntity.INACTIVE_STATUS },
+      ...(params.includeInactive ? {} : { status: { not: CandidateEntity.INACTIVE_STATUS } }),
       ...(firstName ? { first_name: { contains: firstName, mode: 'insensitive' } } : {}),
       ...(lastName ? { last_name: { contains: lastName, mode: 'insensitive' } } : {}),
+      ...(name
+        ? {
+            OR: [
+              { first_name: { contains: name, mode: 'insensitive' } },
+              { last_name: { contains: name, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
       ...(studyPlanCode ? { program_code: studyPlanCode } : {}),
       ...(studentCode ? { student_code: studentCode } : {}),
       ...(identificationNumber ? { identification_number: identificationNumber } : {}),
     };
 
-    const rows = await this.prisma.candidate.findMany({
-      where,
-      orderBy: { created_at: 'desc' },
-    });
-    return rows.map((row) => PrismaCandidateMapper.toDomain(row));
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.candidate.count({ where }),
+      this.prisma.candidate.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: params.limit,
+      }),
+    ]);
+    return { candidates: rows.map((row) => PrismaCandidateMapper.toDomain(row)), total };
   }
 }
 
