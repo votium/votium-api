@@ -114,6 +114,11 @@ export class CandidatesController {
       programCode: dto.programCode,
       identificationNumber: dto.identificationNumber,
       requestingUserId: req.user?.sub,
+      companionFirstName: dto.companionFirstName,
+      companionLastName: dto.companionLastName,
+      companionStudentCode: dto.companionStudentCode,
+      companionProgramCode: dto.companionProgramCode,
+      companionIdentification: dto.companionIdentification,
     });
     return CandidatePresenter.toResponse(candidate);
   }
@@ -166,6 +171,11 @@ export class CandidatesController {
         lastName: dto.lastName,
         programCode: dto.programCode,
         identificationNumber: dto.identificationNumber,
+        companionFirstName: dto.companionFirstName,
+        companionLastName: dto.companionLastName,
+        companionStudentCode: dto.companionStudentCode,
+        companionProgramCode: dto.companionProgramCode,
+        companionIdentification: dto.companionIdentification,
       },
       req.user.sub,
     );

@@ -22,6 +22,21 @@ export class CandidateResponseDto {
   @ApiProperty({ example: 'ACTIVE', enum: ['ACTIVE', 'INACTIVE'] })
   status!: string;
 
+  @ApiProperty({ example: 'Maria', nullable: true })
+  companionFirstName!: string | null;
+
+  @ApiProperty({ example: 'Lopez', nullable: true })
+  companionLastName!: string | null;
+
+  @ApiProperty({ example: '20209999', nullable: true })
+  companionStudentCode!: string | null;
+
+  @ApiProperty({ example: '9999', nullable: true })
+  companionProgramCode!: string | null;
+
+  @ApiProperty({ example: '2000000000', nullable: true })
+  companionIdentification!: string | null;
+
   @ApiProperty({ example: '2026-08-29T15:00:00.000Z', type: 'string', format: 'date-time' })
   createdAt!: string;
 

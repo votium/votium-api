@@ -15,6 +15,11 @@ export class RegisterCandidateUseCase {
     programCode: string;
     identificationNumber: string;
     requestingUserId: string;
+    companionFirstName?: string | null;
+    companionLastName?: string | null;
+    companionStudentCode?: string | null;
+    companionProgramCode?: string | null;
+    companionIdentification?: string | null;
   }) {
     const entity = CandidateEntity.create({
       firstName: input.firstName,
@@ -22,6 +27,11 @@ export class RegisterCandidateUseCase {
       studentCode: input.studentCode,
       programCode: input.programCode,
       identificationNumber: input.identificationNumber,
+      companionFirstName: input.companionFirstName,
+      companionLastName: input.companionLastName,
+      companionStudentCode: input.companionStudentCode,
+      companionProgramCode: input.companionProgramCode,
+      companionIdentification: input.companionIdentification,
     });
 
     const saved = await this.candidates.create(entity);

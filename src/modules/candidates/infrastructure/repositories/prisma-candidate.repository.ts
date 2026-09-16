@@ -61,9 +61,13 @@ export class PrismaCandidateRepository implements CandidateRepository {
 
   async update(id: string, input: UpdateCandidateInput): Promise<CandidateEntity | null> {
     try {
+      const data = PrismaCandidateMapper.toUpdateData(input);
+      if (Object.keys(data).length === 0) {
+        return this.findById(id);
+      }
       const row = await this.prisma.candidate.update({
         where: { id },
-        data: PrismaCandidateMapper.toUpdateData(input),
+        data,
       });
       return PrismaCandidateMapper.toDomain(row);
     } catch (error) {

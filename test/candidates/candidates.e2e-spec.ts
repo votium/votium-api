@@ -43,6 +43,11 @@ interface CandidatePayload {
   id?: string;
   createdAt?: string;
   status?: string;
+  companionFirstName?: string | null;
+  companionLastName?: string | null;
+  companionStudentCode?: string | null;
+  companionProgramCode?: string | null;
+  companionIdentification?: string | null;
 }
 
 describe('Candidates registration (e2e)', () => {
@@ -209,6 +214,11 @@ describe('Candidates registration (e2e)', () => {
           'programCode',
           'identificationNumber',
           'status',
+          'companionFirstName',
+          'companionLastName',
+          'companionStudentCode',
+          'companionProgramCode',
+          'companionIdentification',
           'createdAt',
         ].sort(),
       );
@@ -408,6 +418,107 @@ describe('Candidates registration (e2e)', () => {
 
       const res = await register(payload, adminToken).expect(400);
       expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E18: registers a candidate with a full companion set (trimmed and persisted)', async () => {
+      const payload = validCandidate();
+      payload.studentCode = `CANDCOM-${suffix}`;
+      payload.identificationNumber = `IDCOM-${suffix}`;
+      payload.companionFirstName = '  Maria  ';
+      payload.companionLastName = '  Lopez ';
+      payload.companionStudentCode = ' 20209999 ';
+      payload.companionProgramCode = ' 9999 ';
+      payload.companionIdentification = ' 2000000000 ';
+      usedStudentCodes.push(payload.studentCode);
+
+      const res = await register(payload, adminToken).expect(201);
+
+      expect(res.body).toMatchObject({
+        companionFirstName: 'Maria',
+        companionLastName: 'Lopez',
+        companionStudentCode: '20209999',
+        companionProgramCode: '9999',
+        companionIdentification: '2000000000',
+      });
+
+      const row = await prisma.candidate.findUnique({
+        where: { student_code: payload.studentCode },
+      });
+      expect(row).not.toBeNull();
+      expect(row?.companion_first_name).toBe('Maria');
+      expect(row?.companion_last_name).toBe('Lopez');
+      expect(row?.companion_student_code).toBe('20209999');
+      expect(row?.companion_program_code).toBe('9999');
+      expect(row?.companion_identification).toBe('2000000000');
+    });
+
+    it('E19: rejects a partial companion set with 400 CANDIDATE_COMPANION_INCOMPLETE', async () => {
+      const payload = validCandidate();
+      payload.studentCode = `CANDPART-${suffix}`;
+      payload.identificationNumber = `IDPART-${suffix}`;
+      payload.companionFirstName = 'Maria';
+      payload.companionLastName = 'Lopez';
+      payload.companionStudentCode = '20209999';
+      payload.companionProgramCode = '9999';
+      usedStudentCodes.push(payload.studentCode);
+
+      const res = await register(payload, adminToken).expect(400);
+
+      const body = res.body as { statusCode: number; error: string; message: string };
+      expect(body.statusCode).toBe(400);
+      expect(body.error).toBe('CANDIDATE_COMPANION_INCOMPLETE');
+      expect(body.message).toBeTruthy();
+
+      const rows = await prisma.candidate.findMany({
+        where: { student_code: payload.studentCode },
+      });
+      expect(rows).toHaveLength(0);
+    });
+
+    it('E20: rejects an invalid companion program code with 400', async () => {
+      const payload = validCandidate();
+      payload.studentCode = `CANDCPC-${suffix}`;
+      payload.identificationNumber = `IDCPC-${suffix}`;
+      payload.companionFirstName = 'Maria';
+      payload.companionLastName = 'Lopez';
+      payload.companionStudentCode = '20209999';
+      payload.companionProgramCode = '12';
+      payload.companionIdentification = '2000000000';
+      usedStudentCodes.push(payload.studentCode);
+
+      const res = await register(payload, adminToken).expect(400);
+      const body = res.body as { statusCode: number; message: string | string[] };
+      expect(body.statusCode).toBe(400);
+      expect(body.message).toEqual(
+        expect.arrayContaining(['Companion program code must contain exactly four digits.']),
+      );
+    });
+
+    it('E21: explicit null companion values are treated as absent (201, all null)', async () => {
+      const payload = validCandidate();
+      payload.studentCode = `CANDNULL-${suffix}`;
+      payload.identificationNumber = `IDNULL-${suffix}`;
+      payload.companionFirstName = null;
+      payload.companionLastName = null;
+      payload.companionStudentCode = null;
+      payload.companionProgramCode = null;
+      payload.companionIdentification = null;
+      usedStudentCodes.push(payload.studentCode);
+
+      const res = await register(payload, adminToken).expect(201);
+      const body = res.body as CandidatePayload;
+
+      expect(body.companionFirstName).toBeNull();
+      expect(body.companionLastName).toBeNull();
+      expect(body.companionStudentCode).toBeNull();
+      expect(body.companionProgramCode).toBeNull();
+      expect(body.companionIdentification).toBeNull();
+
+      const row = await prisma.candidate.findUnique({
+        where: { student_code: payload.studentCode },
+      });
+      expect(row?.companion_first_name).toBeNull();
+      expect(row?.companion_identification).toBeNull();
     });
   });
 
@@ -654,6 +765,11 @@ describe('Candidates registration (e2e)', () => {
           'programCode',
           'identificationNumber',
           'status',
+          'companionFirstName',
+          'companionLastName',
+          'companionStudentCode',
+          'companionProgramCode',
+          'companionIdentification',
           'createdAt',
         ].sort(),
       );
@@ -1204,6 +1320,11 @@ describe('Candidates registration (e2e)', () => {
           'programCode',
           'identificationNumber',
           'status',
+          'companionFirstName',
+          'companionLastName',
+          'companionStudentCode',
+          'companionProgramCode',
+          'companionIdentification',
           'createdAt',
         ].sort(),
       );
@@ -1252,6 +1373,93 @@ describe('Candidates registration (e2e)', () => {
 
       const afterRow = await prisma.candidate.findUnique({ where: { id } });
       expect(afterRow?.first_name).toBe(beforeRow?.first_name);
+    });
+
+    it('E22: PATCH a single companion field preserves other companion values', async () => {
+      const code = `PATCH22-${suffix}`;
+      const idn = `IDPATCH22-${suffix}`;
+      const createRes = await register(
+        {
+          ...validCandidate(),
+          studentCode: code,
+          identificationNumber: idn,
+          companionFirstName: 'Maria',
+          companionLastName: 'Lopez',
+          companionStudentCode: '20209999',
+          companionProgramCode: '9999',
+          companionIdentification: '2000000000',
+        },
+        adminToken,
+      ).expect(201);
+      usedStudentCodes.push(code);
+      const id = (createRes.body as { id: string }).id;
+
+      const res = await updateCandidate(id, { companionFirstName: 'MariaUpdated' }).expect(200);
+      const body = res.body as CandidatePayload;
+
+      expect(body.companionFirstName).toBe('MariaUpdated');
+      expect(body.companionLastName).toBe('Lopez');
+      expect(body.companionStudentCode).toBe('20209999');
+      expect(body.companionProgramCode).toBe('9999');
+      expect(body.companionIdentification).toBe('2000000000');
+
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row?.companion_first_name).toBe('MariaUpdated');
+      expect(row?.companion_last_name).toBe('Lopez');
+    });
+
+    it('E23: PATCH with explicit null companionFirstName preserves the value', async () => {
+      const code = `PATCH23-${suffix}`;
+      const idn = `IDPATCH23-${suffix}`;
+      const createRes = await register(
+        {
+          ...validCandidate(),
+          studentCode: code,
+          identificationNumber: idn,
+          companionFirstName: 'Maria',
+          companionLastName: 'Lopez',
+          companionStudentCode: '20209999',
+          companionProgramCode: '9999',
+          companionIdentification: '2000000000',
+        },
+        adminToken,
+      ).expect(201);
+      usedStudentCodes.push(code);
+      const id = (createRes.body as { id: string }).id;
+
+      const res = await updateCandidate(id, { companionFirstName: null }).expect(200);
+      const body = res.body as CandidatePayload;
+
+      expect(body.companionFirstName).toBe('Maria');
+
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row?.companion_first_name).toBe('Maria');
+    });
+
+    it('E24: PATCH with explicit null firstName preserves the value', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH24-${suffix}`, `IDPATCH24-${suffix}`));
+      usedStudentCodes.push(`PATCH24-${suffix}`);
+
+      const res = await updateCandidate(id, { firstName: null }).expect(200);
+      const body = res.body as CandidatePayload;
+
+      expect(body.firstName).toBe('Patch');
+
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row?.first_name).toBe('Patch');
+    });
+
+    it('E25: PATCH with invalid companionProgramCode returns 400', async () => {
+      const id = await registerAndGetId(patchSeed(`PATCH25-${suffix}`, `IDPATCH25-${suffix}`));
+      usedStudentCodes.push(`PATCH25-${suffix}`);
+
+      const res = await updateCandidate(id, { companionProgramCode: '12' }).expect(400);
+
+      const body = res.body as { statusCode: number; message: string | string[] };
+      expect(body.statusCode).toBe(400);
+      expect(body.message).toEqual(
+        expect.arrayContaining(['Companion program code must contain exactly four digits.']),
+      );
     });
   });
 

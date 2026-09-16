@@ -18,6 +18,11 @@ function buildCandidate(
     identificationNumber: '1000123456',
     status: overrides.status ?? 'ACTIVE',
     createdAt: new Date('2026-08-19T15:00:00.000Z'),
+    companionFirstName: overrides.companionFirstName ?? null,
+    companionLastName: overrides.companionLastName ?? null,
+    companionStudentCode: overrides.companionStudentCode ?? null,
+    companionProgramCode: overrides.companionProgramCode ?? null,
+    companionIdentification: overrides.companionIdentification ?? null,
   });
 }
 
@@ -31,6 +36,11 @@ function buildUpdated(overrides: Partial<UpdateCandidateInput> = {}): CandidateE
     identificationNumber: overrides.identificationNumber ?? '1000123456',
     status: 'ACTIVE',
     createdAt: new Date('2026-08-19T15:00:00.000Z'),
+    companionFirstName: overrides.companionFirstName ?? null,
+    companionLastName: overrides.companionLastName ?? null,
+    companionStudentCode: overrides.companionStudentCode ?? null,
+    companionProgramCode: overrides.companionProgramCode ?? null,
+    companionIdentification: overrides.companionIdentification ?? null,
   });
 }
 
@@ -193,5 +203,107 @@ describe('UpdateCandidateUseCase', () => {
     expect(updateSpy.mock.invocationCallOrder[0]).toBeLessThan(
       (candidates.update as jest.Mock).mock.invocationCallOrder[0],
     );
+  });
+
+  it('U-01: forwards all five companion fields to the repository', async () => {
+    const existing = buildCandidate();
+    const updated = buildUpdated({
+      companionFirstName: 'Maria',
+      companionLastName: 'Lopez',
+      companionStudentCode: '20209999',
+      companionProgramCode: '9999',
+      companionIdentification: '2000000000',
+    });
+    candidates.findById.mockResolvedValue(existing);
+    candidates.update.mockResolvedValue(updated);
+
+    const result = await buildUseCase().execute(
+      'candidate-1',
+      {
+        companionFirstName: 'Maria',
+        companionLastName: 'Lopez',
+        companionStudentCode: '20209999',
+        companionProgramCode: '9999',
+        companionIdentification: '2000000000',
+      },
+      'admin-1',
+    );
+
+    expect(result).toBe(updated);
+    expect(candidates.update.mock.calls[0]).toEqual([
+      'candidate-1',
+      {
+        companionFirstName: 'Maria',
+        companionLastName: 'Lopez',
+        companionStudentCode: '20209999',
+        companionProgramCode: '9999',
+        companionIdentification: '2000000000',
+      },
+    ]);
+  });
+
+  it('U-02: forwards a single companion field as the only changed value', async () => {
+    const existing = buildCandidate();
+    const updated = buildUpdated({ companionFirstName: 'Maria' });
+    candidates.findById.mockResolvedValue(existing);
+    candidates.update.mockResolvedValue(updated);
+
+    await buildUseCase().execute('candidate-1', { companionFirstName: 'Maria' }, 'admin-1');
+
+    expect(candidates.update.mock.calls[0]).toEqual([
+      'candidate-1',
+      { companionFirstName: 'Maria' },
+    ]);
+  });
+
+  it('U-03: partial companion update does not erase other persisted companion values', async () => {
+    const existing = buildCandidate({
+      companionFirstName: 'Maria',
+      companionLastName: 'Lopez',
+      companionStudentCode: '20209999',
+      companionProgramCode: '9999',
+      companionIdentification: '2000000000',
+    });
+    const updated = buildUpdated({
+      companionFirstName: 'NewFirstName',
+      companionLastName: 'Lopez',
+      companionStudentCode: '20209999',
+      companionProgramCode: '9999',
+      companionIdentification: '2000000000',
+    });
+    candidates.findById.mockResolvedValue(existing);
+    candidates.update.mockResolvedValue(updated);
+
+    const result = await buildUseCase().execute(
+      'candidate-1',
+      { companionFirstName: 'NewFirstName' },
+      'admin-1',
+    );
+
+    expect(result.companionFirstName).toBe('NewFirstName');
+    expect(result.companionLastName).toBe('Lopez');
+    expect(result.companionStudentCode).toBe('20209999');
+    expect(result.companionProgramCode).toBe('9999');
+    expect(result.companionIdentification).toBe('2000000000');
+  });
+
+  it('U-04: explicit null base and companion values are forwarded but leave the entity unchanged', async () => {
+    const existing = buildCandidate({ companionFirstName: 'Maria' });
+    const updated = buildUpdated({ companionFirstName: 'Maria' });
+    candidates.findById.mockResolvedValue(existing);
+    candidates.update.mockResolvedValue(updated);
+
+    const result = await buildUseCase().execute(
+      'candidate-1',
+      { firstName: null, companionFirstName: null },
+      'admin-1',
+    );
+
+    expect(result.firstName).toBe('Juan');
+    expect(result.companionFirstName).toBe('Maria');
+    expect(candidates.update.mock.calls[0]).toEqual([
+      'candidate-1',
+      { firstName: null, companionFirstName: null },
+    ]);
   });
 });
