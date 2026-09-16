@@ -16,6 +16,7 @@ import {
 import { CandidatesModule } from 'src/modules/candidates/candidates.module';
 import { ElectionsModule } from 'src/modules/elections/elections.module';
 import { DeleteCandidacyUseCase } from './application/use-cases/delete-candidacy.use-case';
+import { GetElectionBallotUseCase } from './application/use-cases/get-election-ballot.use-case';
 import { GetElectionCandidaciesUseCase } from './application/use-cases/get-election-candidacies.use-case';
 import { RegisterCandidacyUseCase } from './application/use-cases/register-candidacy.use-case';
 import { UpdateCandidacyUseCase } from './application/use-cases/update-candidacy.use-case';
@@ -24,12 +25,13 @@ import {
   type CandidacyRepository,
 } from './domain/repositories/candidacy.repository.interface';
 import { PrismaCandidacyRepository } from './infrastructure/repositories/prisma-candidacy.repository';
+import { BallotController } from './presentation/controllers/ballot.controller';
 import { CandidaciesController } from './presentation/controllers/candidacies.controller';
 import { ElectionCandidaciesController } from './presentation/controllers/election-candidacies.controller';
 
 @Module({
   imports: [IamModule, AuthModule, ElectionsModule, CandidatesModule],
-  controllers: [CandidaciesController, ElectionCandidaciesController],
+  controllers: [CandidaciesController, ElectionCandidaciesController, BallotController],
   providers: [
     { provide: CANDIDACY_REPOSITORY, useClass: PrismaCandidacyRepository },
     {
@@ -46,6 +48,12 @@ import { ElectionCandidaciesController } from './presentation/controllers/electi
       provide: GetElectionCandidaciesUseCase,
       useFactory: (elections: ElectionRepository, candidacies: CandidacyRepository) =>
         new GetElectionCandidaciesUseCase(elections, candidacies),
+      inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY],
+    },
+    {
+      provide: GetElectionBallotUseCase,
+      useFactory: (elections: ElectionRepository, candidacies: CandidacyRepository) =>
+        new GetElectionBallotUseCase(elections, candidacies),
       inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY],
     },
     {
