@@ -1,3 +1,4 @@
+import { CandidateCompanionIncompleteError } from '../errors/candidate-companion-incomplete.error';
 import { CandidateEntity } from './candidate.entity';
 
 describe('CandidateEntity', () => {
@@ -7,6 +8,14 @@ describe('CandidateEntity', () => {
     studentCode: '20201234',
     programCode: '1234',
     identificationNumber: '1000123456',
+  };
+
+  const companionSet = {
+    companionFirstName: 'Maria',
+    companionLastName: 'Lopez',
+    companionStudentCode: '20209999',
+    companionProgramCode: '9999',
+    companionIdentification: '2000000000',
   };
 
   describe('create', () => {
@@ -45,6 +54,96 @@ describe('CandidateEntity', () => {
 
       expect(entity.status).toBe('SUSPENDED');
     });
+
+    it('C-01: populates all companion fields when the full companion set is provided', () => {
+      const entity = CandidateEntity.create({ ...baseInput, ...companionSet });
+
+      expect(entity.companionFirstName).toBe('Maria');
+      expect(entity.companionLastName).toBe('Lopez');
+      expect(entity.companionStudentCode).toBe('20209999');
+      expect(entity.companionProgramCode).toBe('9999');
+      expect(entity.companionIdentification).toBe('2000000000');
+    });
+
+    it('C-02: trims whitespace from every companion value', () => {
+      const entity = CandidateEntity.create({
+        ...baseInput,
+        companionFirstName: '  Maria  ',
+        companionLastName: '  Lopez ',
+        companionStudentCode: ' 20209999 ',
+        companionProgramCode: ' 9999 ',
+        companionIdentification: ' 2000000000 ',
+      });
+
+      expect(entity.companionFirstName).toBe('Maria');
+      expect(entity.companionLastName).toBe('Lopez');
+      expect(entity.companionStudentCode).toBe('20209999');
+      expect(entity.companionProgramCode).toBe('9999');
+      expect(entity.companionIdentification).toBe('2000000000');
+    });
+
+    it('C-03: leaves all companion fields null when no companion is provided', () => {
+      const entity = CandidateEntity.create(baseInput);
+
+      expect(entity.companionFirstName).toBeNull();
+      expect(entity.companionLastName).toBeNull();
+      expect(entity.companionStudentCode).toBeNull();
+      expect(entity.companionProgramCode).toBeNull();
+      expect(entity.companionIdentification).toBeNull();
+    });
+
+    it.each([
+      ['companionFirstName'],
+      ['companionLastName'],
+      ['companionStudentCode'],
+      ['companionProgramCode'],
+      ['companionIdentification'],
+    ] as const)(
+      'C-04: throws CandidateCompanionIncompleteError when only %s is provided',
+      (field) => {
+        expect(() =>
+          CandidateEntity.create({ ...baseInput, [field]: companionSet[field] }),
+        ).toThrow(CandidateCompanionIncompleteError);
+      },
+    );
+
+    it('C-05: throws CandidateCompanionIncompleteError when only 4 of 5 companion fields are provided', () => {
+      const { companionIdentification: _omitted, ...partialCompanion } = companionSet;
+
+      expect(() => CandidateEntity.create({ ...baseInput, ...partialCompanion })).toThrow(
+        CandidateCompanionIncompleteError,
+      );
+    });
+
+    it('C-08: treats all explicit null companion values as absent (no error)', () => {
+      const entity = CandidateEntity.create({
+        ...baseInput,
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
+      });
+
+      expect(entity.companionFirstName).toBeNull();
+      expect(entity.companionLastName).toBeNull();
+      expect(entity.companionStudentCode).toBeNull();
+      expect(entity.companionProgramCode).toBeNull();
+      expect(entity.companionIdentification).toBeNull();
+    });
+
+    it('C-09: throws CandidateCompanionIncompleteError when 4 values and 1 null are provided', () => {
+      expect(() =>
+        CandidateEntity.create({
+          ...baseInput,
+          companionFirstName: 'Maria',
+          companionLastName: 'Lopez',
+          companionStudentCode: '20209999',
+          companionProgramCode: '9999',
+          companionIdentification: null,
+        }),
+      ).toThrow(CandidateCompanionIncompleteError);
+    });
   });
 
   describe('restore', () => {
@@ -55,6 +154,11 @@ describe('CandidateEntity', () => {
         ...baseInput,
         status: 'ACTIVE',
         createdAt,
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
       });
 
       expect(entity.id).toBe('candidate-1');
@@ -77,11 +181,56 @@ describe('CandidateEntity', () => {
         identificationNumber: '1000123456',
         status: 'ACTIVE',
         createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
       });
 
       expect(entity.firstName).toBe('  Juan  ');
       expect(entity.id).toBe('candidate-1');
       expect(entity.createdAt).not.toBeNull();
+    });
+
+    it('C-06: preserves companion values without re-normalizing them', () => {
+      const entity = CandidateEntity.restore({
+        id: 'candidate-1',
+        ...baseInput,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        companionFirstName: '  Maria  ',
+        companionLastName: 'Lopez',
+        companionStudentCode: '20209999',
+        companionProgramCode: '9999',
+        companionIdentification: '2000000000',
+      });
+
+      expect(entity.companionFirstName).toBe('  Maria  ');
+      expect(entity.companionLastName).toBe('Lopez');
+      expect(entity.companionStudentCode).toBe('20209999');
+      expect(entity.companionProgramCode).toBe('9999');
+      expect(entity.companionIdentification).toBe('2000000000');
+    });
+
+    it('C-07: preserves null companion fields', () => {
+      const entity = CandidateEntity.restore({
+        id: 'candidate-1',
+        ...baseInput,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
+      });
+
+      expect(entity.companionFirstName).toBeNull();
+      expect(entity.companionLastName).toBeNull();
+      expect(entity.companionStudentCode).toBeNull();
+      expect(entity.companionProgramCode).toBeNull();
+      expect(entity.companionIdentification).toBeNull();
     });
   });
 
@@ -108,6 +257,11 @@ describe('CandidateEntity', () => {
         identificationNumber: '1000123456',
         status: 'ACTIVE',
         createdAt,
+        companionFirstName: 'Maria',
+        companionLastName: 'Lopez',
+        companionStudentCode: '20209999',
+        companionProgramCode: '9999',
+        companionIdentification: '2000000000',
       });
 
       entity.deactivate();
@@ -118,6 +272,8 @@ describe('CandidateEntity', () => {
       expect(entity.studentCode).toBe('20201234');
       expect(entity.programCode).toBe('1234');
       expect(entity.identificationNumber).toBe('1000123456');
+      expect(entity.companionFirstName).toBe('Maria');
+      expect(entity.companionLastName).toBe('Lopez');
       expect(entity.createdAt).toBe(createdAt);
     });
   });
@@ -133,6 +289,11 @@ describe('CandidateEntity', () => {
         identificationNumber: '1000123456',
         status: CandidateEntity.INACTIVE_STATUS,
         createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
       });
 
       expect(entity.status).toBe(CandidateEntity.INACTIVE_STATUS);
@@ -154,6 +315,11 @@ describe('CandidateEntity', () => {
         identificationNumber: '1000123456',
         status: CandidateEntity.INACTIVE_STATUS,
         createdAt,
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
       });
 
       entity.reactivate();
@@ -189,6 +355,11 @@ describe('CandidateEntity', () => {
         identificationNumber: '1000123456',
         status: 'ACTIVE',
         createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
       });
     }
 
@@ -274,6 +445,11 @@ describe('CandidateEntity', () => {
         identificationNumber: '1000999999',
         status: 'INACTIVE',
         createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
       });
 
       active.update({ firstName: 'X' });
@@ -302,12 +478,126 @@ describe('CandidateEntity', () => {
         identificationNumber: '1000999999',
         status: 'INACTIVE',
         createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
       });
 
       entity.update({ firstName: 'Changed' });
 
       expect(entity.firstName).toBe('Changed');
       expect(entity.status).toBe('INACTIVE');
+    });
+
+    it.each([['firstName'], ['lastName'], ['programCode'], ['identificationNumber']] as const)(
+      'D-11: explicit null on base field %s is ignored (field unchanged)',
+      (field) => {
+        const entity = restored();
+
+        entity.update({ [field]: null });
+
+        expect(entity[field]).toBe(
+          field === 'firstName'
+            ? 'Juan'
+            : field === 'lastName'
+              ? 'Garcia'
+              : field === 'programCode'
+                ? '1234'
+                : '1000123456',
+        );
+      },
+    );
+
+    it.each([
+      ['companionFirstName', 'NewFirstName'],
+      ['companionLastName', 'NewLastName'],
+      ['companionStudentCode', 'NewStudentCode'],
+      ['companionProgramCode', 'NewProgramCode'],
+      ['companionIdentification', 'NewIdentification'],
+    ])('R-01: partial update only changes %s', (field, value) => {
+      const entity = restored();
+
+      entity.update({ [field]: value });
+
+      expect(entity[field]).toBe(value);
+      expect(entity.companionFirstName).toBe(field === 'companionFirstName' ? value : null);
+      expect(entity.companionLastName).toBe(field === 'companionLastName' ? value : null);
+      expect(entity.companionStudentCode).toBe(field === 'companionStudentCode' ? value : null);
+      expect(entity.companionProgramCode).toBe(field === 'companionProgramCode' ? value : null);
+      expect(entity.companionIdentification).toBe(
+        field === 'companionIdentification' ? value : null,
+      );
+    });
+
+    it('R-02: leaves all companion fields untouched when companion fields are omitted', () => {
+      const entity = CandidateEntity.restore({
+        id: 'candidate-1',
+        ...baseInput,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        ...companionSet,
+      });
+
+      entity.update({ firstName: 'Changed' });
+
+      expect(entity.companionFirstName).toBe('Maria');
+      expect(entity.companionLastName).toBe('Lopez');
+      expect(entity.companionStudentCode).toBe('20209999');
+      expect(entity.companionProgramCode).toBe('9999');
+      expect(entity.companionIdentification).toBe('2000000000');
+    });
+
+    it('R-03: trims whitespace from assigned companion values', () => {
+      const entity = restored();
+
+      entity.update({ companionFirstName: '  Maria  ' });
+
+      expect(entity.companionFirstName).toBe('Maria');
+    });
+
+    it('R-04: companion-only update does not modify id, studentCode, status or createdAt', () => {
+      const entity = restored();
+
+      entity.update({ companionFirstName: 'Maria' });
+
+      expect(entity.id).toBe('candidate-1');
+      expect(entity.studentCode).toBe('20201234');
+      expect(entity.status).toBe('ACTIVE');
+      expect(entity.createdAt?.toISOString()).toBe('2026-08-19T15:00:00.000Z');
+    });
+
+    it.each([
+      ['companionFirstName'],
+      ['companionLastName'],
+      ['companionStudentCode'],
+      ['companionProgramCode'],
+      ['companionIdentification'],
+    ] as const)(
+      'R-05: explicit null on companion field %s is ignored (value preserved)',
+      (field) => {
+        const entity = CandidateEntity.restore({
+          id: 'candidate-1',
+          ...baseInput,
+          status: 'ACTIVE',
+          createdAt: new Date('2026-08-19T15:00:00.000Z'),
+          ...companionSet,
+        });
+
+        entity.update({ [field]: null });
+
+        expect(entity[field]).toBe(companionSet[field]);
+      },
+    );
+
+    it('R-06: a null companion value does not block other fields from being updated', () => {
+      const entity = restored();
+
+      entity.update({ firstName: 'ChangedBase', companionFirstName: null });
+
+      expect(entity.firstName).toBe('ChangedBase');
+      expect(entity.companionFirstName).toBeNull();
     });
   });
 });

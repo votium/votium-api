@@ -31,15 +31,15 @@ model Role {
 }
 
 model User {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   first_name    String
   last_name     String
-  email         String    @unique
+  email         String   @unique
   password_hash String
   role_id       String
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  status        String    @default("ACTIVE")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  status        String   @default("ACTIVE")
 
   role          Role                    @relation(fields: [role_id], references: [id])
   auditLogs     AuditLog[]
@@ -93,8 +93,6 @@ model Election {
   blank_vote_enabled Boolean        @default(false)
   created_at         DateTime       @default(now())
 
-  @@unique([name])
-
   reports        Report[]
   notifications  Notification[]
   candidacies    Candiday[]
@@ -104,6 +102,7 @@ model Election {
   statusHistory  ElectionStatusHistory[]
   voteMetadata   VoteMetadata[]
 
+  @@unique([name])
   @@map("elections")
 }
 
@@ -160,14 +159,19 @@ model Report {
 }
 
 model Candidate {
-  id                    String   @id @default(uuid())
-  first_name            String
-  last_name             String
-  student_code          String   @unique
-  program_code          String
-  identification_number String   @unique
-  status                String
-  created_at            DateTime @default(now())
+  id                       String   @id @default(uuid())
+  first_name               String
+  last_name                String
+  student_code             String   @unique
+  program_code             String
+  identification_number    String   @unique
+  status                   String
+  companion_first_name     String?
+  companion_last_name      String?
+  companion_student_code   String?
+  companion_program_code   String?
+  companion_identification String?
+  created_at               DateTime @default(now())
 
   candidays Candiday[]
 

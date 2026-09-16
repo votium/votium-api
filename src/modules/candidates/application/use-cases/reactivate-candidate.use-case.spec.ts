@@ -32,6 +32,11 @@ describe('ReactivateCandidateUseCase', () => {
       identificationNumber: '1000123456',
       status: CandidateEntity.DEFAULT_STATUS,
       createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      companionFirstName: null,
+      companionLastName: null,
+      companionStudentCode: null,
+      companionProgramCode: null,
+      companionIdentification: null,
     });
   }
 
@@ -45,6 +50,11 @@ describe('ReactivateCandidateUseCase', () => {
       identificationNumber: '1000123456',
       status: CandidateEntity.INACTIVE_STATUS,
       createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      companionFirstName: null,
+      companionLastName: null,
+      companionStudentCode: null,
+      companionProgramCode: null,
+      companionIdentification: null,
     });
   }
 

@@ -12,6 +12,11 @@ function buildCandidate(id: string): CandidateEntity {
     identificationNumber: '1000000000',
     status: 'ACTIVE',
     createdAt: new Date('2026-08-19T15:00:00.000Z'),
+    companionFirstName: null,
+    companionLastName: null,
+    companionStudentCode: null,
+    companionProgramCode: null,
+    companionIdentification: null,
   });
 }
 

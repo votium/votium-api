@@ -93,6 +93,11 @@ function buildCandidate(): CandidateEntity {
     identificationNumber: 'ID-12345678',
     status: 'ACTIVE',
     createdAt: new Date(),
+    companionFirstName: null,
+    companionLastName: null,
+    companionStudentCode: null,
+    companionProgramCode: null,
+    companionIdentification: null,
   });
 }
 

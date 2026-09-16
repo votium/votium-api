@@ -40,6 +40,35 @@ describe('PrismaCandidateRepository integration', () => {
     });
   }
 
+  function buildEntityWithCompanion(
+    studentCode: string,
+    identificationNumber: string,
+    companion: {
+      companionFirstName: string;
+      companionLastName: string;
+      companionStudentCode: string;
+      companionProgramCode: string;
+      companionIdentification: string;
+    },
+  ): CandidateEntity {
+    return CandidateEntity.create({
+      firstName: 'Juan',
+      lastName: 'Garcia',
+      studentCode,
+      programCode: '1234',
+      identificationNumber,
+      ...companion,
+    });
+  }
+
+  const companionSet = {
+    companionFirstName: 'Maria',
+    companionLastName: 'Lopez',
+    companionStudentCode: '20209999',
+    companionProgramCode: '9999',
+    companionIdentification: '2000000000',
+  };
+
   it('persists a candidate and returns a Prisma-generated id', async () => {
     const code = `INT-${suffix}`;
     usedStudentCodes.push(code);
@@ -384,6 +413,272 @@ describe('PrismaCandidateRepository integration', () => {
       expect(updated).not.toBeNull();
       expect(updated!.firstName).toBe('Changed');
       expect(updated!.status).toBe(CandidateEntity.INACTIVE_STATUS);
+    });
+  });
+
+  describe('companion fields', () => {
+    it('INT-CP-01: persists the full companion set on create', async () => {
+      const code = `CP-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(
+        buildEntityWithCompanion(code, `ID-CP-${suffix}`, companionSet),
+      );
+
+      expect(saved.companionFirstName).toBe('Maria');
+      expect(saved.companionLastName).toBe('Lopez');
+      expect(saved.companionStudentCode).toBe('20209999');
+      expect(saved.companionProgramCode).toBe('9999');
+      expect(saved.companionIdentification).toBe('2000000000');
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row).not.toBeNull();
+      expect(row!.companion_first_name).toBe('Maria');
+      expect(row!.companion_last_name).toBe('Lopez');
+      expect(row!.companion_student_code).toBe('20209999');
+      expect(row!.companion_program_code).toBe('9999');
+      expect(row!.companion_identification).toBe('2000000000');
+    });
+
+    it('INT-CP-02: persists null companion columns when no companion is provided', async () => {
+      const code = `CPNULL-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(buildEntity(code, `ID-CPNULL-${suffix}`));
+
+      expect(saved.companionFirstName).toBeNull();
+      expect(saved.companionIdentification).toBeNull();
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.companion_first_name).toBeNull();
+      expect(row!.companion_last_name).toBeNull();
+      expect(row!.companion_student_code).toBeNull();
+      expect(row!.companion_program_code).toBeNull();
+      expect(row!.companion_identification).toBeNull();
+    });
+
+    it('INT-CP-03: create sends the companion columns to the Prisma client', async () => {
+      const code = `CPSPY-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const createSpy = jest.spyOn(prisma.candidate, 'create');
+
+      await repository.create(buildEntityWithCompanion(code, `ID-CPSPY-${suffix}`, companionSet));
+
+      const data = createSpy.mock.calls[0][0].data as Record<string, unknown>;
+      expect(data).toMatchObject({
+        companion_first_name: 'Maria',
+        companion_last_name: 'Lopez',
+        companion_student_code: '20209999',
+        companion_program_code: '9999',
+        companion_identification: '2000000000',
+      });
+      expect(data).not.toHaveProperty('id');
+      expect(data).not.toHaveProperty('created_at');
+
+      createSpy.mockRestore();
+    });
+
+    it('INT-CP-04: updates all five companion fields on the entity and the row', async () => {
+      const code = `CPUPD-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-CPUPD-${suffix}`));
+
+      const next = {
+        companionFirstName: 'Ana',
+        companionLastName: 'Rojas',
+        companionStudentCode: '20208888',
+        companionProgramCode: '0000',
+        companionIdentification: '2000000111',
+      };
+      const updated = await repository.update(saved.id!, next);
+
+      expect(updated!.companionFirstName).toBe('Ana');
+      expect(updated!.companionLastName).toBe('Rojas');
+      expect(updated!.companionStudentCode).toBe('20208888');
+      expect(updated!.companionProgramCode).toBe('0000');
+      expect(updated!.companionIdentification).toBe('2000000111');
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.companion_first_name).toBe('Ana');
+      expect(row!.companion_last_name).toBe('Rojas');
+      expect(row!.companion_student_code).toBe('20208888');
+      expect(row!.companion_program_code).toBe('0000');
+      expect(row!.companion_identification).toBe('2000000111');
+    });
+
+    it('INT-CP-05: partial companion update changes only that column', async () => {
+      const code = `CPPAR-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(
+        buildEntityWithCompanion(code, `ID-CPPAR-${suffix}`, companionSet),
+      );
+
+      const updated = await repository.update(saved.id!, { companionFirstName: 'NewName' });
+
+      expect(updated!.companionFirstName).toBe('NewName');
+      expect(updated!.companionLastName).toBe('Lopez');
+      expect(updated!.companionStudentCode).toBe('20209999');
+      expect(updated!.companionProgramCode).toBe('9999');
+      expect(updated!.companionIdentification).toBe('2000000000');
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.companion_first_name).toBe('NewName');
+      expect(row!.companion_last_name).toBe('Lopez');
+      expect(row!.companion_student_code).toBe('20209999');
+      expect(row!.companion_program_code).toBe('9999');
+      expect(row!.companion_identification).toBe('2000000000');
+      expect(row!.first_name).toBe('Juan');
+      expect(row!.status).toBe('ACTIVE');
+    });
+
+    it('INT-CP-06: updates a companion field on a row with null companions', async () => {
+      const code = `CPNULLUPD-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-CPNULLUPD-${suffix}`));
+
+      const updated = await repository.update(saved.id!, { companionFirstName: 'Maria' });
+
+      expect(updated!.companionFirstName).toBe('Maria');
+      expect(updated!.companionLastName).toBeNull();
+      expect(updated!.companionStudentCode).toBeNull();
+      expect(updated!.companionProgramCode).toBeNull();
+      expect(updated!.companionIdentification).toBeNull();
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.companion_first_name).toBe('Maria');
+      expect(row!.companion_last_name).toBeNull();
+      expect(row!.companion_student_code).toBeNull();
+      expect(row!.companion_program_code).toBeNull();
+      expect(row!.companion_identification).toBeNull();
+    });
+
+    it('INT-CP-07: partial companion update sends only the provided companion column', async () => {
+      const code = `CPSPYUPD-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-CPSPYUPD-${suffix}`));
+
+      const updateSpy = jest.spyOn(prisma.candidate, 'update');
+
+      await repository.update(saved.id!, { companionProgramCode: '9999' });
+
+      const data = updateSpy.mock.calls[0][0].data as Record<string, unknown>;
+      expect(data).toMatchObject({ companion_program_code: '9999' });
+      expect(data).not.toHaveProperty('id');
+      expect(data).not.toHaveProperty('created_at');
+      expect(data).not.toHaveProperty('student_code');
+      expect(data).not.toHaveProperty('status');
+      expect(data).not.toHaveProperty('companion_first_name');
+      expect(data).not.toHaveProperty('companion_last_name');
+      expect(data).not.toHaveProperty('companion_student_code');
+      expect(data).not.toHaveProperty('companion_identification');
+
+      updateSpy.mockRestore();
+    });
+
+    it('INT-CP-08: search ignores companion fields and keeps existing filters', async () => {
+      const code = `CPSRCH-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(
+        buildEntityWithCompanion(code, `ID-CPSRCH-${suffix}`, companionSet),
+      );
+
+      const byCode = await repository.search({ page: 1, limit: 100, studentCode: code });
+      expect(byCode.candidates).toHaveLength(1);
+      expect(byCode.candidates[0].id).toBe(saved.id);
+      expect(byCode.candidates[0].companionFirstName).toBe('Maria');
+    });
+
+    it('INT-CP-09: create with explicit null companion values persists a NULL row', async () => {
+      const code = `CPNULLEX-${suffix}`;
+      usedStudentCodes.push(code);
+
+      const saved = await repository.create(
+        CandidateEntity.create({
+          firstName: 'Juan',
+          lastName: 'Garcia',
+          studentCode: code,
+          programCode: '1234',
+          identificationNumber: `ID-CPNULLEX-${suffix}`,
+          companionFirstName: null,
+          companionLastName: null,
+          companionStudentCode: null,
+          companionProgramCode: null,
+          companionIdentification: null,
+        }),
+      );
+
+      expect(saved.companionFirstName).toBeNull();
+      expect(saved.companionIdentification).toBeNull();
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.companion_first_name).toBeNull();
+      expect(row!.companion_last_name).toBeNull();
+      expect(row!.companion_student_code).toBeNull();
+      expect(row!.companion_program_code).toBeNull();
+      expect(row!.companion_identification).toBeNull();
+    });
+
+    it('INT-CP-10: updating with a null companion value leaves the row unchanged', async () => {
+      const code = `CPNULLUP2-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(
+        buildEntityWithCompanion(code, `ID-CPNULLUP2-${suffix}`, companionSet),
+      );
+
+      const updated = await repository.update(saved.id!, { companionFirstName: null });
+
+      expect(updated!.companionFirstName).toBe('Maria');
+      expect(updated!.companionLastName).toBe('Lopez');
+      expect(updated!.companionStudentCode).toBe('20209999');
+      expect(updated!.companionProgramCode).toBe('9999');
+      expect(updated!.companionIdentification).toBe('2000000000');
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.companion_first_name).toBe('Maria');
+      expect(row!.companion_last_name).toBe('Lopez');
+      expect(row!.companion_student_code).toBe('20209999');
+      expect(row!.companion_program_code).toBe('9999');
+      expect(row!.companion_identification).toBe('2000000000');
+    });
+
+    it('INT-CP-11: an all-null update payload performs no database write', async () => {
+      const code = `CPNULNO-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(
+        buildEntityWithCompanion(code, `ID-CPNULNO-${suffix}`, companionSet),
+      );
+
+      const updateSpy = jest.spyOn(prisma.candidate, 'update');
+
+      const updated = await repository.update(saved.id!, {
+        firstName: null,
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
+      });
+
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(updated!.firstName).toBe('Juan');
+      expect(updated!.companionFirstName).toBe('Maria');
+
+      updateSpy.mockRestore();
+    });
+
+    it('INT-CP-12: updating a base field with null leaves the NOT NULL column untouched', async () => {
+      const code = `CPBASEN-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(buildEntity(code, `ID-CPBASEN-${suffix}`));
+
+      const updated = await repository.update(saved.id!, { firstName: null });
+
+      expect(updated!.firstName).toBe('Juan');
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.first_name).toBe('Juan');
+      expect(row!.last_name).toBe('Garcia');
     });
   });
 

@@ -11,6 +11,11 @@ export class CandidatePresenter {
       programCode: entity.programCode,
       identificationNumber: entity.identificationNumber,
       status: entity.status,
+      companionFirstName: entity.companionFirstName,
+      companionLastName: entity.companionLastName,
+      companionStudentCode: entity.companionStudentCode,
+      companionProgramCode: entity.companionProgramCode,
+      companionIdentification: entity.companionIdentification,
       createdAt: entity.createdAt?.toISOString() ?? '',
     });
   }
