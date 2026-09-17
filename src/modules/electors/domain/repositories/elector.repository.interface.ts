@@ -21,13 +21,23 @@ export interface ElectorRepository {
   create(entity: ElectorEntity): Promise<ElectorEntity>;
 
   // Returns electors whose student_code or email matches any of the given values.
+  // Intentionally INCLUDES logically deleted electors: it is used for import
+  // duplicate detection and, because uniqueness stays global, a deleted
+  // student_code/email is still reserved.
   findByStudentCodeOrEmail(studentCodes: string[], emails: string[]): Promise<ElectorEntity[]>;
 
-  // Returns the elector with the given id, or null when it does not exist.
+  // Returns the elector with the given id, or null when it does not exist or has
+  // been logically deleted (`deleted_at != null`).
   findById(id: string): Promise<ElectorEntity | null>;
 
+  // Logically deletes the elector by setting `deleted_at`. Returns the updated
+  // elector, or null when the id does not exist. Does not change `status` and
+  // never performs a physical deletion.
+  softDelete(id: string): Promise<ElectorEntity | null>;
+
   // Updates ONLY the elector's status. Returns the updated elector, or null
-  // when the id does not exist. Never performs a physical deletion.
+  // when the id does not exist. Never performs a physical deletion. Callers must
+  // validate existence through findById first, which excludes logically deleted rows.
   updateStatus(id: string, status: string): Promise<ElectorEntity | null>;
 
   // Updates the elector's editable fields (firstName, lastName, email,
@@ -37,15 +47,18 @@ export interface ElectorRepository {
   update(entity: ElectorEntity): Promise<ElectorEntity | null>;
 
   // Returns the elector whose email matches (case-insensitively), or null.
+  // Excludes logically deleted electors (blocks login/MFA for deleted rows).
   findByEmail(email: string): Promise<ElectorEntity | null>;
 
   // Searches electors using optional exact program_code / student_code filters and a
-  // case-insensitive partial name filter. Filters combine with AND. Returns a page
+  // case-insensitive partial name filter. Filters combine with AND. Logically
+  // deleted electors (`deleted_at != null`) are always EXCLUDED. Returns a page
   // of electors plus the total number of matching rows. Read-only.
   search(params: ElectorSearchParams): Promise<ElectorSearchResult>;
 
   // Find electors matching any of the given (studentCode, programCode) pairs.
-  // Returns only electors that match at least one pair exactly.
+  // Returns only electors that match at least one pair exactly. Excludes
+  // logically deleted electors.
   findByStudentCodeAndProgramCode(
     pairs: Array<{ studentCode: string; programCode: string }>,
   ): Promise<ElectorEntity[]>;

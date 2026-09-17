@@ -109,4 +109,38 @@ describe('PrismaElectorRepository integration - findByStudentCodeAndProgramCode'
     expect(found[0]).toBeInstanceOf(ElectorEntity);
     expect(found[0].programCode).toBe('2710');
   });
+
+  it('IP8: excludes logically deleted electors from the pair lookup', async () => {
+    const deletedCode = `DEL-${suffix}`;
+    await seedElector(deletedCode, '2710');
+    await seedElector(`KEEP-${suffix}`, '2710');
+
+    await prisma.elector.update({
+      where: { student_code: deletedCode },
+      data: { deleted_at: new Date() },
+    });
+
+    const found = await repository.findByStudentCodeAndProgramCode([
+      { studentCode: deletedCode, programCode: '2710' },
+      { studentCode: `KEEP-${suffix}`, programCode: '2710' },
+    ]);
+
+    expect(found.map((e) => e.studentCode)).toEqual([`KEEP-${suffix}`]);
+  });
+
+  it('IP9: still returns an INACTIVE elector that is not deleted', async () => {
+    const inactiveCode = `INACT-${suffix}`;
+    await seedElector(inactiveCode, '2710');
+    await prisma.elector.update({
+      where: { student_code: inactiveCode },
+      data: { status: 'INACTIVE' },
+    });
+
+    const found = await repository.findByStudentCodeAndProgramCode([
+      { studentCode: inactiveCode, programCode: '2710' },
+    ]);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].status).toBe('INACTIVE');
+  });
 });

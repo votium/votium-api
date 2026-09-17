@@ -10,9 +10,10 @@ export type PrismaElectorRow = {
   program_code: string;
   status: string;
   created_at: Date;
+  deleted_at: Date | null;
 };
 
-export type PrismaElectorCreateData = Omit<PrismaElectorRow, 'id' | 'created_at'>;
+export type PrismaElectorCreateData = Omit<PrismaElectorRow, 'id' | 'created_at' | 'deleted_at'>;
 
 export type PrismaElectorUpdateData = Pick<
   PrismaElectorRow,
@@ -31,6 +32,7 @@ export class PrismaElectorMapper {
       programCode: row.program_code,
       status: row.status,
       createdAt: row.created_at,
+      deletedAt: row.deleted_at,
     });
   }
 

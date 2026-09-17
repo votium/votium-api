@@ -994,10 +994,10 @@ describe('Candidates registration (e2e)', () => {
     });
   });
 
-  describe('PATCH /candidates/:id/desactive', () => {
+  describe('PUT /candidates/:id/desactive', () => {
     const deactivateCandidate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}/desactive`)
+        .put(`/api/v1/candidates/${id}/desactive`)
         .set('Authorization', `Bearer ${token}`);
 
     const registerCandidate = async (): Promise<{ id: string; studentCode: string }> => {
@@ -1065,7 +1065,7 @@ describe('Candidates registration (e2e)', () => {
     it('E5: rejects unauthenticated requests with 401', async () => {
       const { id } = await registerCandidate();
 
-      await request(app.getHttpServer()).patch(`/api/v1/candidates/${id}/desactive`).expect(401);
+      await request(app.getHttpServer()).put(`/api/v1/candidates/${id}/desactive`).expect(401);
     });
 
     it('E6: rejects an invalid token with 401', async () => {
@@ -1110,6 +1110,31 @@ describe('Candidates registration (e2e)', () => {
       expect(after?.program_code).toBe(before?.program_code);
       expect(after?.identification_number).toBe(before?.identification_number);
       expect(after?.created_at?.getTime()).toBe(before?.created_at?.getTime());
+    });
+
+    it('D-X1: deactivating does not set deleted_at nor remove the row', async () => {
+      const { id } = await registerCandidate();
+
+      await deactivateCandidate(id).expect(204);
+
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row).not.toBeNull();
+      expect(row!.deleted_at).toBeNull();
+      expect(row!.status).toBe('INACTIVE');
+    });
+
+    it('D-X2: deactivating a logically deleted candidate returns 404', async () => {
+      const { id } = await registerCandidate();
+      await request(app.getHttpServer())
+        .delete(`/api/v1/candidates/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      const res = await deactivateCandidate(id).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row!.status).toBe('ACTIVE');
     });
   });
 
@@ -1223,7 +1248,7 @@ describe('Candidates registration (e2e)', () => {
       usedStudentCodes.push(`PUT9-${suffix}`);
 
       await request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}/desactive`)
+        .put(`/api/v1/candidates/${id}/desactive`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
@@ -1475,10 +1500,10 @@ describe('Candidates registration (e2e)', () => {
     });
   });
 
-  describe('PATCH /candidates/:id/active', () => {
+  describe('PUT /candidates/:id/active', () => {
     const reactivate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}/active`)
+        .put(`/api/v1/candidates/${id}/active`)
         .set('Authorization', `Bearer ${token}`);
 
     let reactCounter = 0;
@@ -1511,7 +1536,7 @@ describe('Candidates registration (e2e)', () => {
       const { id } = await registerInactive();
 
       const res = await request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}/active`)
+        .put(`/api/v1/candidates/${id}/active`)
         .expect(401);
 
       expect(res.body).toMatchObject({ statusCode: 401 });
@@ -1617,6 +1642,184 @@ describe('Candidates registration (e2e)', () => {
       const afterRow = await prisma.candidate.findUnique({ where: { id } });
       expect(afterRow!.status).toBe(beforeRow!.status);
     });
+
+    it('A-X1: activating a logically deleted candidate returns 404 (no resurrection)', async () => {
+      const { id } = await registerInactive();
+      await request(app.getHttpServer())
+        .delete(`/api/v1/candidates/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      const res = await reactivate(id).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row!.deleted_at).not.toBeNull();
+      expect(row!.status).toBe('INACTIVE');
+    });
+
+    it('A-X2: activating an INACTIVE non-deleted candidate still returns 200 and ACTIVE', async () => {
+      const { id } = await registerInactive();
+
+      const res = await reactivate(id).expect(200);
+
+      expect(res.body).toMatchObject({ id, status: 'ACTIVE' });
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row!.deleted_at).toBeNull();
+      expect(row!.status).toBe('ACTIVE');
+    });
+  });
+
+  describe('DELETE /candidates/:id', () => {
+    const deleteCandidate = (id: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .delete(`/api/v1/candidates/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    let deleteCounter = 0;
+    const registerActive = async (): Promise<{ id: string; studentCode: string }> => {
+      deleteCounter += 1;
+      const code = `SDEL-${suffix}-${deleteCounter}`;
+      const idn = `IDSDEL-${suffix}-${deleteCounter}`;
+      const payload = validCandidate();
+      payload.studentCode = code;
+      payload.identificationNumber = idn;
+      const res = await register(payload, adminToken).expect(201);
+      usedStudentCodes.push(code);
+      return { id: (res.body as { id: string }).id, studentCode: code };
+    };
+
+    it('CD-1: an authenticated administrator deletes a candidate with 204 and no body', async () => {
+      const { id } = await registerActive();
+
+      const del = await deleteCandidate(id).expect(204);
+
+      expect(del.body).toEqual({});
+    });
+
+    it('CD-2: performs a logical delete and keeps the remaining columns intact', async () => {
+      const { id } = await registerActive();
+      const before = await prisma.candidate.findUnique({ where: { id } });
+
+      await deleteCandidate(id).expect(204);
+
+      const after = await prisma.candidate.findUnique({ where: { id } });
+      expect(after).not.toBeNull();
+      expect(after!.deleted_at).toBeInstanceOf(Date);
+      expect(after!.status).toBe(before!.status);
+      expect(after!.first_name).toBe(before!.first_name);
+      expect(after!.last_name).toBe(before!.last_name);
+      expect(after!.student_code).toBe(before!.student_code);
+      expect(after!.program_code).toBe(before!.program_code);
+      expect(after!.identification_number).toBe(before!.identification_number);
+    });
+
+    it('CD-3: a deleted candidate is excluded from candidate query results', async () => {
+      const { id, studentCode } = await registerActive();
+      await deleteCandidate(id).expect(204);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/candidates?studentCode=${studentCode}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect((res.body as { data: unknown[] }).data).toEqual([]);
+    });
+
+    it('CD-4: a deleted candidate stays excluded even with includeInactive=true', async () => {
+      const { id, studentCode } = await registerActive();
+      await deleteCandidate(id).expect(204);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/candidates?studentCode=${studentCode}&includeInactive=true`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect((res.body as { data: unknown[] }).data).toEqual([]);
+    });
+
+    it('CD-5: a second DELETE returns 404 CANDIDATE_NOT_FOUND', async () => {
+      const { id } = await registerActive();
+      await deleteCandidate(id).expect(204);
+
+      const res = await deleteCandidate(id).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+    });
+
+    it('CD-6: returns 404 for an unknown id', async () => {
+      const res = await deleteCandidate(crypto.randomUUID()).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+    });
+
+    it('CD-7: rejects a malformed id with 400', async () => {
+      const res = await deleteCandidate('not-a-uuid').expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('CD-8: rejects unauthenticated and invalid-token requests with 401', async () => {
+      const { id } = await registerActive();
+
+      await request(app.getHttpServer()).delete(`/api/v1/candidates/${id}`).expect(401);
+      await deleteCandidate(id, 'not-a-real-token').expect(401);
+    });
+
+    it('CD-9: rejects a non-admin role (AUDITOR) with 403', async () => {
+      const { id } = await registerActive();
+
+      const res = await deleteCandidate(id, auditorToken).expect(403);
+
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('CD-10: failed requests do not modify rows', async () => {
+      const { id } = await registerActive();
+      const countBefore = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+
+      await deleteCandidate(id, 'not-a-real-token').expect(401);
+      await deleteCandidate(id, auditorToken).expect(403);
+      await deleteCandidate(crypto.randomUUID()).expect(404);
+
+      const afterRow = await prisma.candidate.findUnique({ where: { id } });
+      const countAfter = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+      expect(afterRow!.deleted_at).toBeNull();
+      expect(countAfter).toBe(countBefore);
+    });
+
+    it('CD-11: deleting does not create additional records', async () => {
+      const countBefore = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+
+      const { id } = await registerActive();
+      await deleteCandidate(id).expect(204);
+
+      const countAfter = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+      expect(countAfter).toBe(countBefore + 1);
+    });
+
+    it('CD-12: an INACTIVE non-deleted candidate is not affected', async () => {
+      const { id, studentCode } = await registerActive();
+      await prisma.candidate.update({ where: { id }, data: { status: 'INACTIVE' } });
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/candidates?studentCode=${studentCode}&includeInactive=true`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ id: string }> }).data;
+      expect(data.map((c) => c.id)).toContain(id);
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row!.deleted_at).toBeNull();
+    });
   });
 
   describe('Legacy candidate routes (must 404)', () => {
@@ -1631,9 +1834,9 @@ describe('Candidates registration (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 404 });
     });
 
-    it('L2: the old DELETE /candidates/:id deactivation method is no longer registered (404)', async () => {
+    it('L2: the old PATCH /candidates/:id/desactive method is no longer registered (404)', async () => {
       const res = await request(app.getHttpServer())
-        .delete(`/api/v1/candidates/${legacyId}`)
+        .patch(`/api/v1/candidates/${legacyId}/desactive`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
 
@@ -1643,6 +1846,15 @@ describe('Candidates registration (e2e)', () => {
     it('L3: the old /candidates/:id/reactivate activation path is no longer registered (404)', async () => {
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/candidates/${legacyId}/reactivate`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404 });
+    });
+
+    it('L4: the old PATCH /candidates/:id/active method is no longer registered (404)', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/candidates/${legacyId}/active`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
 
@@ -1702,39 +1914,61 @@ describe('Candidates registration (e2e)', () => {
         expect(updatePathItem.put!.responses[status]).toBeDefined();
       }
 
-      // S2: deactivation is documented as PATCH on /candidates/{id}/desactive; DELETE is gone.
+      // S2: deactivation is documented as PUT on /candidates/{id}/desactive; DELETE is gone.
       const desactivePathKey = Object.keys(document.paths).find((p) =>
         p.endsWith('/candidates/{id}/desactive'),
       );
       expect(desactivePathKey).toBeDefined();
       const desactivePathItem = document.paths[desactivePathKey!] as {
-        patch?: SwaggerOperationShape;
+        put?: SwaggerOperationShape;
         delete?: SwaggerOperationShape;
       };
-      expect(desactivePathItem.patch).toBeDefined();
+      expect(desactivePathItem.put).toBeDefined();
       expect(desactivePathItem.delete).toBeUndefined();
-      expect(desactivePathItem.patch!.tags).toContain('candidates');
-      expect(desactivePathItem.patch!.security).toEqual([{ bearer: [] }]);
+      expect(desactivePathItem.put!.tags).toContain('candidates');
+      expect(desactivePathItem.put!.security).toEqual([{ bearer: [] }]);
+      expect(desactivePathItem.put!.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'id', in: 'path', required: true }),
+        ]),
+      );
       for (const status of ['204', '400', '401', '403', '404']) {
-        expect(desactivePathItem.patch!.responses[status]).toBeDefined();
+        expect(desactivePathItem.put!.responses[status]).toBeDefined();
       }
 
-      // S3: activation is documented as PATCH on /candidates/{id}/active.
+      // S3: activation is documented as PUT on /candidates/{id}/active.
       const activePathKey = Object.keys(document.paths).find((p) =>
         p.endsWith('/candidates/{id}/active'),
       );
       expect(activePathKey).toBeDefined();
       const activePathItem = document.paths[activePathKey!] as {
-        patch?: SwaggerOperationShape;
+        put?: SwaggerOperationShape;
       };
-      expect(activePathItem.patch).toBeDefined();
-      expect(activePathItem.patch!.tags).toContain('candidates');
-      expect(activePathItem.patch!.security).toEqual([{ bearer: [] }]);
+      expect(activePathItem.put).toBeDefined();
+      expect(activePathItem.put!.tags).toContain('candidates');
+      expect(activePathItem.put!.security).toEqual([{ bearer: [] }]);
       for (const status of ['200', '400', '401', '403', '404', '409']) {
-        expect(activePathItem.patch!.responses[status]).toBeDefined();
+        expect(activePathItem.put!.responses[status]).toBeDefined();
       }
 
-      // S4: the bearer security scheme is documented.
+      // S2b: /candidates/{id} now exposes DELETE for the logical deletion.
+      const deleteOperation = (updatePathItem as { delete?: SwaggerOperationShape }).delete;
+      expect(deleteOperation).toBeDefined();
+      expect(deleteOperation!.tags).toContain('candidates');
+      expect(deleteOperation!.security).toEqual([{ bearer: [] }]);
+      expect(deleteOperation!.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'id', in: 'path', required: true }),
+        ]),
+      );
+      for (const status of ['204', '400', '401', '403', '404']) {
+        expect(deleteOperation!.responses[status]).toBeDefined();
+      }
+
+      // S4: registration of the CRUD methods is the expected one and the bearer scheme exists.
+      expect(desactivePathItem.delete).toBeUndefined();
+      expect((activePathItem as { delete?: SwaggerOperationShape }).delete).toBeUndefined();
+      expect(deleteOperation).toBeDefined();
       expect(document.components?.securitySchemes?.bearer).toBeDefined();
     });
   });

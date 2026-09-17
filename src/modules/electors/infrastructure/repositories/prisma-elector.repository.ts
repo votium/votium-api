@@ -10,6 +10,7 @@ import {
 import { PrismaElectorMapper } from '../mappers/prisma-elector.mapper';
 
 type PrismaElectorWhere = {
+  deleted_at?: null;
   program_code?: string;
   student_code?: string;
   OR?: Array<{
@@ -49,13 +50,28 @@ export class PrismaElectorRepository implements ElectorRepository {
   }
 
   async findById(id: string): Promise<ElectorEntity | null> {
-    const row = await this.prisma.elector.findUnique({ where: { id } });
+    const row = await this.prisma.elector.findUnique({
+      where: { id, deleted_at: null },
+    });
     return row ? PrismaElectorMapper.toDomain(row) : null;
+  }
+
+  async softDelete(id: string): Promise<ElectorEntity | null> {
+    try {
+      const row = await this.prisma.elector.update({
+        where: { id },
+        data: { deleted_at: new Date() },
+      });
+      return PrismaElectorMapper.toDomain(row);
+    } catch (error) {
+      if (isRecordNotFoundError(error)) return null;
+      throw error;
+    }
   }
 
   async findByEmail(email: string): Promise<ElectorEntity | null> {
     const row = await this.prisma.elector.findFirst({
-      where: { email: { equals: email.trim(), mode: 'insensitive' } },
+      where: { email: { equals: email.trim(), mode: 'insensitive' }, deleted_at: null },
     });
     return row ? PrismaElectorMapper.toDomain(row) : null;
   }
@@ -98,6 +114,7 @@ export class PrismaElectorRepository implements ElectorRepository {
     const name = params.name?.trim();
 
     const where: PrismaElectorWhere = {
+      deleted_at: null,
       ...(programCode ? { program_code: programCode } : {}),
       ...(studentCode ? { student_code: studentCode } : {}),
       ...(name
@@ -130,6 +147,7 @@ export class PrismaElectorRepository implements ElectorRepository {
 
     const rows = await this.prisma.elector.findMany({
       where: {
+        deleted_at: null,
         OR: pairs.map(({ studentCode, programCode }) => ({
           student_code: studentCode,
           program_code: programCode,

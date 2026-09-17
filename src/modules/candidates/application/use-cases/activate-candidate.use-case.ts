@@ -1,10 +1,10 @@
 import { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.port';
 import { CandidateEntity } from '../../domain/entities/candidate.entity';
-import { CandidateNotFoundError } from '../../domain/errors/candidate-not-found.error';
 import { CandidateAlreadyActiveError } from '../../domain/errors/candidate-already-active.error';
+import { CandidateNotFoundError } from '../../domain/errors/candidate-not-found.error';
 import type { CandidateRepository } from '../../domain/repositories/candidate.repository.interface';
 
-export class ReactivateCandidateUseCase {
+export class ActivateCandidateUseCase {
   constructor(
     private readonly candidates: CandidateRepository,
     private readonly audit: AuditLogPort,

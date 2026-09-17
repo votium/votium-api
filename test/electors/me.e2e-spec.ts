@@ -278,6 +278,31 @@ describe('GET /auth/electors/me (e2e)', () => {
       expect((res.body as ErrorBody).statusCode).toBe(404);
     });
 
+    it('ME-D1: a token whose elector was logically deleted returns 404', async () => {
+      const deleted = await prisma.elector.create({
+        data: {
+          first_name: 'Gone',
+          last_name: 'Voter',
+          email: `e2e-me-deleted-${suffix}@correounivalle.edu.co`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: `E2EMEDEL-${suffix}`,
+          program_code: '2710',
+          status: 'ACTIVE',
+          deleted_at: new Date(),
+        },
+      });
+      usedStudentCodes.push(deleted.student_code);
+
+      const token = jwt.sign(
+        { sub: deleted.id, email: deleted.email, actorType: 'ELECTOR' },
+        envs.jwtSecret,
+        { expiresIn: envs.jwtExpiresIn },
+      );
+
+      const res = await meGet(token).expect(404);
+      expect((res.body as ErrorBody).statusCode).toBe(404);
+    });
+
     it('E13: the response does not leak secrets or internal elector fields', async () => {
       const res = await meGet(electorToken).expect(200);
       const bodyStr = JSON.stringify(res.body);

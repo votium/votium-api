@@ -568,4 +568,43 @@ describe('PrismaCandidacyRepository integration', () => {
     const remaining = await prisma.candiday.findMany({ where: { election_id: electionB } });
     expect(remaining).toHaveLength(1);
   });
+
+  it('CAN-1: findUsedPositions for a deleted candidate is excluded from findByElection but keeps the position', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate();
+    await repository.create(buildEntity(electionId, candidateId, 3));
+
+    await prisma.candidate.update({
+      where: { id: candidateId },
+      data: { deleted_at: new Date() },
+    });
+
+    const result = await repository.findByElection(electionId);
+    expect(result).toEqual([]);
+
+    // CAN-4 (regression I-34): the position of a deleted candidate stays occupied.
+    expect(await repository.findUsedPositions(electionId)).toEqual([3]);
+  });
+
+  it('CAN-2: an INACTIVE candidate that is not deleted is still excluded from findByElection', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate({ status: 'INACTIVE' });
+    await repository.create(buildEntity(electionId, candidateId, 1));
+
+    const result = await repository.findByElection(electionId);
+
+    expect(result).toEqual([]);
+    expect(await repository.findUsedPositions(electionId)).toEqual([1]);
+  });
+
+  it('CAN-3: an ACTIVE candidate that is not deleted is still included in findByElection', async () => {
+    const electionId = await seedElection();
+    const candidateId = await seedCandidate({ status: 'ACTIVE' });
+    await repository.create(buildEntity(electionId, candidateId, 1));
+
+    const result = await repository.findByElection(electionId);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].candidateId).toBe(candidateId);
+  });
 });

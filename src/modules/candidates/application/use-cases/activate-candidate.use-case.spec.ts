@@ -3,13 +3,14 @@ import { CandidateNotFoundError } from '../../domain/errors/candidate-not-found.
 import { CandidateAlreadyActiveError } from '../../domain/errors/candidate-already-active.error';
 import type { CandidateRepository } from '../../domain/repositories/candidate.repository.interface';
 import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.port';
-import { ReactivateCandidateUseCase } from './reactivate-candidate.use-case';
+import { ActivateCandidateUseCase } from './activate-candidate.use-case';
 
-describe('ReactivateCandidateUseCase', () => {
+describe('ActivateCandidateUseCase', () => {
   const candidates: jest.Mocked<CandidateRepository> = {
     create: jest.fn(),
     search: jest.fn(),
     findById: jest.fn(),
+    softDelete: jest.fn(),
     updateStatus: jest.fn(),
     update: jest.fn(),
   };
@@ -61,7 +62,7 @@ describe('ReactivateCandidateUseCase', () => {
   it('RC-1: reactivates an INACTIVE candidate and returns the ACTIVE entity', async () => {
     candidates.findById.mockResolvedValue(inactiveCandidate());
     candidates.updateStatus.mockResolvedValue(activeCandidate());
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     const result = await useCase.execute(id, requestingUserId);
 
@@ -74,7 +75,7 @@ describe('ReactivateCandidateUseCase', () => {
   it('RC-2: preserves id and all other fields', async () => {
     candidates.findById.mockResolvedValue(inactiveCandidate());
     candidates.updateStatus.mockResolvedValue(activeCandidate());
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     const result = await useCase.execute(id, requestingUserId);
 
@@ -90,7 +91,7 @@ describe('ReactivateCandidateUseCase', () => {
   it('RC-3: never creates a new candidate; persists only via updateStatus', async () => {
     candidates.findById.mockResolvedValue(inactiveCandidate());
     candidates.updateStatus.mockResolvedValue(activeCandidate());
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     await useCase.execute(id, requestingUserId);
 
@@ -101,7 +102,7 @@ describe('ReactivateCandidateUseCase', () => {
 
   it('RC-4: throws CandidateNotFoundError when the candidate does not exist', async () => {
     candidates.findById.mockResolvedValue(null);
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     await expect(useCase.execute('missing', requestingUserId)).rejects.toBeInstanceOf(
       CandidateNotFoundError,
@@ -113,7 +114,7 @@ describe('ReactivateCandidateUseCase', () => {
 
   it('RC-5: throws CandidateAlreadyActiveError when the candidate is already ACTIVE (and does nothing else)', async () => {
     candidates.findById.mockResolvedValue(activeCandidate());
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     await expect(useCase.execute(id, requestingUserId)).rejects.toBeInstanceOf(
       CandidateAlreadyActiveError,
@@ -126,7 +127,7 @@ describe('ReactivateCandidateUseCase', () => {
   it('RC-6: logs CANDIDATE_REACTIVATED with the requesting user and candidateId', async () => {
     candidates.findById.mockResolvedValue(inactiveCandidate());
     candidates.updateStatus.mockResolvedValue(activeCandidate());
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     await useCase.execute(id, requestingUserId);
 
@@ -140,7 +141,7 @@ describe('ReactivateCandidateUseCase', () => {
   it('RC-7: skips the audit log when requestingUserId is absent', async () => {
     candidates.findById.mockResolvedValue(inactiveCandidate());
     candidates.updateStatus.mockResolvedValue(activeCandidate());
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     await useCase.execute(id, '');
 
@@ -150,7 +151,7 @@ describe('ReactivateCandidateUseCase', () => {
   it('RC-8: throws CandidateNotFoundError when updateStatus returns null (race) and does not log', async () => {
     candidates.findById.mockResolvedValue(inactiveCandidate());
     candidates.updateStatus.mockResolvedValue(null);
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     await expect(useCase.execute(id, requestingUserId)).rejects.toBeInstanceOf(
       CandidateNotFoundError,
@@ -163,10 +164,22 @@ describe('ReactivateCandidateUseCase', () => {
     candidates.findById.mockResolvedValue(inactiveCandidate());
     const repositoryError = new Error('database unavailable');
     candidates.updateStatus.mockRejectedValue(repositoryError);
-    const useCase = new ReactivateCandidateUseCase(candidates, audit);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
 
     await expect(useCase.execute(id, requestingUserId)).rejects.toBe(repositoryError);
 
+    expect(audit.log.mock.calls).toHaveLength(0);
+  });
+
+  it('AC-10: returns CandidateNotFoundError when the repository hides a deleted candidate', async () => {
+    candidates.findById.mockResolvedValue(null);
+    const useCase = new ActivateCandidateUseCase(candidates, audit);
+
+    await expect(useCase.execute(id, requestingUserId)).rejects.toBeInstanceOf(
+      CandidateNotFoundError,
+    );
+
+    expect(candidates.updateStatus.mock.calls).toHaveLength(0);
     expect(audit.log.mock.calls).toHaveLength(0);
   });
 });

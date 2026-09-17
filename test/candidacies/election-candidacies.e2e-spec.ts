@@ -443,6 +443,24 @@ describe('Election candidacies query (e2e)', () => {
       expect(body.candidacies[0].candidate.firstName).toBe('Ana');
     });
 
+    it('CE-D1: logically deleted candidates are excluded from the results', async () => {
+      const electionId = await seedElection('PENDING');
+      const active = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
+      const deleted = await seedCandidate({ firstName: 'Luis', lastName: 'Mora' });
+      await seedCandidacy(electionId, active, 1);
+      await seedCandidacy(electionId, deleted, 2);
+      await prisma.candidate.update({
+        where: { id: deleted },
+        data: { deleted_at: new Date() },
+      });
+
+      const res = await getCandidacies(electionId, {}, adminToken).expect(200);
+      const body = res.body as CandidacyQueryBody;
+
+      expect(body.candidacies).toHaveLength(1);
+      expect(body.candidacies[0].candidate.firstName).toBe('Ana');
+    });
+
     it('E2E-18: the response contains exactly the documented fields', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });

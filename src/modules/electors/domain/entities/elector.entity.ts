@@ -20,6 +20,7 @@ export interface RestoreElectorInput {
   programCode: string;
   status: string;
   createdAt: Date;
+  deletedAt?: Date | null;
 }
 
 export interface UpdateElectorInput {
@@ -43,6 +44,7 @@ export class ElectorEntity {
     public studentCode: string,
     public programCode: string,
     private _status: string,
+    private _deletedAt: Date | null,
     public readonly createdAt: Date | null,
   ) {}
 
@@ -57,6 +59,7 @@ export class ElectorEntity {
       input.programCode.trim(),
       input.status ?? ElectorEntity.DEFAULT_STATUS,
       null,
+      null,
     );
   }
 
@@ -70,6 +73,7 @@ export class ElectorEntity {
       input.studentCode,
       input.programCode,
       input.status,
+      input.deletedAt ?? null,
       input.createdAt,
     );
   }
@@ -84,6 +88,18 @@ export class ElectorEntity {
 
   get status(): string {
     return this._status;
+  }
+
+  get deletedAt(): Date | null {
+    return this._deletedAt;
+  }
+
+  isDeleted(): boolean {
+    return this._deletedAt !== null;
+  }
+
+  delete(now: Date = new Date()): void {
+    this._deletedAt = now;
   }
 
   isActive(): boolean {

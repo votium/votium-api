@@ -105,6 +105,13 @@ describe('PrismaCandidateMapper.toUpdateData', () => {
 
     expect(data).toEqual({});
   });
+
+  it('MC-3: toUpdateData never includes deleted_at', () => {
+    const data = PrismaCandidateMapper.toUpdateData({ firstName: 'Maria' });
+
+    expect(data).not.toHaveProperty('deleted_at');
+    expect(data).toEqual({ first_name: 'Maria' });
+  });
 });
 
 describe('PrismaCandidateMapper.toPersistence', () => {
@@ -136,6 +143,15 @@ describe('PrismaCandidateMapper.toPersistence', () => {
     });
     expect(data).not.toHaveProperty('id');
     expect(data).not.toHaveProperty('created_at');
+    expect(data).not.toHaveProperty('deleted_at');
+  });
+
+  it('MC-2: toPersistence never includes deleted_at', () => {
+    const entity = CandidateEntity.create(base);
+
+    const data = PrismaCandidateMapper.toPersistence(entity);
+
+    expect(data).not.toHaveProperty('deleted_at');
   });
 
   it('M-10: includes companion values when the entity has them', () => {
@@ -177,6 +193,7 @@ describe('PrismaCandidateMapper.toDomain', () => {
       companion_program_code: null,
       companion_identification: '2000000000',
       created_at: new Date('2026-08-19T15:00:00.000Z'),
+      deleted_at: null,
     });
 
     expect(entity.id).toBe('candidate-1');
@@ -185,5 +202,31 @@ describe('PrismaCandidateMapper.toDomain', () => {
     expect(entity.companionStudentCode).toBe('20209999');
     expect(entity.companionProgramCode).toBeNull();
     expect(entity.companionIdentification).toBe('2000000000');
+    expect(entity.deletedAt).toBeNull();
+    expect(entity.isDeleted()).toBe(false);
+  });
+
+  it('MC-1: toDomain maps deleted_at (null and a date)', () => {
+    const row = {
+      id: 'candidate-1',
+      first_name: 'Juan',
+      last_name: 'Garcia',
+      student_code: '20201234',
+      program_code: '1234',
+      identification_number: '1000123456',
+      status: 'ACTIVE',
+      companion_first_name: null,
+      companion_last_name: null,
+      companion_student_code: null,
+      companion_program_code: null,
+      companion_identification: null,
+      created_at: new Date('2026-08-19T15:00:00.000Z'),
+      deleted_at: new Date('2026-09-01T10:00:00.000Z'),
+    };
+
+    const entity = PrismaCandidateMapper.toDomain(row);
+
+    expect(entity.deletedAt).toEqual(new Date('2026-09-01T10:00:00.000Z'));
+    expect(entity.isDeleted()).toBe(true);
   });
 });

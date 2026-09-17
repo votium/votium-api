@@ -19,6 +19,7 @@ function makeCandidateRepo(candidate: CandidateEntity | null): CandidateReposito
   return {
     create: jest.fn(),
     findById: jest.fn().mockResolvedValue(candidate),
+    softDelete: jest.fn(),
     updateStatus: jest.fn(),
     update: jest.fn(),
     search: jest.fn(),

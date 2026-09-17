@@ -9,7 +9,9 @@ import {
   AUDIT_LOG_PORT,
   type AuditLogPort,
 } from 'src/modules/iam/application/ports/audit-log.port';
+import { ActivateElectorUseCase } from './application/use-cases/activate-elector.use-case';
 import { DeactivateElectorUseCase } from './application/use-cases/deactivate-elector.use-case';
+import { DeleteElectorUseCase } from './application/use-cases/delete-elector.use-case';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
 import { CSV_PARSER_PORT, type CsvParserPort } from './application/ports/csv-parser.port';
@@ -40,6 +42,18 @@ import { ElectorsController } from './presentation/controllers/electors.controll
       provide: DeactivateElectorUseCase,
       useFactory: (electors: ElectorRepository, audit: AuditLogPort) =>
         new DeactivateElectorUseCase(electors, audit),
+      inject: [ELECTOR_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: DeleteElectorUseCase,
+      useFactory: (electors: ElectorRepository, audit: AuditLogPort) =>
+        new DeleteElectorUseCase(electors, audit),
+      inject: [ELECTOR_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: ActivateElectorUseCase,
+      useFactory: (electors: ElectorRepository, audit: AuditLogPort) =>
+        new ActivateElectorUseCase(electors, audit),
       inject: [ELECTOR_REPOSITORY, AUDIT_LOG_PORT],
     },
     {

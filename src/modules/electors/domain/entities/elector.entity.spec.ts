@@ -253,6 +253,85 @@ describe('ElectorEntity', () => {
     });
   });
 
+  describe('deletedAt / isDeleted / delete', () => {
+    const deletionDate = new Date('2026-09-01T10:00:00.000Z');
+
+    function restored(overrides: Partial<Parameters<typeof ElectorEntity.restore>[0]> = {}) {
+      return ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        ...overrides,
+      });
+    }
+
+    it('EDE-1: create() does not mark the elector as deleted', () => {
+      const entity = ElectorEntity.create(baseInput);
+
+      expect(entity.deletedAt).toBeNull();
+      expect(entity.isDeleted()).toBe(false);
+    });
+
+    it('EDE-2: delete(fecha) marks the deletion with the received date', () => {
+      const entity = restored();
+
+      entity.delete(deletionDate);
+
+      expect(entity.deletedAt).toEqual(deletionDate);
+      expect(entity.isDeleted()).toBe(true);
+    });
+
+    it('EDE-3: delete() does not change status nor isActive()', () => {
+      const active = restored();
+      const inactive = restored({ status: ElectorEntity.INACTIVE_STATUS });
+
+      active.delete(deletionDate);
+      inactive.delete(deletionDate);
+
+      expect(active.status).toBe('ACTIVE');
+      expect(active.isActive()).toBe(true);
+      expect(inactive.status).toBe('INACTIVE');
+      expect(inactive.isActive()).toBe(false);
+    });
+
+    it('EDE-4: delete() does not alter any other field', () => {
+      const createdAt = new Date('2026-08-01T00:00:00.000Z');
+      const entity = restored({ createdAt });
+
+      entity.delete(deletionDate);
+
+      expect(entity.id).toBe('elector-1');
+      expect(entity.firstName).toBe('Juan Camilo');
+      expect(entity.lastName).toBe('Garcia Saenz');
+      expect(entity.email).toBe('juan.garcia@correounivalle.edu.co');
+      expect(entity.passwordHash).toBe('pbkdf2$210000$salt$hash');
+      expect(entity.studentCode).toBe('202012345');
+      expect(entity.programCode).toBe('2710');
+      expect(entity.createdAt).toBe(createdAt);
+    });
+
+    it('EDE-5: restore({ deletedAt }) hydrates the deletion', () => {
+      const entity = restored({ deletedAt: deletionDate });
+
+      expect(entity.deletedAt).toEqual(deletionDate);
+      expect(entity.isDeleted()).toBe(true);
+    });
+
+    it('EDE-5b: restore({ deletedAt: null }) hydrates a non-deleted elector', () => {
+      const entity = restored({ deletedAt: null });
+
+      expect(entity.deletedAt).toBeNull();
+      expect(entity.isDeleted()).toBe(false);
+    });
+
+    it('EDE-6: deactivate() still throws ElectorAlreadyInactiveError', () => {
+      const entity = restored({ status: ElectorEntity.INACTIVE_STATUS });
+
+      expect(() => entity.deactivate()).toThrow(ElectorAlreadyInactiveError);
+    });
+  });
+
   describe('buildTemporaryPassword', () => {
     it('generates the password from the spec example 1', () => {
       expect(ElectorEntity.buildTemporaryPassword('Juan Camilo', 'Garcia Saenz', '202012345')).toBe(
