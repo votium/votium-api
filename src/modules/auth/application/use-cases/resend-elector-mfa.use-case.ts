@@ -7,7 +7,7 @@ import { OTP_TTL_MS, RESEND_COOLDOWN_MS } from 'src/shared/constants/mfa.constan
 import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
 import type { EmailServicePort } from 'src/modules/auth/application/ports/email-service.port';
 import type { OtpGeneratorPort } from 'src/modules/auth/application/ports/otp-generator.port';
-import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
+import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
 import type { ElectorMfaChallengeRepository } from '../../domain/repositories/elector-mfa-challenge.repository.interface';
 
 export class ResendElectorMfaUseCase {

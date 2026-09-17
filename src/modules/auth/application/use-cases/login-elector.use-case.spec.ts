@@ -5,7 +5,7 @@ import {
   type RestoreElectorInput,
 } from 'src/modules/electors/domain/entities/elector.entity';
 import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
-import type { ElectorMfaChallengeRepository } from 'src/modules/electors/domain/repositories/elector-mfa-challenge.repository.interface';
+import type { ElectorMfaChallengeRepository } from 'src/modules/auth/domain/repositories/elector-mfa-challenge.repository.interface';
 import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
 import type { EmailServicePort } from 'src/modules/auth/application/ports/email-service.port';
 import type { OtpGeneratorPort } from 'src/modules/auth/application/ports/otp-generator.port';
@@ -249,5 +249,48 @@ describe('LoginElectorUseCase', () => {
     await expect(
       useCase().execute({ email: 'juan@example.com', password: 'secret' }),
     ).rejects.toThrow('db down');
+  });
+
+  it('L14: locks the exact response shape (mfaRequired, sessionId, expiresIn, message)', async () => {
+    electors.findByEmail.mockResolvedValue(buildActiveElector());
+    hasher.verify.mockResolvedValue(true);
+    otpGenerator.generate.mockReturnValue('483912');
+    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
+    challenges.create.mockResolvedValue({} as never);
+    emailService.sendVerificationCode.mockResolvedValue(undefined);
+
+    const result = await useCase().execute({ email: 'juan@example.com', password: 'secret' });
+
+    expect(Object.keys(result).sort()).toEqual([
+      'expiresIn',
+      'message',
+      'mfaRequired',
+      'sessionId',
+    ]);
+    expect(result).toEqual(
+      expect.objectContaining({
+        mfaRequired: true,
+        expiresIn: 300,
+        message: 'A verification code has been sent to your registered email.',
+      }),
+    );
+  });
+
+  it('L15: runs invalidateByElectorId, create and sendVerificationCode in that order', async () => {
+    electors.findByEmail.mockResolvedValue(buildActiveElector());
+    hasher.verify.mockResolvedValue(true);
+    otpGenerator.generate.mockReturnValue('483912');
+    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
+    challenges.create.mockResolvedValue({} as never);
+    emailService.sendVerificationCode.mockResolvedValue(undefined);
+
+    await useCase().execute({ email: 'juan@example.com', password: 'secret' });
+
+    const invalidateOrder = challenges.invalidateByElectorId.mock.invocationCallOrder[0];
+    const createOrder = challenges.create.mock.invocationCallOrder[0];
+    const sendOrder = emailService.sendVerificationCode.mock.invocationCallOrder[0];
+
+    expect(invalidateOrder).toBeLessThan(createOrder);
+    expect(createOrder).toBeLessThan(sendOrder);
   });
 });
