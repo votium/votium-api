@@ -684,6 +684,9 @@ describe('PrismaCandidateRepository integration', () => {
 
   describe('search', () => {
     const searchCodes: string[] = [];
+    // ACTIVE subset of searchCodes (INACTIVE seeds go to searchCodes for cleanup
+    // only, since the default search excludes them from result.total).
+    const activeSearchCodes: string[] = [];
     let candidateA: CandidateEntity;
     let candidateB: CandidateEntity;
     let candidateC: CandidateEntity;
@@ -723,6 +726,7 @@ describe('PrismaCandidateRepository integration', () => {
         }),
       );
       searchCodes.push(saved.studentCode);
+      activeSearchCodes.push(saved.studentCode);
       return saved;
     }
 
@@ -782,6 +786,7 @@ describe('PrismaCandidateRepository integration', () => {
         });
         searchCodes.push(row.student_code);
         pgSeeds.push({ studentCode: row.student_code });
+        activeSearchCodes.push(row.student_code);
       }
 
       // Inactive seed (lastName 'Row') used by the includeInactive cases.
@@ -812,6 +817,9 @@ describe('PrismaCandidateRepository integration', () => {
         });
         searchCodes.push(row.student_code);
         comboSeeds.push({ studentCode: row.student_code });
+        if (tag !== '3') {
+          activeSearchCodes.push(row.student_code);
+        }
       }
     });
 
@@ -833,7 +841,7 @@ describe('PrismaCandidateRepository integration', () => {
           candidateD.studentCode,
         ]),
       );
-      expect(result.total).toBeGreaterThanOrEqual(searchCodes.length);
+      expect(result.total).toBeGreaterThanOrEqual(activeSearchCodes.length);
 
       const times = own.map((row) => row.createdAt!.getTime());
       for (let i = 1; i < times.length; i++) {
@@ -988,7 +996,7 @@ describe('PrismaCandidateRepository integration', () => {
       expect(page1.total).toBe(3);
 
       const withoutFilter = await search({});
-      expect(withoutFilter.total).toBeGreaterThanOrEqual(searchCodes.length);
+      expect(withoutFilter.total).toBeGreaterThanOrEqual(activeSearchCodes.length);
     });
 
     it('I4: an out-of-range page returns an empty slice but keeps the real total', async () => {
