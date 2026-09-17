@@ -65,7 +65,7 @@ describe('Elector auth MFA (e2e)', () => {
 
   const startLogin = async (email: string, password: string): Promise<string> => {
     const res = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/login')
+      .post('/api/v1/auth/electors/login')
       .send({ email, password })
       .expect(200);
     const body = res.body as LoginResponseBody;
@@ -170,12 +170,12 @@ describe('Elector auth MFA (e2e)', () => {
     await app.close();
   });
 
-  describe('POST /electors/auth/login', () => {
+  describe('POST /auth/electors/login', () => {
     it('E1: returns 200 with MFA required, sessionId and sends OTP (no token)', async () => {
       emailService.sent = [];
 
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/login')
+        .post('/api/v1/auth/electors/login')
         .send({ email: activeElector.email, password: activeElector.password })
         .expect(200);
 
@@ -194,7 +194,7 @@ describe('Elector auth MFA (e2e)', () => {
 
     it('E2: returns 401 for unknown email', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/login')
+        .post('/api/v1/auth/electors/login')
         .send({ email: `unknown-${suffix}@example.com`, password: 'anything' })
         .expect(401);
 
@@ -203,7 +203,7 @@ describe('Elector auth MFA (e2e)', () => {
 
     it('E3: returns 401 for wrong password', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/login')
+        .post('/api/v1/auth/electors/login')
         .send({ email: activeElector.email, password: 'WrongPass123!' })
         .expect(401);
 
@@ -212,7 +212,7 @@ describe('Elector auth MFA (e2e)', () => {
 
     it('E4: returns 401 for inactive elector', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/login')
+        .post('/api/v1/auth/electors/login')
         .send({ email: inactiveElector.email, password: inactiveElector.password })
         .expect(401);
 
@@ -221,7 +221,7 @@ describe('Elector auth MFA (e2e)', () => {
 
     it('E5: returns 400 for malformed body (missing email)', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/login')
+        .post('/api/v1/auth/electors/login')
         .send({ password: 'test' })
         .expect(400);
 
@@ -230,7 +230,7 @@ describe('Elector auth MFA (e2e)', () => {
 
     it('E6: returns 400 for invalid email format', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/login')
+        .post('/api/v1/auth/electors/login')
         .send({ email: 'not-an-email', password: 'test' })
         .expect(400);
 
@@ -241,7 +241,7 @@ describe('Elector auth MFA (e2e)', () => {
       emailService.shouldFail = true;
       try {
         const res = await request(app.getHttpServer())
-          .post('/api/v1/electors/auth/login')
+          .post('/api/v1/auth/electors/login')
           .send({ email: activeElector.email, password: activeElector.password })
           .expect(500);
         expect(res.body).toMatchObject({ message: 'Unable to send verification email.' });
@@ -256,13 +256,13 @@ describe('Elector auth MFA (e2e)', () => {
     });
   });
 
-  describe('POST /electors/auth/mfa/verify', () => {
+  describe('POST /auth/electors/mfa/verify', () => {
     it('E8: completes auth with correct code and returns ELECTOR JWT without role', async () => {
       const sessionId = await startLogin(activeElector.email, activeElector.password);
       const code = emailService.last().code;
 
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
 
@@ -285,7 +285,7 @@ describe('Elector auth MFA (e2e)', () => {
       const sessionId = await startLogin(activeElector.email, activeElector.password);
 
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code: '000000' })
         .expect(400);
 
@@ -300,7 +300,7 @@ describe('Elector auth MFA (e2e)', () => {
       });
 
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code: '123456' })
         .expect(410);
 
@@ -309,7 +309,7 @@ describe('Elector auth MFA (e2e)', () => {
 
     it('E11: rejects an unknown session with 401', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId: '00000000-0000-4000-8000-000000000000', code: '123456' })
         .expect(401);
 
@@ -321,12 +321,12 @@ describe('Elector auth MFA (e2e)', () => {
       const code = emailService.last().code;
 
       await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
 
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(400);
 
@@ -337,7 +337,7 @@ describe('Elector auth MFA (e2e)', () => {
       const sessionId = await startLogin(activeElector.email, activeElector.password);
 
       await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code: 'abc' })
         .expect(400);
     });
@@ -347,7 +347,7 @@ describe('Elector auth MFA (e2e)', () => {
       const code = emailService.last().code;
 
       const verifyRes = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
       const token = (verifyRes.body as TokensResponseBody).accessToken;
@@ -361,7 +361,7 @@ describe('Elector auth MFA (e2e)', () => {
     });
   });
 
-  describe('POST /electors/auth/mfa/resend', () => {
+  describe('POST /auth/electors/mfa/resend', () => {
     it('E16: sends a new code and keeps the session valid', async () => {
       const sessionId = await startLogin(activeElector.email, activeElector.password);
       const previous = emailService.last().code;
@@ -371,7 +371,7 @@ describe('Elector auth MFA (e2e)', () => {
       });
 
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/resend')
+        .post('/api/v1/auth/electors/mfa/resend')
         .send({ sessionId })
         .expect(201);
 
@@ -382,7 +382,7 @@ describe('Elector auth MFA (e2e)', () => {
 
       const code = emailService.last().code;
       await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
     });
@@ -391,7 +391,7 @@ describe('Elector auth MFA (e2e)', () => {
       const sessionId = await startLogin(activeElector.email, activeElector.password);
 
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/resend')
+        .post('/api/v1/auth/electors/mfa/resend')
         .send({ sessionId })
         .expect(429);
 
@@ -404,12 +404,12 @@ describe('Elector auth MFA (e2e)', () => {
       const sessionId = await startLogin(activeElector.email, activeElector.password);
       const code = emailService.last().code;
       await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
 
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/resend')
+        .post('/api/v1/auth/electors/mfa/resend')
         .send({ sessionId })
         .expect(401);
 
@@ -423,7 +423,7 @@ describe('Elector auth MFA (e2e)', () => {
       const code = emailService.last().code;
 
       const verifyRes = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/mfa/verify')
+        .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
       const token = (verifyRes.body as TokensResponseBody).accessToken;
@@ -438,7 +438,7 @@ describe('Elector auth MFA (e2e)', () => {
 
     it('E20: no token is issued at login (sessionId only)', async () => {
       const res = await request(app.getHttpServer())
-        .post('/api/v1/electors/auth/login')
+        .post('/api/v1/auth/electors/login')
         .send({ email: activeElector.email, password: activeElector.password })
         .expect(200);
 

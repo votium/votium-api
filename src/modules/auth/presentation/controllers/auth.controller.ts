@@ -1,14 +1,30 @@
-import { ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
-import { Body, Controller, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
+import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { LoginDto } from '../../application/dtos/login.dto';
 import { MfaRequiredResponseDto } from '../../application/dtos/mfa-required-response.dto';
 import { AuthTokensResponseDto } from '../../application/dtos/auth-tokens-response.dto';
 import { VerifyMfaDto } from '../../application/dtos/verify-mfa.dto';
 import { ResendMfaDto } from '../../application/dtos/resend-mfa.dto';
 import { ResendMfaResponseDto } from '../../application/dtos/resend-mfa-response.dto';
+import { MeUserResponseDto } from '../../application/dtos/me-user-response.dto';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { VerifyMfaUseCase } from '../../application/use-cases/verify-mfa.use-case';
 import { ResendMfaUseCase } from '../../application/use-cases/resend-mfa.use-case';
+import { GetMeUserUseCase } from '../../application/use-cases/get-me-user.use-case';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { RolesGuard } from '../guards/roles.guard';
+import { Roles } from '../guards/roles.decorator';
+import { AuthPresenter } from '../presenters/auth.presenter';
+
+type AuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    role: RoleName;
+  };
+};
 
 @ApiTags('auth')
 @Controller('auth')
@@ -17,6 +33,7 @@ export class AuthController {
     private readonly login: LoginUseCase,
     private readonly verifyMfa: VerifyMfaUseCase,
     private readonly resendMfa: ResendMfaUseCase,
+    private readonly getMeUser: GetMeUserUseCase,
   ) {}
 
   @Post('login')
@@ -59,5 +76,28 @@ export class AuthController {
   async resendMfaCode(@Body() dto: ResendMfaDto) {
     const result = await this.resendMfa.execute(dto);
     return new ResendMfaResponseDto(result);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get currently authenticated user',
+    description:
+      'Returns the authenticated administrator or auditor resolved from the JWT. ' +
+      'Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Authenticated user retrieved successfully.',
+    type: MeUserResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  async me(@Req() req: AuthenticatedRequest) {
+    const user = await this.getMeUser.execute(req.user.sub);
+    return AuthPresenter.toMeUserResponse(user);
   }
 }

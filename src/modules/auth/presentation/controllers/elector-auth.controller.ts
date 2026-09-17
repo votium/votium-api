@@ -1,22 +1,37 @@
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { Request } from 'express';
 import { LoginElectorUseCase } from '../../application/use-cases/login-elector.use-case';
 import { VerifyElectorMfaUseCase } from '../../application/use-cases/verify-elector-mfa.use-case';
 import { ResendElectorMfaUseCase } from '../../application/use-cases/resend-elector-mfa.use-case';
-import { ElectorLoginDto } from '../dtos/elector-login.dto';
-import { ElectorMfaRequiredResponseDto } from '../dtos/elector-mfa-required-response.dto';
-import { ElectorAuthResponseDto } from '../dtos/elector-auth-response.dto';
-import { ElectorMfaResendResponseDto } from '../dtos/elector-mfa-resend-response.dto';
-import { VerifyElectorMfaDto } from '../dtos/verify-elector-mfa.dto';
-import { ResendElectorMfaDto } from '../dtos/resend-elector-mfa.dto';
+import { GetMeElectorUseCase } from '../../application/use-cases/get-me-elector.use-case';
+import { ElectorLoginDto } from '../../application/dtos/elector-login.dto';
+import { ElectorMfaRequiredResponseDto } from '../../application/dtos/elector-mfa-required-response.dto';
+import { ElectorAuthResponseDto } from '../../application/dtos/elector-auth-response.dto';
+import { ElectorMfaResendResponseDto } from '../../application/dtos/elector-mfa-resend-response.dto';
+import { VerifyElectorMfaDto } from '../../application/dtos/verify-elector-mfa.dto';
+import { ResendElectorMfaDto } from '../../application/dtos/resend-elector-mfa.dto';
+import { MeElectorResponseDto } from '../../application/dtos/me-elector-response.dto';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { ElectorGuard } from '../guards/elector.guard';
+import { AuthPresenter } from '../presenters/auth.presenter';
 
-@ApiTags('electors')
-@Controller('electors/auth')
+type ElectorAuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    actorType: string;
+  };
+};
+
+@ApiTags('auth')
+@Controller('auth/electors')
 export class ElectorAuthController {
   constructor(
     private readonly loginElector: LoginElectorUseCase,
     private readonly verifyElectorMfa: VerifyElectorMfaUseCase,
     private readonly resendElectorMfa: ResendElectorMfaUseCase,
+    private readonly getMeElector: GetMeElectorUseCase,
   ) {}
 
   @Post('login')
@@ -64,5 +79,25 @@ export class ElectorAuthController {
   async resendMfa(@Body() dto: ResendElectorMfaDto) {
     const result = await this.resendElectorMfa.execute(dto);
     return new ElectorMfaResendResponseDto(result);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard, ElectorGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get currently authenticated elector',
+    description: 'Returns the authenticated voter/elector resolved from the JWT.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Authenticated elector retrieved successfully.',
+    type: MeElectorResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires elector actor type.' })
+  @ApiResponse({ status: 404, description: 'Elector not found.' })
+  async me(@Req() req: ElectorAuthenticatedRequest) {
+    const elector = await this.getMeElector.execute(req.user.sub);
+    return AuthPresenter.toMeElectorResponse(elector);
   }
 }

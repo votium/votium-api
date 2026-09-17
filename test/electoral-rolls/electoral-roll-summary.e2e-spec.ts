@@ -94,13 +94,13 @@ describe('Electoral roll summary (e2e)', () => {
 
   const completeElectorLogin = async (email: string, password: string): Promise<string> => {
     const loginRes = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/login')
+      .post('/api/v1/auth/electors/login')
       .send({ email, password })
       .expect(200);
     const sessionId = (loginRes.body as LoginResponseBody).sessionId;
     const code = emailService.last().code;
     const verifyRes = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/mfa/verify')
+      .post('/api/v1/auth/electors/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
     return (verifyRes.body as TokensResponseBody).accessToken;
