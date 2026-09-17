@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -9,11 +8,19 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiTags,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
@@ -123,7 +130,7 @@ export class CandidatesController {
     return CandidatePresenter.toResponse(candidate);
   }
 
-  @Delete(':id')
+  @Patch(':id/desactive')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Deactivate a candidate (soft delete)',
@@ -141,12 +148,13 @@ export class CandidatesController {
     await this.deactivateCandidate.execute(id, req.user.sub);
   }
 
-  @Patch(':id')
+  @Put(':id')
   @ApiOperation({
     summary: 'Update an existing candidate',
     description: 'Updates a candidate. Requires ADMINISTRATOR role.',
   })
   @ApiParam({ name: 'id', description: 'Unique identifier of the candidate.', example: 'uuid' })
+  @ApiBody({ type: UpdateCandidateDto })
   @ApiResponse({
     status: 200,
     description: 'Candidate updated successfully.',
@@ -182,7 +190,7 @@ export class CandidatesController {
     return CandidatePresenter.toResponse(candidate);
   }
 
-  @Patch(':id/reactivate')
+  @Patch(':id/active')
   @ApiOperation({
     summary: 'Reactivate a logically deleted candidate',
     description: 'Reactivates a deactivated candidate. Requires ADMINISTRATOR role.',

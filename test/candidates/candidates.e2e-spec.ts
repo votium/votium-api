@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
@@ -48,6 +49,17 @@ interface CandidatePayload {
   companionStudentCode?: string | null;
   companionProgramCode?: string | null;
   companionIdentification?: string | null;
+}
+
+interface SwaggerOperationShape {
+  tags?: string[];
+  parameters?: Array<{ name: string; in: string; required: boolean }>;
+  security?: Array<{ bearer: string[] }>;
+  requestBody?: {
+    required?: boolean;
+    content: Record<string, { schema: { $ref?: string } }>;
+  };
+  responses: Record<string, { content: Record<string, { schema: { $ref?: string } }> }>;
 }
 
 describe('Candidates registration (e2e)', () => {
@@ -982,10 +994,10 @@ describe('Candidates registration (e2e)', () => {
     });
   });
 
-  describe('DELETE /candidates/:id', () => {
-    const deleteCandidate = (id: string, token: string = adminToken) =>
+  describe('PATCH /candidates/:id/desactive', () => {
+    const deactivateCandidate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
-        .delete(`/api/v1/candidates/${id}`)
+        .patch(`/api/v1/candidates/${id}/desactive`)
         .set('Authorization', `Bearer ${token}`);
 
     const registerCandidate = async (): Promise<{ id: string; studentCode: string }> => {
@@ -997,10 +1009,10 @@ describe('Candidates registration (e2e)', () => {
       return { id: (res.body as { id: string }).id, studentCode: payload.studentCode };
     };
 
-    it('E1: an authenticated administrator logically deletes a candidate with 204 and no body', async () => {
+    it('E1: an authenticated administrator deactivates a candidate with 204 and no body', async () => {
       const { id } = await registerCandidate();
 
-      const del = await deleteCandidate(id).expect(204);
+      const del = await deactivateCandidate(id).expect(204);
 
       expect(del.body).toEqual({});
     });
@@ -1012,7 +1024,7 @@ describe('Candidates registration (e2e)', () => {
         where: { student_code: { in: usedStudentCodes } },
       });
 
-      await deleteCandidate(id).expect(204);
+      await deactivateCandidate(id).expect(204);
 
       const after = await prisma.candidate.findUnique({ where: { id } });
       const countAfter = await prisma.candidate.count({
@@ -1032,7 +1044,7 @@ describe('Candidates registration (e2e)', () => {
     it('E3: a deleted candidate is excluded from candidate query results', async () => {
       const { id, studentCode } = await registerCandidate();
 
-      await deleteCandidate(id).expect(204);
+      await deactivateCandidate(id).expect(204);
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
@@ -1043,23 +1055,23 @@ describe('Candidates registration (e2e)', () => {
       expect(body.data).toEqual([]);
     });
 
-    it('E4: a repeated delete is idempotent and returns 204 again', async () => {
+    it('E4: a repeated deactivation is idempotent and returns 204 again', async () => {
       const { id } = await registerCandidate();
 
-      await deleteCandidate(id).expect(204);
-      await deleteCandidate(id).expect(204);
+      await deactivateCandidate(id).expect(204);
+      await deactivateCandidate(id).expect(204);
     });
 
     it('E5: rejects unauthenticated requests with 401', async () => {
       const { id } = await registerCandidate();
 
-      await request(app.getHttpServer()).delete(`/api/v1/candidates/${id}`).expect(401);
+      await request(app.getHttpServer()).patch(`/api/v1/candidates/${id}/desactive`).expect(401);
     });
 
     it('E6: rejects an invalid token with 401', async () => {
       const { id } = await registerCandidate();
 
-      const res = await deleteCandidate(id, 'not-a-real-token').expect(401);
+      const res = await deactivateCandidate(id, 'not-a-real-token').expect(401);
 
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
@@ -1067,19 +1079,19 @@ describe('Candidates registration (e2e)', () => {
     it('E7: rejects a non-admin role with 403', async () => {
       const { id } = await registerCandidate();
 
-      const res = await deleteCandidate(id, auditorToken).expect(403);
+      const res = await deactivateCandidate(id, auditorToken).expect(403);
 
       expect(res.body).toMatchObject({ statusCode: 403 });
     });
 
     it('E8: returns 404 with CANDIDATE_NOT_FOUND for an unknown id', async () => {
-      const res = await deleteCandidate(crypto.randomUUID()).expect(404);
+      const res = await deactivateCandidate(crypto.randomUUID()).expect(404);
 
       expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
     });
 
     it('E9: rejects a malformed id with 400', async () => {
-      const res = await deleteCandidate('not-a-uuid').expect(400);
+      const res = await deactivateCandidate('not-a-uuid').expect(400);
 
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
@@ -1088,7 +1100,7 @@ describe('Candidates registration (e2e)', () => {
       const { id } = await registerCandidate();
       const before = await prisma.candidate.findUnique({ where: { id } });
 
-      await deleteCandidate(id).expect(204);
+      await deactivateCandidate(id).expect(204);
 
       const after = await prisma.candidate.findUnique({ where: { id } });
       expect(after?.status).toBe('INACTIVE');
@@ -1101,12 +1113,12 @@ describe('Candidates registration (e2e)', () => {
     });
   });
 
-  describe('PATCH /candidates/:id', () => {
+  describe('PUT /candidates/:id', () => {
     // VOTER role is not defined in the current RoleName value object, so only
     // AUDITOR is exercised for the forbidden scenarios (spec business rule 1).
     const updateCandidate = (id: string, payload: CandidatePayload, token: string = adminToken) =>
       request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}`)
+        .put(`/api/v1/candidates/${id}`)
         .set('Authorization', `Bearer ${token}`)
         .send(payload);
 
@@ -1124,14 +1136,14 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E1: an authenticated administrator updates a candidate with 200', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH1-${suffix}`, `IDPATCH1-${suffix}`));
-      usedStudentCodes.push(`PATCH1-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT1-${suffix}`, `IDPUT1-${suffix}`));
+      usedStudentCodes.push(`PUT1-${suffix}`);
 
       const res = await updateCandidate(id, {
         firstName: 'Updated',
         lastName: 'Name',
         programCode: '2710',
-        identificationNumber: 'IDPATCH1-NEW',
+        identificationNumber: 'IDPUT1-NEW',
       }).expect(200);
 
       expect(res.body).toMatchObject({
@@ -1139,14 +1151,14 @@ describe('Candidates registration (e2e)', () => {
         firstName: 'Updated',
         lastName: 'Name',
         programCode: '2710',
-        identificationNumber: 'IDPATCH1-NEW',
+        identificationNumber: 'IDPUT1-NEW',
         status: 'ACTIVE',
       });
     });
 
     it('E2: partial update preserves omitted fields and immutable values', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH2-${suffix}`, `IDPATCH2-${suffix}`));
-      usedStudentCodes.push(`PATCH2-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT2-${suffix}`, `IDPUT2-${suffix}`));
+      usedStudentCodes.push(`PUT2-${suffix}`);
 
       const before = await prisma.candidate.findUnique({ where: { id } });
 
@@ -1156,45 +1168,45 @@ describe('Candidates registration (e2e)', () => {
       expect(body.firstName).toBe('OnlyFirst');
       expect(body.lastName).toBe('Cand');
       expect(body.programCode).toBe('1234');
-      expect(body.identificationNumber).toBe(`IDPATCH2-${suffix}`);
-      expect(body.studentCode).toBe(`PATCH2-${suffix}`);
+      expect(body.identificationNumber).toBe(`IDPUT2-${suffix}`);
+      expect(body.studentCode).toBe(`PUT2-${suffix}`);
       expect(body.status).toBe('ACTIVE');
       expect(body.createdAt).toBe(before?.created_at?.toISOString());
     });
 
     it('E3: partial update of only identificationNumber', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH3-${suffix}`, `IDPATCH3-${suffix}`));
-      usedStudentCodes.push(`PATCH3-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT3-${suffix}`, `IDPUT3-${suffix}`));
+      usedStudentCodes.push(`PUT3-${suffix}`);
 
-      const res = await updateCandidate(id, { identificationNumber: 'IDPATCH3-NEW' }).expect(200);
+      const res = await updateCandidate(id, { identificationNumber: 'IDPUT3-NEW' }).expect(200);
       const body = res.body as Record<string, unknown>;
 
-      expect(body.identificationNumber).toBe('IDPATCH3-NEW');
+      expect(body.identificationNumber).toBe('IDPUT3-NEW');
       expect(body.firstName).toBe('Patch');
       expect(body.lastName).toBe('Cand');
     });
 
     it('E4: rejects unauthenticated requests with 401', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH4-${suffix}`, `IDPATCH4-${suffix}`));
-      usedStudentCodes.push(`PATCH4-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT4-${suffix}`, `IDPUT4-${suffix}`));
+      usedStudentCodes.push(`PUT4-${suffix}`);
 
       await request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}`)
+        .put(`/api/v1/candidates/${id}`)
         .send({ firstName: 'X' })
         .expect(401);
     });
 
     it('E5: rejects an invalid token with 401', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH5-${suffix}`, `IDPATCH5-${suffix}`));
-      usedStudentCodes.push(`PATCH5-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT5-${suffix}`, `IDPUT5-${suffix}`));
+      usedStudentCodes.push(`PUT5-${suffix}`);
 
       const res = await updateCandidate(id, { firstName: 'X' }, 'not-a-real-token').expect(401);
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
 
     it('E6: rejects a non-admin role (AUDITOR) with 403', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH6-${suffix}`, `IDPATCH6-${suffix}`));
-      usedStudentCodes.push(`PATCH6-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT6-${suffix}`, `IDPUT6-${suffix}`));
+      usedStudentCodes.push(`PUT6-${suffix}`);
 
       const res = await updateCandidate(id, { firstName: 'X' }, auditorToken).expect(403);
       expect(res.body).toMatchObject({ statusCode: 403 });
@@ -1207,11 +1219,11 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E9: treats a logically deleted candidate as not found (404)', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH9-${suffix}`, `IDPATCH9-${suffix}`));
-      usedStudentCodes.push(`PATCH9-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT9-${suffix}`, `IDPUT9-${suffix}`));
+      usedStudentCodes.push(`PUT9-${suffix}`);
 
       await request(app.getHttpServer())
-        .delete(`/api/v1/candidates/${id}`)
+        .patch(`/api/v1/candidates/${id}/desactive`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
@@ -1226,32 +1238,32 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E11: rejects a firstName shorter than 2 characters with 400', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH11-${suffix}`, `IDPATCH11-${suffix}`));
-      usedStudentCodes.push(`PATCH11-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT11-${suffix}`, `IDPUT11-${suffix}`));
+      usedStudentCodes.push(`PUT11-${suffix}`);
 
       const res = await updateCandidate(id, { firstName: 'X' }).expect(400);
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
 
     it('E12: rejects a firstName longer than 100 characters with 400', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH12-${suffix}`, `IDPATCH12-${suffix}`));
-      usedStudentCodes.push(`PATCH12-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT12-${suffix}`, `IDPUT12-${suffix}`));
+      usedStudentCodes.push(`PUT12-${suffix}`);
 
       const res = await updateCandidate(id, { firstName: 'a'.repeat(101) }).expect(400);
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
 
     it('E13: rejects a lastName shorter than 2 characters with 400', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH13-${suffix}`, `IDPATCH13-${suffix}`));
-      usedStudentCodes.push(`PATCH13-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT13-${suffix}`, `IDPUT13-${suffix}`));
+      usedStudentCodes.push(`PUT13-${suffix}`);
 
       const res = await updateCandidate(id, { lastName: 'Y' }).expect(400);
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
 
     it('E14: rejects an invalid program code format with 400', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH14-${suffix}`, `IDPATCH14-${suffix}`));
-      usedStudentCodes.push(`PATCH14-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT14-${suffix}`, `IDPUT14-${suffix}`));
+      usedStudentCodes.push(`PUT14-${suffix}`);
 
       const res = await updateCandidate(id, { programCode: '271' }).expect(400);
       const body = res.body as { statusCode: number; message: string | string[] };
@@ -1262,16 +1274,16 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E15: rejects an empty identificationNumber with 400', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH15-${suffix}`, `IDPATCH15-${suffix}`));
-      usedStudentCodes.push(`PATCH15-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT15-${suffix}`, `IDPUT15-${suffix}`));
+      usedStudentCodes.push(`PUT15-${suffix}`);
 
       const res = await updateCandidate(id, { identificationNumber: '' }).expect(400);
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
 
     it('E16: rejects unknown/system-managed fields in the body with 400', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH16-${suffix}`, `IDPATCH16-${suffix}`));
-      usedStudentCodes.push(`PATCH16-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT16-${suffix}`, `IDPUT16-${suffix}`));
+      usedStudentCodes.push(`PUT16-${suffix}`);
 
       const res = await updateCandidate(id, {
         firstName: 'Ok',
@@ -1285,28 +1297,28 @@ describe('Candidates registration (e2e)', () => {
 
       const row = await prisma.candidate.findUnique({ where: { id } });
       expect(row?.first_name).toBe('Patch');
-      expect(row?.student_code).toBe(`PATCH16-${suffix}`);
+      expect(row?.student_code).toBe(`PUT16-${suffix}`);
       expect(row?.status).toBe('ACTIVE');
     });
 
     it('E17: rejects a duplicate identificationNumber with 409 and does not change the row', async () => {
-      const idA = await registerAndGetId(patchSeed(`PATCH17A-${suffix}`, `IDPATCH17A-${suffix}`));
-      await registerAndGetId(patchSeed(`PATCH17B-${suffix}`, `IDPATCH17B-${suffix}`));
-      usedStudentCodes.push(`PATCH17A-${suffix}`, `PATCH17B-${suffix}`);
+      const idA = await registerAndGetId(patchSeed(`PUT17A-${suffix}`, `IDPUT17A-${suffix}`));
+      await registerAndGetId(patchSeed(`PUT17B-${suffix}`, `IDPUT17B-${suffix}`));
+      usedStudentCodes.push(`PUT17A-${suffix}`, `PUT17B-${suffix}`);
 
       const res = await updateCandidate(idA, {
-        identificationNumber: `IDPATCH17B-${suffix}`,
+        identificationNumber: `IDPUT17B-${suffix}`,
       }).expect(409);
 
       expect(res.body).toMatchObject({ statusCode: 409, error: 'CANDIDATE_CONFLICT' });
 
       const rowA = await prisma.candidate.findUnique({ where: { id: idA } });
-      expect(rowA?.identification_number).toBe(`IDPATCH17A-${suffix}`);
+      expect(rowA?.identification_number).toBe(`IDPUT17A-${suffix}`);
     });
 
     it('E18: the response exposes exactly the CandidateResponseDto contract', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH18-${suffix}`, `IDPATCH18-${suffix}`));
-      usedStudentCodes.push(`PATCH18-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT18-${suffix}`, `IDPUT18-${suffix}`));
+      usedStudentCodes.push(`PUT18-${suffix}`);
 
       const res = await updateCandidate(id, { firstName: 'Contract' }).expect(200);
       const body = res.body as Record<string, unknown>;
@@ -1331,8 +1343,8 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E19: createdAt is serialized as an ISO string', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH19-${suffix}`, `IDPATCH19-${suffix}`));
-      usedStudentCodes.push(`PATCH19-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT19-${suffix}`, `IDPUT19-${suffix}`));
+      usedStudentCodes.push(`PUT19-${suffix}`);
 
       const res = await updateCandidate(id, { firstName: 'Iso' }).expect(200);
       const body = res.body as Record<string, unknown>;
@@ -1340,8 +1352,8 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E20: repeated identical updates are idempotent', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH20-${suffix}`, `IDPATCH20-${suffix}`));
-      usedStudentCodes.push(`PATCH20-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT20-${suffix}`, `IDPUT20-${suffix}`));
+      usedStudentCodes.push(`PUT20-${suffix}`);
 
       const first = await updateCandidate(id, { firstName: 'Same' }).expect(200);
       const second = await updateCandidate(id, { firstName: 'Same' }).expect(200);
@@ -1357,8 +1369,8 @@ describe('Candidates registration (e2e)', () => {
         where: { student_code: { in: usedStudentCodes } },
       });
 
-      const id = await registerAndGetId(patchSeed(`PATCH21-${suffix}`, `IDPATCH21-${suffix}`));
-      usedStudentCodes.push(`PATCH21-${suffix}`);
+      const id = await registerAndGetId(patchSeed(`PUT21-${suffix}`, `IDPUT21-${suffix}`));
+      usedStudentCodes.push(`PUT21-${suffix}`);
 
       const beforeRow = await prisma.candidate.findUnique({ where: { id } });
 
@@ -1375,9 +1387,9 @@ describe('Candidates registration (e2e)', () => {
       expect(afterRow?.first_name).toBe(beforeRow?.first_name);
     });
 
-    it('E22: PATCH a single companion field preserves other companion values', async () => {
-      const code = `PATCH22-${suffix}`;
-      const idn = `IDPATCH22-${suffix}`;
+    it('E22: PUT a single companion field preserves other companion values', async () => {
+      const code = `PUT22-${suffix}`;
+      const idn = `IDPUT22-${suffix}`;
       const createRes = await register(
         {
           ...validCandidate(),
@@ -1408,9 +1420,9 @@ describe('Candidates registration (e2e)', () => {
       expect(row?.companion_last_name).toBe('Lopez');
     });
 
-    it('E23: PATCH with explicit null companionFirstName preserves the value', async () => {
-      const code = `PATCH23-${suffix}`;
-      const idn = `IDPATCH23-${suffix}`;
+    it('E23: PUT with explicit null companionFirstName preserves the value', async () => {
+      const code = `PUT23-${suffix}`;
+      const idn = `IDPUT23-${suffix}`;
       const createRes = await register(
         {
           ...validCandidate(),
@@ -1436,9 +1448,9 @@ describe('Candidates registration (e2e)', () => {
       expect(row?.companion_first_name).toBe('Maria');
     });
 
-    it('E24: PATCH with explicit null firstName preserves the value', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH24-${suffix}`, `IDPATCH24-${suffix}`));
-      usedStudentCodes.push(`PATCH24-${suffix}`);
+    it('E24: PUT with explicit null firstName preserves the value', async () => {
+      const id = await registerAndGetId(patchSeed(`PUT24-${suffix}`, `IDPUT24-${suffix}`));
+      usedStudentCodes.push(`PUT24-${suffix}`);
 
       const res = await updateCandidate(id, { firstName: null }).expect(200);
       const body = res.body as CandidatePayload;
@@ -1449,9 +1461,9 @@ describe('Candidates registration (e2e)', () => {
       expect(row?.first_name).toBe('Patch');
     });
 
-    it('E25: PATCH with invalid companionProgramCode returns 400', async () => {
-      const id = await registerAndGetId(patchSeed(`PATCH25-${suffix}`, `IDPATCH25-${suffix}`));
-      usedStudentCodes.push(`PATCH25-${suffix}`);
+    it('E25: PUT with invalid companionProgramCode returns 400', async () => {
+      const id = await registerAndGetId(patchSeed(`PUT25-${suffix}`, `IDPUT25-${suffix}`));
+      usedStudentCodes.push(`PUT25-${suffix}`);
 
       const res = await updateCandidate(id, { companionProgramCode: '12' }).expect(400);
 
@@ -1463,10 +1475,10 @@ describe('Candidates registration (e2e)', () => {
     });
   });
 
-  describe('PATCH /candidates/:id/reactivate', () => {
+  describe('PATCH /candidates/:id/active', () => {
     const reactivate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}/reactivate`)
+        .patch(`/api/v1/candidates/${id}/active`)
         .set('Authorization', `Bearer ${token}`);
 
     let reactCounter = 0;
@@ -1499,7 +1511,7 @@ describe('Candidates registration (e2e)', () => {
       const { id } = await registerInactive();
 
       const res = await request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}/reactivate`)
+        .patch(`/api/v1/candidates/${id}/active`)
         .expect(401);
 
       expect(res.body).toMatchObject({ statusCode: 401 });
@@ -1604,6 +1616,126 @@ describe('Candidates registration (e2e)', () => {
 
       const afterRow = await prisma.candidate.findUnique({ where: { id } });
       expect(afterRow!.status).toBe(beforeRow!.status);
+    });
+  });
+
+  describe('Legacy candidate routes (must 404)', () => {
+    const legacyId = crypto.randomUUID();
+
+    it('L1: the old PATCH /candidates/:id update method is no longer registered (404)', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/candidates/${legacyId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404 });
+    });
+
+    it('L2: the old DELETE /candidates/:id deactivation method is no longer registered (404)', async () => {
+      const res = await request(app.getHttpServer())
+        .delete(`/api/v1/candidates/${legacyId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404 });
+    });
+
+    it('L3: the old /candidates/:id/reactivate activation path is no longer registered (404)', async () => {
+      const res = await request(app.getHttpServer())
+        .patch(`/api/v1/candidates/${legacyId}/reactivate`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('Swagger / OpenAPI', () => {
+    it('S1-S4: the generated OpenAPI document exposes only the new methods and paths', () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+
+      // S1: update is documented as PUT on /candidates/{id}; the old PATCH method is gone.
+      const updatePathKey = Object.keys(document.paths).find((p) => p.endsWith('/candidates/{id}'));
+      expect(updatePathKey).toBeDefined();
+      const updatePathItem = document.paths[updatePathKey!] as {
+        put?: SwaggerOperationShape;
+        patch?: SwaggerOperationShape;
+      };
+      expect(updatePathItem.put).toBeDefined();
+      expect(updatePathItem.patch).toBeUndefined();
+      expect(updatePathItem.put!.tags).toContain('candidates');
+      expect(updatePathItem.put!.security).toEqual([{ bearer: [] }]);
+      expect(updatePathItem.put!.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'id', in: 'path', required: true }),
+        ]),
+      );
+      const requestSchemaRef =
+        updatePathItem.put!.requestBody!.content['application/json'].schema.$ref;
+      expect(requestSchemaRef).toBe('#/components/schemas/UpdateCandidateDto');
+      const requestSchema = document.components?.schemas?.['UpdateCandidateDto'] as
+        | { properties?: Record<string, unknown> }
+        | undefined;
+      expect(requestSchema).toBeDefined();
+      const editable = [
+        'firstName',
+        'lastName',
+        'programCode',
+        'identificationNumber',
+        'companionFirstName',
+        'companionLastName',
+        'companionStudentCode',
+        'companionProgramCode',
+        'companionIdentification',
+      ];
+      expect(Object.keys(requestSchema!.properties ?? {}).sort()).toEqual(editable.slice().sort());
+      for (const forbidden of ['id', 'studentCode', 'status', 'createdAt']) {
+        expect(requestSchema!.properties?.[forbidden]).toBeUndefined();
+      }
+      for (const status of ['200', '400', '401', '403', '404', '409']) {
+        expect(updatePathItem.put!.responses[status]).toBeDefined();
+      }
+
+      // S2: deactivation is documented as PATCH on /candidates/{id}/desactive; DELETE is gone.
+      const desactivePathKey = Object.keys(document.paths).find((p) =>
+        p.endsWith('/candidates/{id}/desactive'),
+      );
+      expect(desactivePathKey).toBeDefined();
+      const desactivePathItem = document.paths[desactivePathKey!] as {
+        patch?: SwaggerOperationShape;
+        delete?: SwaggerOperationShape;
+      };
+      expect(desactivePathItem.patch).toBeDefined();
+      expect(desactivePathItem.delete).toBeUndefined();
+      expect(desactivePathItem.patch!.tags).toContain('candidates');
+      expect(desactivePathItem.patch!.security).toEqual([{ bearer: [] }]);
+      for (const status of ['204', '400', '401', '403', '404']) {
+        expect(desactivePathItem.patch!.responses[status]).toBeDefined();
+      }
+
+      // S3: activation is documented as PATCH on /candidates/{id}/active.
+      const activePathKey = Object.keys(document.paths).find((p) =>
+        p.endsWith('/candidates/{id}/active'),
+      );
+      expect(activePathKey).toBeDefined();
+      const activePathItem = document.paths[activePathKey!] as {
+        patch?: SwaggerOperationShape;
+      };
+      expect(activePathItem.patch).toBeDefined();
+      expect(activePathItem.patch!.tags).toContain('candidates');
+      expect(activePathItem.patch!.security).toEqual([{ bearer: [] }]);
+      for (const status of ['200', '400', '401', '403', '404', '409']) {
+        expect(activePathItem.patch!.responses[status]).toBeDefined();
+      }
+
+      // S4: the bearer security scheme is documented.
+      expect(document.components?.securitySchemes?.bearer).toBeDefined();
     });
   });
 });
