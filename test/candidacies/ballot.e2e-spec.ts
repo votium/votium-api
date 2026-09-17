@@ -99,7 +99,7 @@ describe('Election ballot retrieval (e2e)', () => {
 
   const completeElectorLogin = async (email: string, pwd: string): Promise<string> => {
     const loginRes = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/login')
+      .post('/api/v1/auth/electors/login')
       .send({ email, password: pwd })
       .expect(200);
 
@@ -107,7 +107,7 @@ describe('Election ballot retrieval (e2e)', () => {
     const code = emailService.last().code;
 
     const verifyRes = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/mfa/verify')
+      .post('/api/v1/auth/electors/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
 
@@ -652,14 +652,14 @@ describe('Election ballot retrieval (e2e)', () => {
         .expect(403);
     });
 
-    it('E2E-R2: an ELECTOR token is still rejected on /users and a USER token on /electors/me', async () => {
+    it('E2E-R2: an ELECTOR token is still rejected on /users and a USER token on /auth/electors/me', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/users')
         .set('Authorization', `Bearer ${electorToken}`)
         .expect(403);
 
       await request(app.getHttpServer())
-        .get('/api/v1/electors/me')
+        .get('/api/v1/auth/electors/me')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(403);
     });

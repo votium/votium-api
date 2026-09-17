@@ -1,5 +1,5 @@
-import { ElectorNotFoundError } from '../../domain/errors/elector-not-found.error';
-import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
+import { ElectorNotFoundError } from 'src/modules/electors/domain/errors/elector-not-found.error';
+import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
 
 export class GetMeElectorUseCase {
   constructor(private readonly electors: ElectorRepository) {}

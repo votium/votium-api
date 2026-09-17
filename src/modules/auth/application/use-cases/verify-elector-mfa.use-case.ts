@@ -6,7 +6,7 @@ import { envs } from 'src/config';
 import { MAX_VERIFICATION_ATTEMPTS } from 'src/shared/constants/mfa.constants';
 import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
 import type { TokenServicePort } from 'src/modules/auth/application/ports/token-service.port';
-import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
+import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
 import type { ElectorMfaChallengeRepository } from '../../domain/repositories/elector-mfa-challenge.repository.interface';
 
 export class VerifyElectorMfaUseCase {
