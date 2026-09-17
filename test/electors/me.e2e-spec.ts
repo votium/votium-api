@@ -46,7 +46,7 @@ interface MeResponse {
   user: { id: string; role: string; name: string; email: string };
 }
 
-describe('GET /electors/me (e2e)', () => {
+describe('GET /auth/electors/me (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let emailService: FakeEmailService;
@@ -69,7 +69,7 @@ describe('GET /electors/me (e2e)', () => {
 
   const completeElectorLogin = async (email: string, password: string): Promise<string> => {
     const loginRes = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/login')
+      .post('/api/v1/auth/electors/login')
       .send({ email, password })
       .expect(200);
 
@@ -77,7 +77,7 @@ describe('GET /electors/me (e2e)', () => {
     const code = emailService.last().code;
 
     const verifyRes = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/mfa/verify')
+      .post('/api/v1/auth/electors/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
 
@@ -102,7 +102,7 @@ describe('GET /electors/me (e2e)', () => {
   };
 
   const meGet = (token?: string, extra: Record<string, string> = {}) => {
-    const req = request(app.getHttpServer()).get('/api/v1/electors/me');
+    const req = request(app.getHttpServer()).get('/api/v1/auth/electors/me');
     if (token) req.set('Authorization', `Bearer ${token}`);
     Object.entries(extra).forEach(([k, v]) => {
       req.set(k, v);

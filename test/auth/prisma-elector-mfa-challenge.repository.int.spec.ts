@@ -1,6 +1,6 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
-import { PrismaElectorMfaChallengeRepository } from '../../src/modules/electors/infrastructure/repositories/prisma-elector-mfa-challenge.repository';
-import { ElectorMfaChallengeEntity } from '../../src/modules/electors/domain/entities/elector-mfa-challenge.entity';
+import { PrismaElectorMfaChallengeRepository } from '../../src/modules/auth/infrastructure/repositories/prisma-elector-mfa-challenge.repository';
+import { ElectorMfaChallengeEntity } from '../../src/modules/auth/domain/entities/elector-mfa-challenge.entity';
 
 describe('PrismaElectorMfaChallengeRepository integration', () => {
   let prisma: PrismaService;

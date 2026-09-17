@@ -111,7 +111,7 @@ describe('ElectorGuard (e2e)', () => {
 
   const completeElectorLogin = async (): Promise<string> => {
     const loginRes = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/login')
+      .post('/api/v1/auth/electors/login')
       .send({ email: activeElector.email, password: activeElector.password })
       .expect(200);
 
@@ -119,7 +119,7 @@ describe('ElectorGuard (e2e)', () => {
     const code = emailService.last().code;
 
     const verifyRes = await request(app.getHttpServer())
-      .post('/api/v1/electors/auth/mfa/verify')
+      .post('/api/v1/auth/electors/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
 

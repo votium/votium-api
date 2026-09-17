@@ -1,6 +1,6 @@
-import { ElectorEntity } from '../../domain/entities/elector.entity';
-import { ElectorNotFoundError } from '../../domain/errors/elector-not-found.error';
-import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
+import { ElectorEntity } from 'src/modules/electors/domain/entities/elector.entity';
+import { ElectorNotFoundError } from 'src/modules/electors/domain/errors/elector-not-found.error';
+import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
 import { GetMeElectorUseCase } from './get-me-elector.use-case';
 
 describe('GetMeElectorUseCase', () => {

@@ -6,9 +6,9 @@ import {
   ElectorEntity,
   type RestoreElectorInput,
 } from 'src/modules/electors/domain/entities/elector.entity';
-import { ElectorMfaChallengeEntity } from 'src/modules/electors/domain/entities/elector-mfa-challenge.entity';
+import { ElectorMfaChallengeEntity } from 'src/modules/auth/domain/entities/elector-mfa-challenge.entity';
 import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
-import type { ElectorMfaChallengeRepository } from 'src/modules/electors/domain/repositories/elector-mfa-challenge.repository.interface';
+import type { ElectorMfaChallengeRepository } from 'src/modules/auth/domain/repositories/elector-mfa-challenge.repository.interface';
 import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
 import type { EmailServicePort } from 'src/modules/auth/application/ports/email-service.port';
 import type { OtpGeneratorPort } from 'src/modules/auth/application/ports/otp-generator.port';

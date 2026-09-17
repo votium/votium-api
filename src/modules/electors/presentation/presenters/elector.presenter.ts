@@ -1,5 +1,4 @@
 import { ElectorEntity } from '../../domain/entities/elector.entity';
-import { MeElectorResponseDto } from '../dtos/me-elector-response.dto';
 import { ElectorResponseDto } from '../dtos/elector-response.dto';
 
 export class ElectorPresenter {
@@ -13,17 +12,6 @@ export class ElectorPresenter {
       programCode: entity.programCode,
       status: entity.status,
       createdAt: entity.createdAt?.toISOString() ?? '',
-    });
-  }
-
-  static toMeResponse(entity: ElectorEntity): MeElectorResponseDto {
-    return new MeElectorResponseDto({
-      user: {
-        id: entity.id as string,
-        role: 'ELECTOR',
-        name: `${entity.firstName} ${entity.lastName}`.trim(),
-        email: entity.email,
-      },
     });
   }
 
