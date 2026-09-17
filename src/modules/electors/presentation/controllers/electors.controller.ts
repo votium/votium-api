@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -30,12 +31,15 @@ import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
+import { ActivateElectorUseCase } from '../../application/use-cases/activate-elector.use-case';
 import { DeactivateElectorUseCase } from '../../application/use-cases/deactivate-elector.use-case';
+import { DeleteElectorUseCase } from '../../application/use-cases/delete-elector.use-case';
 import { ImportElectoralRegistryUseCase } from '../../application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from '../../application/use-cases/search-electors.use-case';
 import { ElectoralRegistryPresenter } from '../presenters/electoral-registry.presenter';
 import { ElectorPresenter } from '../presenters/elector.presenter';
 import { DeactivateElectorResponseDto } from '../dtos/deactivate-elector-response.dto';
+import { ElectorResponseDto } from '../dtos/elector-response.dto';
 import { ElectorsListResponseDto } from '../dtos/electors-list-response.dto';
 import { ImportElectoralRegistryResponseDto } from '../dtos/import-electoral-registry-response.dto';
 import { SearchElectorsQueryDto } from '../dtos/search-electors-query.dto';
@@ -57,6 +61,8 @@ export class ElectorsController {
   constructor(
     private readonly importRegistry: ImportElectoralRegistryUseCase,
     private readonly deactivateElector: DeactivateElectorUseCase,
+    private readonly deleteElector: DeleteElectorUseCase,
+    private readonly activateElector: ActivateElectorUseCase,
     private readonly searchElectors: SearchElectorsUseCase,
   ) {}
 
@@ -129,9 +135,27 @@ export class ElectorsController {
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'Deactivate an elector (soft delete)',
-    description: 'Deactivates an elector. Requires ADMINISTRATOR role.',
+    summary: 'Logically delete an elector',
+    description: 'Marks an elector as deleted. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the elector.', example: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Elector deleted successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Elector not found.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async delete(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    await this.deleteElector.execute(id, req.user.sub);
+  }
+
+  @Put(':id/desactive')
+  @ApiOperation({
+    summary: 'Deactivate an elector',
+    description: 'Sets the elector status to INACTIVE. Requires ADMINISTRATOR role.',
   })
   @ApiParam({ name: 'id', description: 'Unique identifier of the elector.', example: 'uuid' })
   @ApiResponse({
@@ -143,10 +167,34 @@ export class ElectorsController {
   @ApiResponse({ status: 401, description: 'Authentication is required.' })
   @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
   @ApiResponse({ status: 404, description: 'Elector not found.' })
+  @ApiResponse({ status: 409, description: 'Elector is already INACTIVE.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async deactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
     await this.deactivateElector.execute(id, req.user.sub);
     return new DeactivateElectorResponseDto('Elector deactivated successfully.');
+  }
+
+  @Put(':id/active')
+  @ApiOperation({
+    summary: 'Activate an elector',
+    description: 'Sets the elector status to ACTIVE. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the elector.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Elector activated successfully.',
+    type: ElectorResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Elector not found.' })
+  @ApiResponse({ status: 409, description: 'Elector is already ACTIVE.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async activate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const elector = await this.activateElector.execute(id, req.user.sub);
+    return ElectorPresenter.toResponse(elector);
   }
 }

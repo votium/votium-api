@@ -1102,4 +1102,121 @@ describe('PrismaCandidateRepository integration', () => {
       expect(byNameInactive.total).toBe(1);
     });
   });
+
+  describe('softDelete', () => {
+    async function seed(code: string, idNumber: string): Promise<CandidateEntity> {
+      usedStudentCodes.push(code);
+      return repository.create(buildEntity(code, idNumber));
+    }
+
+    it('SDC-1: softDelete(id) sets deleted_at and returns the entity with deletedAt', async () => {
+      const code = `SD-${suffix}`;
+      const saved = await seed(code, `ID-SD-${suffix}`);
+
+      const deleted = await repository.softDelete(saved.id!);
+
+      expect(deleted).not.toBeNull();
+      expect(deleted!.id).toBe(saved.id);
+      expect(deleted!.deletedAt).toBeInstanceOf(Date);
+
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row).not.toBeNull();
+      expect(row!.deleted_at).toBeInstanceOf(Date);
+    });
+
+    it('SDC-2: findById excludes a logically deleted candidate', async () => {
+      const code = `SDFIND-${suffix}`;
+      const saved = await seed(code, `ID-SDFIND-${suffix}`);
+
+      await repository.softDelete(saved.id!);
+
+      expect(await repository.findById(saved.id!)).toBeNull();
+    });
+
+    it('SDC-3: findById still returns an INACTIVE candidate that is not deleted', async () => {
+      const code = `SDIN-${suffix}`;
+      const saved = await seed(code, `ID-SDIN-${suffix}`);
+      await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
+
+      const found = await repository.findById(saved.id!);
+
+      expect(found).not.toBeNull();
+      expect(found!.status).toBe(CandidateEntity.INACTIVE_STATUS);
+      expect(found!.deletedAt).toBeNull();
+    });
+
+    it('SDC-4: search excludes deleted rows and keeps total consistent', async () => {
+      const code = `SDSRCH-${suffix}`;
+      const saved = await seed(code, `ID-SDSRCH-${suffix}`);
+      await repository.softDelete(saved.id!);
+
+      const result = await repository.search({ page: 1, limit: 100, studentCode: code });
+      expect(result.candidates).toEqual([]);
+      expect(result.total).toBe(0);
+
+      const count = await prisma.candidate.count({ where: { student_code: code } });
+      expect(count).toBe(1);
+    });
+
+    it('SDC-5: search with includeInactive:true still excludes deleted rows', async () => {
+      const deletedCode = `SDINC-DEL-${suffix}`;
+      const deleted = await seed(deletedCode, `ID-SDINC-DEL-${suffix}`);
+      await repository.softDelete(deleted.id!);
+
+      const deletedResult = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: deletedCode,
+        includeInactive: true,
+      });
+      expect(deletedResult.candidates).toEqual([]);
+      expect(deletedResult.total).toBe(0);
+
+      const inactiveCode = `SDINC-IN-${suffix}`;
+      const inactive = await seed(inactiveCode, `ID-SDINC-IN-${suffix}`);
+      await repository.updateStatus(inactive.id!, CandidateEntity.INACTIVE_STATUS);
+
+      const inactiveResult = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: inactiveCode,
+        includeInactive: true,
+      });
+      expect(inactiveResult.candidates).toHaveLength(1);
+      expect(inactiveResult.total).toBe(1);
+    });
+
+    it('SDC-6: updateStatus on a deleted row does not clear deleted_at', async () => {
+      const code = `SDSTAT-${suffix}`;
+      const saved = await seed(code, `ID-SDSTAT-${suffix}`);
+      await repository.softDelete(saved.id!);
+
+      await repository.updateStatus(saved.id!, CandidateEntity.DEFAULT_STATUS);
+
+      expect(await repository.findById(saved.id!)).toBeNull();
+      const row = await prisma.candidate.findUnique({ where: { id: saved.id! } });
+      expect(row!.deleted_at).toBeInstanceOf(Date);
+      expect(row!.status).toBe(CandidateEntity.DEFAULT_STATUS);
+    });
+
+    it('SDC-7: softDelete on a missing id returns null (P2025)', async () => {
+      const deleted = await repository.softDelete(crypto.randomUUID());
+
+      expect(deleted).toBeNull();
+    });
+
+    it('SDC-8: softDelete never physically deletes the row', async () => {
+      const code = `SDKEEP-${suffix}`;
+      const saved = await seed(code, `ID-SDKEEP-${suffix}`);
+
+      await repository.softDelete(saved.id!);
+
+      const rows = await prisma.candidate.findMany({ where: { student_code: code } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].first_name).toBe('Juan');
+      expect(rows[0].last_name).toBe('Garcia');
+      expect(rows[0].identification_number).toBe(`ID-SDKEEP-${suffix}`);
+      expect(rows[0].status).toBe(CandidateEntity.DEFAULT_STATUS);
+    });
+  });
 });

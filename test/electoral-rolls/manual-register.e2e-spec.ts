@@ -593,6 +593,36 @@ describe('Manual electoral roll registration (e2e)', () => {
         }),
       );
     });
+
+    it('ER-D1: a logically deleted elector is reported as not found and never registered', async () => {
+      const electionId = await seedElection('CREATED');
+      const deletedCode = `MANUAL-DEL-${suffix}`;
+      await prisma.elector.create({
+        data: {
+          first_name: 'Manual',
+          last_name: 'Deleted',
+          email: `${deletedCode}-${suffix}@example.com`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: deletedCode,
+          program_code: '2710',
+          status: 'ACTIVE',
+          deleted_at: new Date(),
+        },
+      });
+      usedStudentCodes.push(deletedCode);
+
+      const res = await manualRegister(
+        electionId,
+        entries([deletedCode, '2710']),
+        adminToken,
+      ).expect(200);
+      const body = res.body as ManualRegisterResponse;
+
+      expect(body.notFound).toBe(1);
+      expect(body.registered).toBe(0);
+      const rolls = await prisma.electoralRoll.findMany({ where: { election_id: electionId } });
+      expect(rolls).toHaveLength(0);
+    });
   });
 
   describe('Electoral roll & duplicates', () => {

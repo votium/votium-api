@@ -469,4 +469,68 @@ describe('Elector auth MFA (e2e)', () => {
         .expect(201);
     });
   });
+
+  describe('Regression: logically deleted elector', () => {
+    let counter = 0;
+    const password = 'SuperSecret123!';
+
+    const seedActiveElector = async () => {
+      counter += 1;
+      const code = `E2EAUTHDEL-${suffix}-${counter}`;
+      usedStudentCodes.push(code);
+      return prisma.elector.create({
+        data: {
+          first_name: 'E2E',
+          last_name: 'Deleted',
+          email: `e2e-auth-mfa-deleted-${suffix}-${counter}@correounivalle.edu.co`,
+          password_hash: await new NodeCryptoPasswordHasherService().hash(password),
+          student_code: code,
+          program_code: '2710',
+          status: 'ACTIVE',
+        },
+      });
+    };
+
+    const markDeleted = (id: string) =>
+      prisma.elector.update({ where: { id }, data: { deleted_at: new Date() } });
+
+    it('EA-D1: login of a logically deleted elector returns 401', async () => {
+      const elector = await seedActiveElector();
+      await markDeleted(elector.id);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/electors/login')
+        .send({ email: elector.email, password })
+        .expect(401);
+
+      expect(res.body).toMatchObject({ message: 'Invalid credentials.' });
+    });
+
+    it('EA-D2: verifying MFA for a session whose elector was deleted returns 403', async () => {
+      const elector = await seedActiveElector();
+      const sessionId = await startLogin(elector.email, password);
+      const code = emailService.last().code;
+      await markDeleted(elector.id);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/electors/mfa/verify')
+        .send({ sessionId, code })
+        .expect(403);
+
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('EA-D3: resending the code for a session whose elector was deleted returns 403', async () => {
+      const elector = await seedActiveElector();
+      const sessionId = await startLogin(elector.email, password);
+      await markDeleted(elector.id);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/electors/mfa/resend')
+        .send({ sessionId })
+        .expect(403);
+
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+  });
 });

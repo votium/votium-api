@@ -443,135 +443,287 @@ describe('Electors import (e2e)', () => {
     });
   });
 
-  describe('DELETE /electors/:id (deactivate)', () => {
-    let activeElector: { id: string; student_code: string; created_at: Date };
-    let repeatElector: { id: string; student_code: string };
-    let e7Elector: { id: string; student_code: string };
-
-    const activeCode = `E2EDEL-${suffix}`;
-    const repeatCode = `E2EDELR-${suffix}`;
-    const e7Code = `E2EDEL7-${suffix}`;
-
-    beforeAll(async () => {
-      activeElector = await prisma.elector.create({
+  describe('DELETE /electors/:id', () => {
+    let counter = 0;
+    const seedElector = async (status = 'ACTIVE') => {
+      counter += 1;
+      const row = await prisma.elector.create({
         data: {
-          first_name: 'Deact',
-          last_name: 'Active',
-          email: `e2e-del-${suffix}@correounivalle.edu.co`,
+          first_name: 'Del',
+          last_name: 'Elector',
+          email: `e2e-del-${suffix}-${counter}@correounivalle.edu.co`,
           password_hash: 'pbkdf2$placeholder',
-          student_code: activeCode,
+          student_code: `E2EDEL-${suffix}-${counter}`,
           program_code: '2710',
-          status: 'ACTIVE',
+          status,
         },
       });
-      usedStudentCodes.push(activeElector.student_code);
+      usedStudentCodes.push(row.student_code);
+      return row;
+    };
 
-      repeatElector = await prisma.elector.create({
-        data: {
-          first_name: 'Deact',
-          last_name: 'Repeat',
-          email: `e2e-del-r-${suffix}@correounivalle.edu.co`,
-          password_hash: 'pbkdf2$placeholder',
-          student_code: repeatCode,
-          program_code: '2710',
-          status: 'ACTIVE',
-        },
-      });
-      usedStudentCodes.push(repeatElector.student_code);
+    const deleteElector = (id: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .delete(`/api/v1/electors/${id}`)
+        .set('Authorization', `Bearer ${token}`);
 
-      e7Elector = await prisma.elector.create({
-        data: {
-          first_name: 'Deact',
-          last_name: 'Count',
-          email: `e2e-del-7-${suffix}@correounivalle.edu.co`,
-          password_hash: 'pbkdf2$placeholder',
-          student_code: e7Code,
-          program_code: '2710',
-          status: 'ACTIVE',
-        },
-      });
-      usedStudentCodes.push(e7Elector.student_code);
+    it('ED-1: an authenticated administrator deletes an elector with 204 and no body', async () => {
+      const elector = await seedElector();
+
+      const res = await deleteElector(elector.id).expect(204);
+
+      expect(res.body).toEqual({});
     });
 
-    it('E1: deactivates an active elector with 200 and preserves the record', async () => {
+    it('ED-2: performs a logical delete and preserves the other columns', async () => {
+      const elector = await seedElector();
+
+      await deleteElector(elector.id).expect(204);
+
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row).not.toBeNull();
+      expect(row!.deleted_at).toBeInstanceOf(Date);
+      expect(row!.status).toBe('ACTIVE');
+      expect(row!.first_name).toBe(elector.first_name);
+      expect(row!.last_name).toBe(elector.last_name);
+      expect(row!.email).toBe(elector.email);
+      expect(row!.student_code).toBe(elector.student_code);
+      expect(row!.program_code).toBe(elector.program_code);
+    });
+
+    it('ED-3: a deleted elector is excluded from the electors list', async () => {
+      const elector = await seedElector();
+      await deleteElector(elector.id).expect(204);
+
       const res = await request(app.getHttpServer())
-        .delete(`/api/v1/electors/${activeElector.id}`)
+        .get(`/api/v1/electors?student_code=${elector.student_code}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(res.body).toEqual({ message: 'Elector deactivated successfully.' });
-
-      const row = await prisma.elector.findUnique({ where: { id: activeElector.id } });
-      expect(row).not.toBeNull();
-      expect(row?.id).toBe(activeElector.id);
-      expect(row?.status).toBe('INACTIVE');
-      expect(row?.created_at).toEqual(activeElector.created_at);
-      expect(row?.first_name).toBe('Deact');
-      expect(row?.last_name).toBe('Active');
-      expect(row?.email).toBe(`e2e-del-${suffix}@correounivalle.edu.co`);
-      expect(row?.password_hash).toBe('pbkdf2$placeholder');
-      expect(row?.student_code).toBe(activeCode);
-      expect(row?.program_code).toBe('2710');
+      expect((res.body as { data: unknown[] }).data).toEqual([]);
     });
 
-    it('E2: returns 404 for a nonexistent elector id', async () => {
+    it('ED-4: a second DELETE returns 404', async () => {
+      const elector = await seedElector();
+      await deleteElector(elector.id).expect(204);
+
+      const res = await deleteElector(elector.id).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404 });
+    });
+
+    it('ED-5: returns 404 for an unknown id', async () => {
+      await deleteElector(crypto.randomUUID()).expect(404);
+    });
+
+    it('ED-6: returns 400 for a malformed id', async () => {
+      await deleteElector('not-a-uuid').expect(400);
+    });
+
+    it('ED-7: returns 401 without/invalid token and 403 for an auditor', async () => {
+      const elector = await seedElector();
+
+      await request(app.getHttpServer()).delete(`/api/v1/electors/${elector.id}`).expect(401);
+      await deleteElector(elector.id, 'not-a-real-token').expect(401);
+      await deleteElector(elector.id, auditorToken).expect(403);
+    });
+
+    it('ED-8: does not physically delete the row', async () => {
+      const elector = await seedElector();
+      await deleteElector(elector.id).expect(204);
+
+      const count = await prisma.elector.count({ where: { id: elector.id } });
+      expect(count).toBe(1);
+    });
+
+    it('ED-9: failed requests do not modify rows', async () => {
+      const elector = await seedElector();
+
+      await deleteElector(elector.id, 'not-a-real-token').expect(401);
+      await deleteElector(elector.id, auditorToken).expect(403);
+      await deleteElector(crypto.randomUUID()).expect(404);
+
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.deleted_at).toBeNull();
+    });
+  });
+
+  describe('PUT /electors/:id/desactive', () => {
+    let counter = 0;
+    const seedElector = async (status = 'ACTIVE') => {
+      counter += 1;
+      const row = await prisma.elector.create({
+        data: {
+          first_name: 'Desact',
+          last_name: 'Elector',
+          email: `e2e-des-${suffix}-${counter}@correounivalle.edu.co`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: `E2EDES-${suffix}-${counter}`,
+          program_code: '2710',
+          status,
+        },
+      });
+      usedStudentCodes.push(row.student_code);
+      return row;
+    };
+
+    const deactivate = (id: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .put(`/api/v1/electors/${id}/desactive`)
+        .set('Authorization', `Bearer ${token}`);
+
+    it('EDES-1: deactivates an elector with 200 and sets status INACTIVE without deleting', async () => {
+      const elector = await seedElector();
+
+      const res = await deactivate(elector.id).expect(200);
+
+      expect(res.body).toEqual({ message: 'Elector deactivated successfully.' });
+
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.status).toBe('INACTIVE');
+      expect(row!.deleted_at).toBeNull();
+      expect(row!.created_at).toEqual(elector.created_at);
+    });
+
+    it('EDES-2: returns 409 ELECTOR_ALREADY_INACTIVE when the elector is already inactive', async () => {
+      const elector = await seedElector('INACTIVE');
+
+      const res = await deactivate(elector.id).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_ALREADY_INACTIVE' });
+    });
+
+    it('EDES-3: returns 404 when the elector is logically deleted', async () => {
+      const elector = await seedElector();
       await request(app.getHttpServer())
-        .delete(`/api/v1/electors/${crypto.randomUUID()}`)
+        .delete(`/api/v1/electors/${elector.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await deactivate(elector.id).expect(404);
+    });
+
+    it('EDES-4: enforces the guards (401/403) and validates the id (400)', async () => {
+      const elector = await seedElector();
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/electors/${elector.id}/desactive`)
+        .expect(401);
+      await deactivate(elector.id, 'not-a-real-token').expect(401);
+      await deactivate(elector.id, auditorToken).expect(403);
+      await deactivate('not-a-uuid').expect(400);
+    });
+
+    it('EDES-5: a deactivated (non-deleted) elector remains visible in the list', async () => {
+      const elector = await seedElector();
+      await deactivate(elector.id).expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/electors?student_code=${elector.student_code}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ id: string; status: string }> }).data;
+      expect(data).toHaveLength(1);
+      expect(data[0].id).toBe(elector.id);
+      expect(data[0].status).toBe('INACTIVE');
+    });
+
+    it('EDES-6: the old PATCH /electors/:id/desactive method is no longer registered (404)', async () => {
+      const elector = await seedElector();
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/electors/${elector.id}/desactive`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
+  });
 
-    it('E3: returns 400 for an invalid (non-UUID) elector id', async () => {
-      await request(app.getHttpServer())
-        .delete('/api/v1/electors/not-a-uuid')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(400);
-    });
-
-    it('E4: returns 401 without a token or with an invalid token', async () => {
-      await request(app.getHttpServer()).delete(`/api/v1/electors/${activeElector.id}`).expect(401);
-
-      await request(app.getHttpServer())
-        .delete(`/api/v1/electors/${activeElector.id}`)
-        .set('Authorization', 'Bearer not-a-real-token')
-        .expect(401);
-    });
-
-    it('E5: returns 403 for an auditor', async () => {
-      const res = await request(app.getHttpServer())
-        .delete(`/api/v1/electors/${activeElector.id}`)
-        .set('Authorization', `Bearer ${auditorToken}`)
-        .expect(403);
-
-      expect(res.body).toMatchObject({ statusCode: 403 });
-    });
-
-    it('E6: returns 200 then 409 when deactivating an already inactive elector', async () => {
-      await request(app.getHttpServer())
-        .delete(`/api/v1/electors/${repeatElector.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
-
-      const again = await request(app.getHttpServer())
-        .delete(`/api/v1/electors/${repeatElector.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(409);
-
-      expect(again.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_ALREADY_INACTIVE' });
-    });
-
-    it('E7: does not physically delete the elector record', async () => {
-      const res = await request(app.getHttpServer())
-        .delete(`/api/v1/electors/${e7Elector.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
-
-      expect(res.body).toEqual({ message: 'Elector deactivated successfully.' });
-
-      const count = await prisma.elector.count({
-        where: { student_code: e7Elector.student_code },
+  describe('PUT /electors/:id/active', () => {
+    let counter = 0;
+    const seedElector = async (status: string) => {
+      counter += 1;
+      const row = await prisma.elector.create({
+        data: {
+          first_name: 'Act',
+          last_name: 'Elector',
+          email: `e2e-act-${suffix}-${counter}@correounivalle.edu.co`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: `E2EACT-${suffix}-${counter}`,
+          program_code: '2710',
+          status,
+        },
       });
-      expect(count).toBe(1);
+      usedStudentCodes.push(row.student_code);
+      return row;
+    };
+
+    const activate = (id: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .put(`/api/v1/electors/${id}/active`)
+        .set('Authorization', `Bearer ${token}`);
+
+    it('EACT-1: activates an INACTIVE elector with 200 and returns status ACTIVE', async () => {
+      const elector = await seedElector('INACTIVE');
+
+      const res = await activate(elector.id).expect(200);
+
+      expect(res.body).toMatchObject({ id: elector.id, status: 'ACTIVE' });
+
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.status).toBe('ACTIVE');
+      expect(row!.deleted_at).toBeNull();
+    });
+
+    it('EACT-2: returns 409 ELECTOR_ALREADY_ACTIVE when the elector is already active', async () => {
+      const elector = await seedElector('ACTIVE');
+
+      const res = await activate(elector.id).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_ALREADY_ACTIVE' });
+    });
+
+    it('EACT-3: returns 404 when the elector is logically deleted', async () => {
+      const elector = await seedElector('INACTIVE');
+      await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${elector.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await activate(elector.id).expect(404);
+    });
+
+    it('EACT-4: enforces the guards (401/403) and validates the id (400)', async () => {
+      const elector = await seedElector('INACTIVE');
+
+      await request(app.getHttpServer()).put(`/api/v1/electors/${elector.id}/active`).expect(401);
+      await activate(elector.id, 'not-a-real-token').expect(401);
+      await activate(elector.id, auditorToken).expect(403);
+      await activate('not-a-uuid').expect(400);
+    });
+
+    it('EACT-5: an activated elector becomes ACTIVE in the list', async () => {
+      const elector = await seedElector('INACTIVE');
+      await activate(elector.id).expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/electors?student_code=${elector.student_code}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ id: string; status: string }> }).data;
+      expect(data).toHaveLength(1);
+      expect(data[0].id).toBe(elector.id);
+      expect(data[0].status).toBe('ACTIVE');
+    });
+
+    it('EACT-6: the old PATCH /electors/:id/active method is no longer registered (404)', async () => {
+      const elector = await seedElector('INACTIVE');
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/electors/${elector.id}/active`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
     });
   });
 });

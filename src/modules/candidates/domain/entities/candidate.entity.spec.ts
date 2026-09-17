@@ -334,6 +334,97 @@ describe('CandidateEntity', () => {
     });
   });
 
+  describe('deletedAt / isDeleted / delete', () => {
+    const deletionDate = new Date('2026-09-01T10:00:00.000Z');
+
+    function restored(overrides: Partial<Parameters<typeof CandidateEntity.restore>[0]> = {}) {
+      return CandidateEntity.restore({
+        id: 'candidate-1',
+        ...baseInput,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        companionFirstName: null,
+        companionLastName: null,
+        companionStudentCode: null,
+        companionProgramCode: null,
+        companionIdentification: null,
+        ...overrides,
+      });
+    }
+
+    it('CDE-1: create() does not mark the candidate as deleted', () => {
+      const entity = CandidateEntity.create(baseInput);
+
+      expect(entity.deletedAt).toBeNull();
+      expect(entity.isDeleted()).toBe(false);
+    });
+
+    it('CDE-2: delete(fecha) marks the deletion with the received date', () => {
+      const entity = restored();
+
+      entity.delete(deletionDate);
+
+      expect(entity.deletedAt).toEqual(deletionDate);
+      expect(entity.isDeleted()).toBe(true);
+    });
+
+    it('CDE-3: delete() does not change status', () => {
+      const active = restored();
+      const inactive = restored({ status: CandidateEntity.INACTIVE_STATUS });
+
+      active.delete(deletionDate);
+      inactive.delete(deletionDate);
+
+      expect(active.status).toBe('ACTIVE');
+      expect(inactive.status).toBe('INACTIVE');
+    });
+
+    it('CDE-4: delete() does not alter any other field', () => {
+      const createdAt = new Date('2026-08-19T15:00:00.000Z');
+      const entity = restored({ ...companionSet, createdAt });
+
+      entity.delete(deletionDate);
+
+      expect(entity.id).toBe('candidate-1');
+      expect(entity.firstName).toBe('Juan');
+      expect(entity.lastName).toBe('Garcia');
+      expect(entity.studentCode).toBe('20201234');
+      expect(entity.programCode).toBe('1234');
+      expect(entity.identificationNumber).toBe('1000123456');
+      expect(entity.companionFirstName).toBe('Maria');
+      expect(entity.companionLastName).toBe('Lopez');
+      expect(entity.companionStudentCode).toBe('20209999');
+      expect(entity.companionProgramCode).toBe('9999');
+      expect(entity.companionIdentification).toBe('2000000000');
+      expect(entity.createdAt).toEqual(createdAt);
+    });
+
+    it('CDE-5: restore({ deletedAt }) hydrates the deletion', () => {
+      const entity = restored({ deletedAt: deletionDate });
+
+      expect(entity.deletedAt).toEqual(deletionDate);
+      expect(entity.isDeleted()).toBe(true);
+    });
+
+    it('CDE-6: restore({ deletedAt: null }) hydrates a non-deleted candidate', () => {
+      const entity = restored({ deletedAt: null });
+
+      expect(entity.deletedAt).toBeNull();
+      expect(entity.isDeleted()).toBe(false);
+    });
+
+    it('CDE-7: delete() defaults to the current date', () => {
+      const before = new Date();
+      const entity = restored();
+
+      entity.delete();
+
+      expect(entity.deletedAt).toBeInstanceOf(Date);
+      expect((entity.deletedAt as Date).getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect((entity.deletedAt as Date).getTime()).toBeLessThanOrEqual(Date.now());
+    });
+  });
+
   describe('constants', () => {
     it('exposes the established DEFAULT_STATUS value', () => {
       expect(CandidateEntity.DEFAULT_STATUS).toBe('ACTIVE');

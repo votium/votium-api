@@ -24,6 +24,7 @@ export interface RestoreCandidateInput {
   identificationNumber: string;
   status: string;
   createdAt: Date;
+  deletedAt?: Date | null;
   companionFirstName: string | null;
   companionLastName: string | null;
   companionStudentCode: string | null;
@@ -60,6 +61,7 @@ export class CandidateEntity {
     public programCode: string,
     public identificationNumber: string,
     private _status: string,
+    private _deletedAt: Date | null,
     public readonly createdAt: Date | null,
     public companionFirstName: string | null,
     public companionLastName: string | null,
@@ -80,6 +82,7 @@ export class CandidateEntity {
       input.identificationNumber.trim(),
       input.status ?? CandidateEntity.DEFAULT_STATUS,
       null,
+      null,
       companion.companionFirstName,
       companion.companionLastName,
       companion.companionStudentCode,
@@ -97,6 +100,7 @@ export class CandidateEntity {
       input.programCode,
       input.identificationNumber,
       input.status,
+      input.deletedAt ?? null,
       input.createdAt,
       input.companionFirstName,
       input.companionLastName,
@@ -108,6 +112,18 @@ export class CandidateEntity {
 
   get status(): string {
     return this._status;
+  }
+
+  get deletedAt(): Date | null {
+    return this._deletedAt;
+  }
+
+  isDeleted(): boolean {
+    return this._deletedAt !== null;
+  }
+
+  delete(now: Date = new Date()): void {
+    this._deletedAt = now;
   }
 
   deactivate(): void {

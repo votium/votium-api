@@ -47,6 +47,7 @@ export class PrismaCandidacyRepository implements CandidacyRepository {
       where: {
         election_id: electionId,
         candidate: {
+          deleted_at: null,
           status: { not: CandidateEntity.INACTIVE_STATUS },
           ...(candidateName
             ? {

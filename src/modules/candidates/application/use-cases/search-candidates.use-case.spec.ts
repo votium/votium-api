@@ -25,6 +25,7 @@ describe('SearchCandidatesUseCase', () => {
     create: jest.fn(),
     search: jest.fn().mockResolvedValue({ candidates: [], total: 0 }),
     findById: jest.fn(),
+    softDelete: jest.fn(),
     updateStatus: jest.fn(),
     update: jest.fn(),
   };

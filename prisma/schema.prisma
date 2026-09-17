@@ -172,6 +172,7 @@ model Candidate {
   companion_program_code   String?
   companion_identification String?
   created_at               DateTime @default(now())
+  deleted_at               DateTime?
 
   candidays Candiday[]
 
@@ -219,6 +220,7 @@ model Elector {
   program_code  String
   status        String
   created_at    DateTime @default(now())
+  deleted_at    DateTime?
 
   electoralRolls ElectoralRoll[]
   mfaChallenges  ElectorMfaChallenge[]

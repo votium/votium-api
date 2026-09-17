@@ -491,4 +491,105 @@ describe('PrismaElectorRepository integration', () => {
       expect(updated?.passwordHash).toBe('pbkdf2$210000$salt$hash');
     });
   });
+
+  describe('softDelete', () => {
+    async function seed(code: string, email: string): Promise<ElectorEntity> {
+      usedStudentCodes.push(code);
+      return repository.create(buildEntity(code, email));
+    }
+
+    it('SE-1: softDelete(id) sets deleted_at and returns the entity with deletedAt', async () => {
+      const code = `SD-${suffix}`;
+      const saved = await seed(code, `sd-${suffix}@example.com`);
+
+      const deleted = await repository.softDelete(saved.id as string);
+
+      expect(deleted).not.toBeNull();
+      expect(deleted!.id).toBe(saved.id);
+      expect(deleted!.deletedAt).toBeInstanceOf(Date);
+
+      const row = await prisma.elector.findUnique({ where: { id: saved.id as string } });
+      expect(row).not.toBeNull();
+      expect(row!.deleted_at).toBeInstanceOf(Date);
+      expect(row!.status).toBe(ElectorEntity.DEFAULT_STATUS);
+    });
+
+    it('SE-2: findById excludes a logically deleted elector', async () => {
+      const code = `SDFIND-${suffix}`;
+      const saved = await seed(code, `sdfind-${suffix}@example.com`);
+
+      await repository.softDelete(saved.id as string);
+
+      expect(await repository.findById(saved.id as string)).toBeNull();
+    });
+
+    it('SE-3: findByEmail excludes a logically deleted elector', async () => {
+      const code = `SDMAIL-${suffix}`;
+      const email = `sdmail-${suffix}@example.com`;
+      const saved = await seed(code, email);
+
+      await repository.softDelete(saved.id as string);
+
+      expect(await repository.findByEmail(email)).toBeNull();
+    });
+
+    it('SE-4: search excludes deleted electors and keeps total consistent', async () => {
+      const code = `SDSRCH-${suffix}`;
+      const saved = await seed(code, `sdsrch-${suffix}@example.com`);
+      await repository.softDelete(saved.id as string);
+
+      const result = await repository.search({ page: 1, limit: 100, studentCode: code });
+
+      expect(result.electors).toEqual([]);
+      expect(result.total).toBe(0);
+      const count = await prisma.elector.count({ where: { student_code: code } });
+      expect(count).toBe(1);
+    });
+
+    it('SE-5: findByStudentCodeOrEmail still includes deleted electors (duplicate detection)', async () => {
+      const code = `SDDUP-${suffix}`;
+      const email = `sddup-${suffix}@example.com`;
+      const saved = await seed(code, email);
+      await repository.softDelete(saved.id as string);
+
+      const byCode = await repository.findByStudentCodeOrEmail([code], []);
+      const byEmail = await repository.findByStudentCodeOrEmail([], [email]);
+
+      expect(byCode.map((e) => e.id)).toContain(saved.id);
+      expect(byEmail.map((e) => e.id)).toContain(saved.id);
+    });
+
+    it('SE-6: create with the student_code/email of a deleted elector throws ElectorDuplicateError', async () => {
+      const code = `SDUNIQ-${suffix}`;
+      const email = `sduniq-${suffix}@example.com`;
+      const saved = await seed(code, email);
+      await repository.softDelete(saved.id as string);
+
+      await expect(
+        repository.create(buildEntity(code, `other-${suffix}@example.com`)),
+      ).rejects.toBeInstanceOf(ElectorDuplicateError);
+      await expect(repository.create(buildEntity(`OTHER-${suffix}`, email))).rejects.toBeInstanceOf(
+        ElectorDuplicateError,
+      );
+      usedStudentCodes.push(`OTHER-${suffix}`);
+    });
+
+    it('SE-7: updateStatus on a deleted row does not clear deleted_at', async () => {
+      const code = `SDSTAT-${suffix}`;
+      const saved = await seed(code, `sdstat-${suffix}@example.com`);
+      await repository.softDelete(saved.id as string);
+
+      await repository.updateStatus(saved.id as string, ElectorEntity.DEFAULT_STATUS);
+
+      expect(await repository.findById(saved.id as string)).toBeNull();
+      const row = await prisma.elector.findUnique({ where: { id: saved.id as string } });
+      expect(row!.deleted_at).toBeInstanceOf(Date);
+    });
+
+    it('SE-8: softDelete on a missing id returns null (P2025)', async () => {
+      const deleted = await repository.softDelete(crypto.randomUUID());
+
+      expect(deleted).toBeNull();
+    });
+  });
 });

@@ -15,9 +15,13 @@ export type PrismaCandidateRow = {
   companion_program_code: string | null;
   companion_identification: string | null;
   created_at: Date;
+  deleted_at: Date | null;
 };
 
-export type PrismaCandidateCreateData = Omit<PrismaCandidateRow, 'id' | 'created_at'>;
+export type PrismaCandidateCreateData = Omit<
+  PrismaCandidateRow,
+  'id' | 'created_at' | 'deleted_at'
+>;
 
 export type PrismaCandidateUpdateData = Partial<
   Pick<
@@ -45,6 +49,7 @@ export class PrismaCandidateMapper {
       identificationNumber: row.identification_number,
       status: row.status,
       createdAt: row.created_at,
+      deletedAt: row.deleted_at,
       companionFirstName: row.companion_first_name,
       companionLastName: row.companion_last_name,
       companionStudentCode: row.companion_student_code,

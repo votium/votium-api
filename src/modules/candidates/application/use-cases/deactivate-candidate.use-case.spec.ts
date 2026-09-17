@@ -9,6 +9,7 @@ describe('DeactivateCandidateUseCase', () => {
     create: jest.fn(),
     search: jest.fn(),
     findById: jest.fn(),
+    softDelete: jest.fn(),
     updateStatus: jest.fn(),
     update: jest.fn(),
   };

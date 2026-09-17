@@ -1,12 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
-  Patch,
   Post,
   Put,
   Query,
@@ -29,8 +29,9 @@ import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { CreateCandidateDto } from '../../application/dtos/create-candidate.dto';
 import { UpdateCandidateDto } from '../../application/dtos/update-candidate.dto';
+import { ActivateCandidateUseCase } from '../../application/use-cases/activate-candidate.use-case';
 import { DeactivateCandidateUseCase } from '../../application/use-cases/deactivate-candidate.use-case';
-import { ReactivateCandidateUseCase } from '../../application/use-cases/reactivate-candidate.use-case';
+import { DeleteCandidateUseCase } from '../../application/use-cases/delete-candidate.use-case';
 import { RegisterCandidateUseCase } from '../../application/use-cases/register-candidate.use-case';
 import { SearchCandidatesUseCase } from '../../application/use-cases/search-candidates.use-case';
 import { UpdateCandidateUseCase } from '../../application/use-cases/update-candidate.use-case';
@@ -55,8 +56,9 @@ export class CandidatesController {
     private readonly registerCandidate: RegisterCandidateUseCase,
     private readonly searchCandidates: SearchCandidatesUseCase,
     private readonly deactivateCandidate: DeactivateCandidateUseCase,
+    private readonly deleteCandidate: DeleteCandidateUseCase,
     private readonly updateCandidate: UpdateCandidateUseCase,
-    private readonly reactivateCandidate: ReactivateCandidateUseCase,
+    private readonly activateCandidate: ActivateCandidateUseCase,
   ) {}
 
   @Get()
@@ -130,11 +132,11 @@ export class CandidatesController {
     return CandidatePresenter.toResponse(candidate);
   }
 
-  @Patch(':id/desactive')
+  @Put(':id/desactive')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'Deactivate a candidate (soft delete)',
-    description: 'Deactivates a candidate. Requires ADMINISTRATOR role.',
+    summary: 'Deactivate a candidate',
+    description: 'Sets the candidate status to INACTIVE. Requires ADMINISTRATOR role.',
   })
   @ApiParam({ name: 'id', description: 'Unique identifier of the candidate.', example: 'uuid' })
   @ApiResponse({ status: 204, description: 'Candidate deactivated successfully.' })
@@ -146,6 +148,24 @@ export class CandidatesController {
   @Roles(RoleName.ADMINISTRATOR)
   async deactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
     await this.deactivateCandidate.execute(id, req.user.sub);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Logically delete a candidate',
+    description: 'Marks a candidate as deleted. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the candidate.', example: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Candidate deleted successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Candidate not found.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async delete(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    await this.deleteCandidate.execute(id, req.user.sub);
   }
 
   @Put(':id')
@@ -190,15 +210,15 @@ export class CandidatesController {
     return CandidatePresenter.toResponse(candidate);
   }
 
-  @Patch(':id/active')
+  @Put(':id/active')
   @ApiOperation({
-    summary: 'Reactivate a logically deleted candidate',
-    description: 'Reactivates a deactivated candidate. Requires ADMINISTRATOR role.',
+    summary: 'Activate a candidate',
+    description: 'Sets the candidate status to ACTIVE. Requires ADMINISTRATOR role.',
   })
   @ApiParam({ name: 'id', description: 'Unique identifier of the candidate.', example: 'uuid' })
   @ApiResponse({
     status: 200,
-    description: 'Candidate reactivated successfully.',
+    description: 'Candidate activated successfully.',
     type: CandidateResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
@@ -208,8 +228,8 @@ export class CandidatesController {
   @ApiResponse({ status: 409, description: 'Candidate is already ACTIVE.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
-  async reactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
-    const candidate = await this.reactivateCandidate.execute(id, req.user.sub);
+  async activate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const candidate = await this.activateCandidate.execute(id, req.user.sub);
     return CandidatePresenter.toResponse(candidate);
   }
 }

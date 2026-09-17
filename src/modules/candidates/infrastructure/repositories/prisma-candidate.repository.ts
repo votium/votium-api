@@ -11,6 +11,7 @@ import {
 import { PrismaCandidateMapper } from '../mappers/prisma-candidate.mapper';
 
 type PrismaCandidateWhere = {
+  deleted_at?: null;
   status?: { not: string };
   first_name?: { contains: string; mode: 'insensitive' };
   last_name?: { contains: string; mode: 'insensitive' };
@@ -42,8 +43,23 @@ export class PrismaCandidateRepository implements CandidateRepository {
   }
 
   async findById(id: string): Promise<CandidateEntity | null> {
-    const row = await this.prisma.candidate.findUnique({ where: { id } });
+    const row = await this.prisma.candidate.findUnique({
+      where: { id, deleted_at: null },
+    });
     return row ? PrismaCandidateMapper.toDomain(row) : null;
+  }
+
+  async softDelete(id: string): Promise<CandidateEntity | null> {
+    try {
+      const row = await this.prisma.candidate.update({
+        where: { id },
+        data: { deleted_at: new Date() },
+      });
+      return PrismaCandidateMapper.toDomain(row);
+    } catch (error) {
+      if (isRecordNotFoundError(error)) return null;
+      throw error;
+    }
   }
 
   async updateStatus(id: string, status: string): Promise<CandidateEntity | null> {
@@ -87,6 +103,7 @@ export class PrismaCandidateRepository implements CandidateRepository {
     const identificationNumber = params.identificationNumber?.trim();
 
     const where: PrismaCandidateWhere = {
+      deleted_at: null,
       ...(params.includeInactive ? {} : { status: { not: CandidateEntity.INACTIVE_STATUS } }),
       ...(firstName ? { first_name: { contains: firstName, mode: 'insensitive' } } : {}),
       ...(lastName ? { last_name: { contains: lastName, mode: 'insensitive' } } : {}),

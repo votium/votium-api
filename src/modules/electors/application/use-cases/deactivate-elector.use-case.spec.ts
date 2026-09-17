@@ -10,6 +10,7 @@ describe('DeactivateElectorUseCase', () => {
     create: jest.fn(),
     findByStudentCodeOrEmail: jest.fn(),
     findById: jest.fn(),
+    softDelete: jest.fn(),
     updateStatus: jest.fn(),
     update: jest.fn(),
     findByEmail: jest.fn(),
