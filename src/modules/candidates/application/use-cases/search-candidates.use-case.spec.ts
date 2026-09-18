@@ -41,10 +41,10 @@ describe('SearchCandidatesUseCase', () => {
       firstName: 'Juan',
       lastName: 'Garcia',
       name: 'Juan',
-      studyPlanCode: '1234',
+      programCode: '1234',
       studentCode: 'C-1',
       identificationNumber: 'ID-1',
-      includeInactive: true,
+      status: 'ACTIVE',
     });
 
     expect(candidates.search.mock.calls).toHaveLength(1);
@@ -54,10 +54,10 @@ describe('SearchCandidatesUseCase', () => {
       firstName: 'Juan',
       lastName: 'Garcia',
       name: 'Juan',
-      studyPlanCode: '1234',
+      programCode: '1234',
       studentCode: 'C-1',
       identificationNumber: 'ID-1',
-      includeInactive: true,
+      status: 'ACTIVE',
     });
   });
 
@@ -106,17 +106,17 @@ describe('SearchCandidatesUseCase', () => {
     expect(candidates.search.mock.calls[0][0]).toEqual({ page: 1, limit: 10, name: '  bruno ' });
   });
 
-  it('U7: forwards includeInactive as-is (true/false/undefined)', async () => {
+  it('U7: forwards status as-is (ACTIVE/INACTIVE/undefined)', async () => {
     const useCase = new SearchCandidatesUseCase(candidates);
 
-    for (const includeInactive of [true, false, undefined]) {
-      await useCase.execute({ page: 1, limit: 10, includeInactive });
+    for (const status of ['ACTIVE', 'INACTIVE', undefined] as const) {
+      await useCase.execute({ page: 1, limit: 10, status });
     }
 
     expect(candidates.search.mock.calls).toHaveLength(3);
-    expect(candidates.search.mock.calls[0][0]).toMatchObject({ includeInactive: true });
-    expect(candidates.search.mock.calls[1][0]).toMatchObject({ includeInactive: false });
-    expect(candidates.search.mock.calls[2][0]).toMatchObject({ includeInactive: undefined });
+    expect(candidates.search.mock.calls[0][0]).toMatchObject({ status: 'ACTIVE' });
+    expect(candidates.search.mock.calls[1][0]).toMatchObject({ status: 'INACTIVE' });
+    expect(candidates.search.mock.calls[2][0]).toMatchObject({ status: undefined });
   });
 
   it('U8: returns the repository result unchanged', async () => {

@@ -20,6 +20,7 @@ import {
   ApiParam,
   ApiBody,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
@@ -35,6 +36,7 @@ import { DeleteCandidateUseCase } from '../../application/use-cases/delete-candi
 import { RegisterCandidateUseCase } from '../../application/use-cases/register-candidate.use-case';
 import { SearchCandidatesUseCase } from '../../application/use-cases/search-candidates.use-case';
 import { UpdateCandidateUseCase } from '../../application/use-cases/update-candidate.use-case';
+import { CANDIDATE_STATUSES } from '../../domain/entities/candidate.entity';
 import { CandidatePresenter } from '../presenters/candidate.presenter';
 import { CandidateResponseDto } from '../dtos/candidate-response.dto';
 import { CandidatesListResponseDto } from '../dtos/candidates-list-response.dto';
@@ -65,9 +67,60 @@ export class CandidatesController {
   @ApiOperation({
     summary: 'Query candidates by optional filters',
     description:
-      'Returns a paginated list of candidates matching the provided filters. Active candidates ' +
-      'are returned by default; pass includeInactive=true to also include logically deleted (INACTIVE) ' +
-      'candidates. Requires ADMINISTRATOR or AUDITOR role.',
+      'Returns a paginated list of candidates matching the provided filters. Candidates of every ' +
+      'status are returned by default; pass status to narrow the result to a single candidate ' +
+      'status. Logically deleted candidates are never returned. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiQuery({ name: 'page', required: false, example: 1, description: '1-based page number.' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    example: 10,
+    description: 'Page size (number of candidates per page).',
+  })
+  @ApiQuery({
+    name: 'firstName',
+    required: false,
+    example: 'Juan',
+    description: 'Partial, case-insensitive match on the first name.',
+  })
+  @ApiQuery({
+    name: 'lastName',
+    required: false,
+    example: 'Garcia',
+    description: 'Partial, case-insensitive match on the last name.',
+  })
+  @ApiQuery({
+    name: 'name',
+    required: false,
+    example: 'Juan',
+    description: 'Partial, case-insensitive match on the first or last name.',
+  })
+  @ApiQuery({
+    name: 'programCode',
+    required: false,
+    example: '1234',
+    description: 'Program code. Exact match of four digits.',
+  })
+  @ApiQuery({
+    name: 'studentCode',
+    required: false,
+    example: 'CAND-1234',
+    description: 'Student code. Exact match.',
+  })
+  @ApiQuery({
+    name: 'identificationNumber',
+    required: false,
+    example: 'ID-12345678',
+    description: 'Identification number. Exact match.',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: CANDIDATE_STATUSES,
+    example: 'ACTIVE',
+    description:
+      'Candidate status. Exact match. When omitted, candidates of every status are returned.',
   })
   @ApiResponse({
     status: 200,
@@ -86,10 +139,10 @@ export class CandidatesController {
       firstName: query.firstName,
       lastName: query.lastName,
       name: query.name,
-      studyPlanCode: query.studyPlanCode,
+      programCode: query.programCode,
       studentCode: query.studentCode,
       identificationNumber: query.identificationNumber,
-      includeInactive: query.includeInactive,
+      status: query.status,
     });
     return new PaginatedResponseDto({
       data: CandidatePresenter.toList(candidates),

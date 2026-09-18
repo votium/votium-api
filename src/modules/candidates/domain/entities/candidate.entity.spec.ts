@@ -1,5 +1,5 @@
 import { CandidateCompanionIncompleteError } from '../errors/candidate-companion-incomplete.error';
-import { CandidateEntity } from './candidate.entity';
+import { CANDIDATE_STATUSES, CandidateEntity } from './candidate.entity';
 
 describe('CandidateEntity', () => {
   const baseInput = {
@@ -432,6 +432,10 @@ describe('CandidateEntity', () => {
 
     it('exposes the established INACTIVE_STATUS value', () => {
       expect(CandidateEntity.INACTIVE_STATUS).toBe('INACTIVE');
+    });
+
+    it('exposes the established CANDIDATE_STATUSES values', () => {
+      expect(CANDIDATE_STATUSES).toEqual(['ACTIVE', 'INACTIVE']);
     });
   });
 

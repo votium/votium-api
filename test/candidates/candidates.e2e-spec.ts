@@ -610,7 +610,7 @@ describe('Candidates registration (e2e)', () => {
         usedStudentCodes.push(row.student_code);
       }
 
-      // Inactive seed used by the includeInactive cases.
+      // INACTIVE seed used by the status cases.
       const inactive = await prisma.candidate.create({
         data: {
           first_name: 'InactiveSeed',
@@ -624,7 +624,7 @@ describe('Candidates registration (e2e)', () => {
       inactiveStudentCode = inactive.student_code;
       usedStudentCodes.push(inactive.student_code);
 
-      // 2 ACTIVE + 1 INACTIVE rows sharing a common prefix (includeInactive + pagination).
+      // 2 ACTIVE + 1 INACTIVE rows sharing a common prefix (status + pagination).
       for (const tag of ['1', '2', '3']) {
         const row = await prisma.candidate.create({
           data: {
@@ -679,8 +679,8 @@ describe('Candidates registration (e2e)', () => {
       expect(codes).toEqual([`Q4-${suffix}`]);
     });
 
-    it('E4: filters by studyPlanCode', async () => {
-      const res = await queryCandidates('?studyPlanCode=5001').expect(200);
+    it('E4: filters by programCode', async () => {
+      const res = await queryCandidates('?programCode=5001').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
       expect(codes.sort()).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
@@ -702,7 +702,7 @@ describe('Candidates registration (e2e)', () => {
 
     it('E7: combines multiple filters with AND semantics', async () => {
       const res = await queryCandidates(
-        `?firstName=Bruno&studyPlanCode=5001&studentCode=${`Q1-${suffix}`}`,
+        `?firstName=Bruno&programCode=5001&studentCode=${`Q1-${suffix}`}`,
       ).expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
@@ -742,8 +742,8 @@ describe('Candidates registration (e2e)', () => {
       expect(codes).toEqual(expect.arrayContaining(querySeed.map((s) => s.studentCode)));
     });
 
-    it('E13: rejects an invalid studyPlanCode format with 400', async () => {
-      const res = await queryCandidates('?studyPlanCode=271').expect(400);
+    it('E13: rejects an invalid programCode format with 400', async () => {
+      const res = await queryCandidates('?programCode=271').expect(400);
 
       const body = res.body as {
         statusCode: number;
@@ -757,6 +757,12 @@ describe('Candidates registration (e2e)', () => {
       );
       expect(typeof body.timestamp).toBe('string');
       expect(typeof body.path).toBe('string');
+    });
+
+    it('E13b: rejects the removed studyPlanCode parameter with 400', async () => {
+      const res = await queryCandidates('?studyPlanCode=5001').expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
     });
 
     it('E14: rejects unknown query parameters with 400', async () => {
@@ -878,16 +884,17 @@ describe('Candidates registration (e2e)', () => {
       await queryCandidates('?limit=abc').expect(400);
     });
 
-    it('Q6: excludes INACTIVE candidates by default', async () => {
+    it('Q6: includes INACTIVE candidates by default', async () => {
       const res = await queryCandidates(`?studentCode=${inactiveStudentCode}`).expect(200);
-      const body = res.body as { data: unknown[]; meta: { total: number } };
-      expect(body.data).toEqual([]);
-      expect(body.meta.total).toBe(0);
+      const body = res.body as { data: Array<{ status: string }>; meta: { total: number } };
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].status).toBe('INACTIVE');
+      expect(body.meta.total).toBe(1);
     });
 
-    it('Q7: includeInactive=true includes INACTIVE candidates and counts them in total', async () => {
+    it('Q7: status=INACTIVE returns only INACTIVE candidates and counts them in total', async () => {
       const res = await queryCandidates(
-        `?studentCode=${inactiveStudentCode}&includeInactive=true`,
+        `?studentCode=${inactiveStudentCode}&status=INACTIVE`,
       ).expect(200);
       const body = res.body as {
         data: Array<{ status: string }>;
@@ -898,40 +905,47 @@ describe('Candidates registration (e2e)', () => {
       expect(body.meta.total).toBe(1);
     });
 
-    it('Q8: includeInactive=false behaves like the default', async () => {
-      const res = await queryCandidates(
-        `?studentCode=${inactiveStudentCode}&includeInactive=false`,
-      ).expect(200);
+    it('Q8: status=ACTIVE excludes the INACTIVE candidate', async () => {
+      const res = await queryCandidates(`?studentCode=${inactiveStudentCode}&status=ACTIVE`).expect(
+        200,
+      );
       const body = res.body as { data: unknown[]; meta: { total: number } };
       expect(body.data).toEqual([]);
       expect(body.meta.total).toBe(0);
     });
 
-    it('Q9: rejects non-literal boolean values for includeInactive with 400', async () => {
-      await queryCandidates(`?studentCode=${inactiveStudentCode}&includeInactive=1`).expect(400);
-      await queryCandidates(`?studentCode=${inactiveStudentCode}&includeInactive=TRUE`).expect(400);
-      await queryCandidates(`?studentCode=${inactiveStudentCode}&includeInactive=`).expect(400);
+    it('Q9: rejects status values outside the domain with 400', async () => {
+      await queryCandidates(`?studentCode=${inactiveStudentCode}&status=DELETED`).expect(400);
+      await queryCandidates(`?studentCode=${inactiveStudentCode}&status=foo`).expect(400);
+      await queryCandidates(`?studentCode=${inactiveStudentCode}&status=`).expect(400);
     });
 
-    it('Q10: includeInactive combined with pagination keeps total consistent', async () => {
-      const page1 = await queryCandidates(
-        `?name=Q10P-${suffix}&includeInactive=true&limit=2`,
-      ).expect(200);
-      const body1 = page1.body as { data: unknown[]; meta: { total: number } };
-      expect(body1.data).toHaveLength(2);
-      expect(body1.meta.total).toBe(3);
+    it('Q10: status combined with pagination keeps total consistent', async () => {
+      const all = await queryCandidates(`?name=Q10P-${suffix}&limit=10`).expect(200);
+      const allBody = all.body as { data: unknown[]; meta: { total: number } };
+      expect(allBody.data).toHaveLength(3);
+      expect(allBody.meta.total).toBe(3);
 
-      const page2 = await queryCandidates(
-        `?name=Q10P-${suffix}&includeInactive=true&limit=2&page=2`,
+      const activePage1 = await queryCandidates(
+        `?name=Q10P-${suffix}&status=ACTIVE&limit=1&page=1`,
       ).expect(200);
-      const body2 = page2.body as { data: unknown[]; meta: { total: number } };
-      expect(body2.data).toHaveLength(1);
-      expect(body2.meta.total).toBe(3);
+      const activeBody1 = activePage1.body as { data: unknown[]; meta: { total: number } };
+      expect(activeBody1.data).toHaveLength(1);
+      expect(activeBody1.meta.total).toBe(2);
 
-      const disabled = await queryCandidates(`?name=Q10P-${suffix}&limit=10`).expect(200);
-      const disabledBody = disabled.body as { data: unknown[]; meta: { total: number } };
-      expect(disabledBody.data).toHaveLength(2);
-      expect(disabledBody.meta.total).toBe(2);
+      const activePage2 = await queryCandidates(
+        `?name=Q10P-${suffix}&status=ACTIVE&limit=1&page=2`,
+      ).expect(200);
+      const activeBody2 = activePage2.body as { data: unknown[]; meta: { total: number } };
+      expect(activeBody2.data).toHaveLength(1);
+      expect(activeBody2.meta.total).toBe(2);
+
+      const inactive = await queryCandidates(`?name=Q10P-${suffix}&status=INACTIVE&limit=2`).expect(
+        200,
+      );
+      const inactiveBody = inactive.body as { data: unknown[]; meta: { total: number } };
+      expect(inactiveBody.data).toHaveLength(1);
+      expect(inactiveBody.meta.total).toBe(1);
     });
 
     it('Q11: the name filter matches a partial first name', async () => {
@@ -972,19 +986,19 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('Q15: the name filter combines with other filters via AND', async () => {
-      const res = await queryCandidates('?name=bruno&studyPlanCode=5001').expect(200);
+      const res = await queryCandidates('?name=bruno&programCode=5001').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode).sort();
       expect(codes).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
     });
 
-    it('Q16: the paginated/name/includeInactive flow remains read-only', async () => {
+    it('Q16: the paginated/name/status flow remains read-only', async () => {
       const before = await prisma.candidate.count({
         where: { student_code: { in: usedStudentCodes } },
       });
 
       await queryCandidates(`?name=PG-${suffix}&limit=1&page=2`).expect(200);
-      await queryCandidates(`?studentCode=${inactiveStudentCode}&includeInactive=true`).expect(200);
+      await queryCandidates(`?studentCode=${inactiveStudentCode}&status=INACTIVE`).expect(200);
       await queryCandidates('?name=bruno&limit=10&page=1').expect(200);
 
       const after = await prisma.candidate.count({
@@ -1041,18 +1055,26 @@ describe('Candidates registration (e2e)', () => {
       expect(countAfter).toBe(countBefore);
     });
 
-    it('E3: a deleted candidate is excluded from candidate query results', async () => {
+    it('E3: a deactivated candidate is returned by default with INACTIVE status', async () => {
       const { id, studentCode } = await registerCandidate();
 
       await deactivateCandidate(id).expect(204);
 
-      const res = await request(app.getHttpServer())
+      const byDefault = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
+      const defaultBody = byDefault.body as {
+        data: Array<{ studentCode: string; status: string }>;
+      };
+      expect(defaultBody.data).toHaveLength(1);
+      expect(defaultBody.data[0].status).toBe('INACTIVE');
 
-      const body = res.body as { data: Array<{ studentCode: string }> };
-      expect(body.data).toEqual([]);
+      const activeOnly = await request(app.getHttpServer())
+        .get(`/api/v1/candidates?studentCode=${studentCode}&status=ACTIVE`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect((activeOnly.body as { data: unknown[] }).data).toEqual([]);
     });
 
     it('E4: a repeated deactivation is idempotent and returns 204 again', async () => {
@@ -1602,14 +1624,17 @@ describe('Candidates registration (e2e)', () => {
       expect(before!.status).toBe('INACTIVE');
     });
 
-    it('E9: becomes visible in active list only after reactivation', async () => {
+    it('E9: flips from INACTIVE to ACTIVE in the default list after reactivation', async () => {
       const { id, studentCode } = await registerInactive();
 
-      const hidden = await request(app.getHttpServer())
+      const before = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
-      expect((hidden.body as { data: unknown[] }).data).toEqual([]);
+      const beforeBody = before.body as { data: Array<{ id: string; status: string }> };
+      expect(beforeBody.data).toHaveLength(1);
+      expect(beforeBody.data[0].id).toBe(id);
+      expect(beforeBody.data[0].status).toBe('INACTIVE');
 
       await reactivate(id).expect(200);
 
@@ -1617,9 +1642,10 @@ describe('Candidates registration (e2e)', () => {
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
-      const visibleBody = visible.body as { data: Array<{ id: string }> };
+      const visibleBody = visible.body as { data: Array<{ id: string; status: string }> };
       expect(visibleBody.data).toHaveLength(1);
       expect(visibleBody.data[0].id).toBe(id);
+      expect(visibleBody.data[0].status).toBe('ACTIVE');
     });
 
     it('E10: failed requests do not create or modify records', async () => {
@@ -1726,12 +1752,12 @@ describe('Candidates registration (e2e)', () => {
       expect((res.body as { data: unknown[] }).data).toEqual([]);
     });
 
-    it('CD-4: a deleted candidate stays excluded even with includeInactive=true', async () => {
+    it('CD-4: a deleted candidate stays excluded even when filtering by status', async () => {
       const { id, studentCode } = await registerActive();
       await deleteCandidate(id).expect(204);
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}&includeInactive=true`)
+        .get(`/api/v1/candidates?studentCode=${studentCode}&status=ACTIVE`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -1811,7 +1837,7 @@ describe('Candidates registration (e2e)', () => {
       await prisma.candidate.update({ where: { id }, data: { status: 'INACTIVE' } });
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}&includeInactive=true`)
+        .get(`/api/v1/candidates?studentCode=${studentCode}&status=INACTIVE`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -1970,6 +1996,51 @@ describe('Candidates registration (e2e)', () => {
       expect((activePathItem as { delete?: SwaggerOperationShape }).delete).toBeUndefined();
       expect(deleteOperation).toBeDefined();
       expect(document.components?.securitySchemes?.bearer).toBeDefined();
+    });
+
+    it('S5: GET /candidates documents the query parameters and responses', () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+
+      const queryPathKey = Object.keys(document.paths).find(
+        (path) => path.endsWith('/candidates') && !path.includes('{'),
+      );
+      expect(queryPathKey).toBeDefined();
+      const queryOperation = document.paths[queryPathKey!] as { get?: SwaggerOperationShape };
+      expect(queryOperation.get).toBeDefined();
+
+      const queryParameters = (queryOperation.get!.parameters ?? []).filter(
+        (parameter) => parameter.in === 'query',
+      );
+      const queryNames = queryParameters.map((parameter) => parameter.name).sort();
+
+      expect(queryNames).toEqual(
+        [
+          'firstName',
+          'identificationNumber',
+          'lastName',
+          'limit',
+          'name',
+          'page',
+          'programCode',
+          'status',
+          'studentCode',
+        ].sort(),
+      );
+      expect(queryNames).not.toContain('studyPlanCode');
+      expect(queryNames).not.toContain('includeInactive');
+      expect(new Set(queryNames).size).toBe(queryNames.length);
+
+      for (const status of ['200', '400', '401', '403']) {
+        expect(queryOperation.get!.responses[status]).toBeDefined();
+      }
+      expect(queryOperation.get!.tags).toContain('candidates');
+      expect(queryOperation.get!.security).toEqual([{ bearer: [] }]);
     });
   });
 });
