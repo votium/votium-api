@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/shared/database/prisma.service';
-import { CandidateEntity } from '../../domain/entities/candidate.entity';
+import { CandidateEntity, type CandidateStatus } from '../../domain/entities/candidate.entity';
 import type { UpdateCandidateInput } from '../../domain/entities/update-candidate-input';
 import { CandidateDuplicateError } from '../../domain/errors/candidate-duplicate.error';
 import {
@@ -12,7 +12,7 @@ import { PrismaCandidateMapper } from '../mappers/prisma-candidate.mapper';
 
 type PrismaCandidateWhere = {
   deleted_at?: null;
-  status?: { not: string };
+  status?: CandidateStatus;
   first_name?: { contains: string; mode: 'insensitive' };
   last_name?: { contains: string; mode: 'insensitive' };
   program_code?: string;
@@ -98,13 +98,14 @@ export class PrismaCandidateRepository implements CandidateRepository {
     const firstName = params.firstName?.trim();
     const lastName = params.lastName?.trim();
     const name = params.name?.trim();
-    const studyPlanCode = params.studyPlanCode?.trim();
+    const programCode = params.programCode?.trim();
     const studentCode = params.studentCode?.trim();
     const identificationNumber = params.identificationNumber?.trim();
+    const status = params.status;
 
     const where: PrismaCandidateWhere = {
       deleted_at: null,
-      ...(params.includeInactive ? {} : { status: { not: CandidateEntity.INACTIVE_STATUS } }),
+      ...(status ? { status } : {}),
       ...(firstName ? { first_name: { contains: firstName, mode: 'insensitive' } } : {}),
       ...(lastName ? { last_name: { contains: lastName, mode: 'insensitive' } } : {}),
       ...(name
@@ -115,7 +116,7 @@ export class PrismaCandidateRepository implements CandidateRepository {
             ],
           }
         : {}),
-      ...(studyPlanCode ? { program_code: studyPlanCode } : {}),
+      ...(programCode ? { program_code: programCode } : {}),
       ...(studentCode ? { student_code: studentCode } : {}),
       ...(identificationNumber ? { identification_number: identificationNumber } : {}),
     };

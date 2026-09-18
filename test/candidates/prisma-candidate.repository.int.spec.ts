@@ -301,21 +301,32 @@ describe('PrismaCandidateRepository integration', () => {
       expect(row!.created_at).toBeInstanceOf(Date);
     });
 
-    it('INT-R2: a reactivated candidate becomes visible in search() results', async () => {
+    it('INT-R2: a reactivated candidate flips to ACTIVE in search() results', async () => {
       const code = `REACTSRCH-${suffix}`;
       usedStudentCodes.push(code);
       const saved = await repository.create(buildEntity(code, `ID-REACTSRCH-${suffix}`));
       await repository.updateStatus(saved.id!, CandidateEntity.INACTIVE_STATUS);
 
-      const hidden = await repository.search({ page: 1, limit: 100, studentCode: code });
-      expect(hidden.candidates).toEqual([]);
-      expect(hidden.total).toBe(0);
+      const before = await repository.search({ page: 1, limit: 100, studentCode: code });
+      expect(before.candidates).toHaveLength(1);
+      expect(before.candidates[0].status).toBe(CandidateEntity.INACTIVE_STATUS);
+      expect(before.total).toBe(1);
+
+      const notActive = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: code,
+        status: 'ACTIVE',
+      });
+      expect(notActive.candidates).toEqual([]);
+      expect(notActive.total).toBe(0);
 
       await repository.updateStatus(saved.id!, CandidateEntity.DEFAULT_STATUS);
 
       const visible = await repository.search({ page: 1, limit: 100, studentCode: code });
       expect(visible.candidates).toHaveLength(1);
       expect(visible.candidates[0].id).toBe(saved.id);
+      expect(visible.candidates[0].status).toBe(CandidateEntity.DEFAULT_STATUS);
       expect(visible.total).toBe(1);
     });
   });
@@ -684,8 +695,9 @@ describe('PrismaCandidateRepository integration', () => {
 
   describe('search', () => {
     const searchCodes: string[] = [];
-    // ACTIVE subset of searchCodes (INACTIVE seeds go to searchCodes for cleanup
-    // only, since the default search excludes them from result.total).
+    // ACTIVE subset of searchCodes, used only as a lower bound for total in the
+    // unfiltered cases (INACTIVE rows are also returned by default now, so this is
+    // not the full result set).
     const activeSearchCodes: string[] = [];
     let candidateA: CandidateEntity;
     let candidateB: CandidateEntity;
@@ -695,9 +707,9 @@ describe('PrismaCandidateRepository integration', () => {
     // Pagination seeds with explicit staggered created_at (deterministic order:
     // pgSeeds[2] newest, pgSeeds[0] oldest).
     const pgSeeds: Array<{ studentCode: string }> = [];
-    // Inactive seed used by the includeInactive cases.
+    // INACTIVE seed used by the status cases.
     let inactiveRow: { id: string; studentCode: string };
-    // 2 ACTIVE + 1 INACTIVE rows sharing the same prefix (includeInactive + pagination).
+    // 2 ACTIVE + 1 INACTIVE rows sharing the same prefix (status + pagination).
     const comboSeeds: Array<{ studentCode: string }> = [];
 
     // search helper: page/limit are required by the contract, so they default to
@@ -789,7 +801,7 @@ describe('PrismaCandidateRepository integration', () => {
         activeSearchCodes.push(row.student_code);
       }
 
-      // Inactive seed (lastName 'Row') used by the includeInactive cases.
+      // INACTIVE seed (lastName 'Row') used by the status cases.
       const inactive = await prisma.candidate.create({
         data: {
           first_name: `INAC-${suffix}`,
@@ -876,16 +888,16 @@ describe('PrismaCandidateRepository integration', () => {
       ).toEqual([candidateB.studentCode]);
     });
 
-    it('filters studyPlanCode with an exact match', async () => {
-      const exact = await search({ studyPlanCode: '1234' });
+    it('filters programCode with an exact match', async () => {
+      const exact = await search({ programCode: '1234' });
       expect(
         exact.candidates
           .filter((row) => searchCodes.includes(row.studentCode))
           .map((row) => row.studentCode)
           .sort(),
-      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+      ).toEqual([candidateA.studentCode, candidateC.studentCode, inactiveRow.studentCode].sort());
 
-      const partial = await search({ studyPlanCode: '123' });
+      const partial = await search({ programCode: '123' });
       expect(partial.candidates).toEqual([]);
       expect(partial.total).toBe(0);
     });
@@ -901,7 +913,7 @@ describe('PrismaCandidateRepository integration', () => {
     });
 
     it('combines multiple filters with AND semantics', async () => {
-      const byNameAndPlan = await search({ firstName: 'Juan', studyPlanCode: '1234' });
+      const byNameAndPlan = await search({ firstName: 'Juan', programCode: '1234' });
       expect(
         byNameAndPlan.candidates
           .filter((row) => searchCodes.includes(row.studentCode))
@@ -911,7 +923,7 @@ describe('PrismaCandidateRepository integration', () => {
 
       const allThree = await search({
         firstName: 'Juan',
-        studyPlanCode: '1234',
+        programCode: '1234',
         studentCode: candidateA.studentCode,
       });
       expect(allThree.candidates.map((row) => row.studentCode)).toEqual([candidateA.studentCode]);
@@ -925,20 +937,21 @@ describe('PrismaCandidateRepository integration', () => {
         .map((row) => row.studentCode)
         .sort();
 
-      // Every owned row except the INACTIVE one (excluded by default).
+      // Every owned row, including the INACTIVE one (returned by default now).
       const expected = [
         candidateA.studentCode,
         candidateB.studentCode,
         candidateC.studentCode,
         candidateD.studentCode,
+        inactiveRow.studentCode,
         ...pgSeeds.map((s) => s.studentCode),
-        ...comboSeeds.slice(0, 2).map((s) => s.studentCode),
+        ...comboSeeds.map((s) => s.studentCode),
       ].sort();
       expect(own).toEqual(expected);
     });
 
     it('trims filter values before matching', async () => {
-      const rows = await search({ studyPlanCode: ' 1234 ', firstName: ' Juan ' });
+      const rows = await search({ programCode: ' 1234 ', firstName: ' Juan ' });
       expect(
         rows.candidates
           .filter((row) => searchCodes.includes(row.studentCode))
@@ -967,13 +980,14 @@ describe('PrismaCandidateRepository integration', () => {
       expect(after).toBe(before);
     });
 
-    it('I6: excludes logically deleted (INACTIVE) candidates by default', async () => {
+    it('I6: returns INACTIVE candidates by default', async () => {
       const byCode = await search({ studentCode: inactiveRow.studentCode });
-      expect(byCode.candidates).toEqual([]);
-      expect(byCode.total).toBe(0);
+      expect(byCode.candidates.map((row) => row.studentCode)).toEqual([inactiveRow.studentCode]);
+      expect(byCode.candidates[0].status).toBe(CandidateEntity.INACTIVE_STATUS);
+      expect(byCode.total).toBe(1);
 
       const all = await search({});
-      expect(all.candidates.map((row) => row.studentCode)).not.toContain(inactiveRow.studentCode);
+      expect(all.candidates.map((row) => row.studentCode)).toContain(inactiveRow.studentCode);
     });
 
     it('I2: pages through results with a stable slice and consistent total', async () => {
@@ -1011,37 +1025,44 @@ describe('PrismaCandidateRepository integration', () => {
       expect(result.candidates.length).toBe(result.total);
     });
 
-    it('I7: includeInactive=false behaves like the default', async () => {
-      const result = await search({ studentCode: inactiveRow.studentCode, includeInactive: false });
+    it('I7: status=ACTIVE returns only ACTIVE candidates', async () => {
+      const result = await search({ studentCode: inactiveRow.studentCode, status: 'ACTIVE' });
       expect(result.candidates).toEqual([]);
       expect(result.total).toBe(0);
     });
 
-    it('I8: includeInactive=true includes INACTIVE candidates and counts them in total', async () => {
-      const result = await search({ studentCode: inactiveRow.studentCode, includeInactive: true });
+    it('I8: status=INACTIVE returns only INACTIVE candidates and counts them in total', async () => {
+      const result = await search({ studentCode: inactiveRow.studentCode, status: 'INACTIVE' });
       expect(result.candidates).toHaveLength(1);
       expect(result.candidates[0].status).toBe(CandidateEntity.INACTIVE_STATUS);
       expect(result.total).toBe(1);
     });
 
-    it('I9: inactive candidates still respect the other AND filters', async () => {
-      const byName = await search({ name: `INAC-${suffix}`, includeInactive: true });
+    it('I9: status combined with another filter respects AND', async () => {
+      const byName = await search({ name: `INAC-${suffix}`, status: 'INACTIVE' });
       expect(byName.candidates.map((row) => row.studentCode)).toEqual([inactiveRow.studentCode]);
       expect(byName.total).toBe(1);
+
+      const wrongStatus = await search({ name: `INAC-${suffix}`, status: 'ACTIVE' });
+      expect(wrongStatus.candidates).toEqual([]);
+      expect(wrongStatus.total).toBe(0);
     });
 
-    it('I10: includeInactive combined with pagination keeps total consistent', async () => {
-      const page1 = await search({ name: `C10-${suffix}`, includeInactive: true }, 1, 2);
-      expect(page1.candidates).toHaveLength(2);
-      expect(page1.total).toBe(3);
+    it('I10: status combined with pagination keeps total consistent', async () => {
+      const all = await search({ name: `C10-${suffix}` });
+      expect(all.total).toBe(3);
 
-      const page2 = await search({ name: `C10-${suffix}`, includeInactive: true }, 2, 2);
-      expect(page2.candidates).toHaveLength(1);
-      expect(page2.total).toBe(3);
+      const activePage1 = await search({ name: `C10-${suffix}`, status: 'ACTIVE' }, 1, 1);
+      expect(activePage1.candidates).toHaveLength(1);
+      expect(activePage1.total).toBe(2);
 
-      const page3 = await search({ name: `C10-${suffix}`, includeInactive: true }, 3, 2);
-      expect(page3.candidates).toHaveLength(0);
-      expect(page3.total).toBe(3);
+      const activePage2 = await search({ name: `C10-${suffix}`, status: 'ACTIVE' }, 2, 1);
+      expect(activePage2.candidates).toHaveLength(1);
+      expect(activePage2.total).toBe(2);
+
+      const inactivePage = await search({ name: `C10-${suffix}`, status: 'INACTIVE' }, 1, 2);
+      expect(inactivePage.candidates).toHaveLength(1);
+      expect(inactivePage.total).toBe(1);
     });
 
     it('I11: the name filter matches a partial first name', async () => {
@@ -1081,7 +1102,7 @@ describe('PrismaCandidateRepository integration', () => {
     });
 
     it('I14: the name filter combines with other filters via AND and pagination', async () => {
-      const page1 = await search({ name: `PG-${suffix}`, studyPlanCode: '7777' }, 1, 1);
+      const page1 = await search({ name: `PG-${suffix}`, programCode: '7777' }, 1, 1);
       expect(page1.candidates).toHaveLength(1);
       expect(page1.candidates[0].studentCode).toBe(pgSeeds[2].studentCode);
       expect(page1.total).toBe(3);
@@ -1094,9 +1115,13 @@ describe('PrismaCandidateRepository integration', () => {
       });
       expect(byName.total).toBe(count);
 
-      const byNameInactive = await search({ name: `INAC-${suffix}`, includeInactive: true });
+      const byNameInactive = await search({ name: `INAC-${suffix}`, status: 'INACTIVE' });
       const countInactive = await prisma.candidate.count({
-        where: { first_name: { contains: `INAC-${suffix}`, mode: 'insensitive' } },
+        where: {
+          first_name: { contains: `INAC-${suffix}`, mode: 'insensitive' },
+          status: 'INACTIVE',
+          deleted_at: null,
+        },
       });
       expect(byNameInactive.total).toBe(countInactive);
       expect(byNameInactive.total).toBe(1);
@@ -1158,16 +1183,25 @@ describe('PrismaCandidateRepository integration', () => {
       expect(count).toBe(1);
     });
 
-    it('SDC-5: search with includeInactive:true still excludes deleted rows', async () => {
+    it('SDC-5: search still excludes deleted rows regardless of status', async () => {
       const deletedCode = `SDINC-DEL-${suffix}`;
       const deleted = await seed(deletedCode, `ID-SDINC-DEL-${suffix}`);
+      await repository.updateStatus(deleted.id!, CandidateEntity.INACTIVE_STATUS);
       await repository.softDelete(deleted.id!);
+
+      const byDefault = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: deletedCode,
+      });
+      expect(byDefault.candidates).toEqual([]);
+      expect(byDefault.total).toBe(0);
 
       const deletedResult = await repository.search({
         page: 1,
         limit: 100,
         studentCode: deletedCode,
-        includeInactive: true,
+        status: 'INACTIVE',
       });
       expect(deletedResult.candidates).toEqual([]);
       expect(deletedResult.total).toBe(0);
@@ -1180,7 +1214,7 @@ describe('PrismaCandidateRepository integration', () => {
         page: 1,
         limit: 100,
         studentCode: inactiveCode,
-        includeInactive: true,
+        status: 'INACTIVE',
       });
       expect(inactiveResult.candidates).toHaveLength(1);
       expect(inactiveResult.total).toBe(1);

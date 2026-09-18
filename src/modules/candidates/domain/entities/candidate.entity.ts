@@ -1,6 +1,10 @@
 import { CandidateCompanionIncompleteError } from '../errors/candidate-companion-incomplete.error';
 import type { UpdateCandidateInput } from './update-candidate-input';
 
+export const CANDIDATE_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
+
+export type CandidateStatus = (typeof CANDIDATE_STATUSES)[number];
+
 export interface CreateCandidateInput {
   firstName: string;
   lastName: string;
@@ -41,8 +45,8 @@ export interface CompanionFields {
 }
 
 export class CandidateEntity {
-  static readonly DEFAULT_STATUS = 'ACTIVE';
-  static readonly INACTIVE_STATUS = 'INACTIVE';
+  static readonly DEFAULT_STATUS: CandidateStatus = 'ACTIVE';
+  static readonly INACTIVE_STATUS: CandidateStatus = 'INACTIVE';
   private static readonly COMPANION_FIELDS: Array<
     keyof CreateCandidateInput & keyof CompanionFields
   > = [

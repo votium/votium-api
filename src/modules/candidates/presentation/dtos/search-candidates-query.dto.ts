@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { CANDIDATE_STATUSES, type CandidateStatus } from '../../domain/entities/candidate.entity';
 
 export class SearchCandidatesQueryDto {
   @ApiProperty({ example: 1, required: false })
@@ -36,11 +37,15 @@ export class SearchCandidatesQueryDto {
   @IsString()
   name?: string;
 
-  @ApiProperty({ example: '1234', required: false, description: 'Exactly four digits.' })
+  @ApiProperty({
+    example: '1234',
+    required: false,
+    description: 'Program code. Exactly four digits.',
+  })
   @IsOptional()
   @IsString()
   @Matches(/^\d{4}$/, { message: 'Program code must contain exactly four digits.' })
-  studyPlanCode?: string;
+  programCode?: string;
 
   @ApiProperty({ example: 'CAND-1234', required: false })
   @IsOptional()
@@ -53,15 +58,13 @@ export class SearchCandidatesQueryDto {
   identificationNumber?: string;
 
   @ApiProperty({
-    example: true,
+    example: 'ACTIVE',
     required: false,
+    enum: CANDIDATE_STATUSES,
     description:
-      'Include logically deleted (INACTIVE) candidates. Defaults to false (INACTIVE excluded).',
+      'Filter by candidate status. When omitted, candidates of every status are returned.',
   })
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) =>
-    value === 'true' ? true : value === 'false' ? false : value,
-  )
-  @IsBoolean()
-  includeInactive?: boolean;
+  @IsIn(CANDIDATE_STATUSES)
+  status?: CandidateStatus;
 }
