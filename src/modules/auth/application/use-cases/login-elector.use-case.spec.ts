@@ -22,6 +22,7 @@ describe('LoginElectorUseCase', () => {
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn(),
+    findElectionParticipation: jest.fn(),
   };
   const hasher: jest.Mocked<PasswordHasherPort> = {
     hash: jest.fn(),

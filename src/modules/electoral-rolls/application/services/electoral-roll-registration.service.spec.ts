@@ -38,6 +38,7 @@ function makeElectorRepo(electors: ElectorEntity[]): ElectorRepository {
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn().mockResolvedValue(electors),
+    findElectionParticipation: jest.fn(),
   };
 }
 

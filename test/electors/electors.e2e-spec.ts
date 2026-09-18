@@ -66,6 +66,8 @@ describe('Electors import (e2e)', () => {
 
   const suffix = Date.now();
   const usedStudentCodes: string[] = [];
+  const usedElectorIds: string[] = [];
+  const usedElectionIds: string[] = [];
 
   let adminToken = '';
   let auditorToken = '';
@@ -167,8 +169,20 @@ describe('Electors import (e2e)', () => {
   });
 
   afterAll(async () => {
+    if (usedElectorIds.length > 0) {
+      await prisma.electoralRoll.deleteMany({ where: { elector_id: { in: usedElectorIds } } });
+    }
+    if (usedElectionIds.length > 0) {
+      await prisma.electoralRoll.deleteMany({ where: { election_id: { in: usedElectionIds } } });
+    }
+    if (usedElectorIds.length > 0) {
+      await prisma.elector.deleteMany({ where: { id: { in: usedElectorIds } } });
+    }
     if (usedStudentCodes.length > 0) {
       await prisma.elector.deleteMany({ where: { student_code: { in: usedStudentCodes } } });
+    }
+    if (usedElectionIds.length > 0) {
+      await prisma.election.deleteMany({ where: { id: { in: usedElectionIds } } });
     }
     const ids = [adminUser.id, auditorUser.id];
     await prisma.mfaChallenge.deleteMany({ where: { user_id: { in: ids } } });
@@ -565,7 +579,7 @@ describe('Electors import (e2e)', () => {
     });
   });
 
-  describe('PUT /electors/:id/desactive', () => {
+  describe('PATCH /electors/:id/deactivate', () => {
     let counter = 0;
     const seedElector = async (status = 'ACTIVE') => {
       counter += 1;
@@ -586,7 +600,7 @@ describe('Electors import (e2e)', () => {
 
     const deactivate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
-        .put(`/api/v1/electors/${id}/desactive`)
+        .patch(`/api/v1/electors/${id}/deactivate`)
         .set('Authorization', `Bearer ${token}`);
 
     it('EDES-1: deactivates an elector with 200 and sets status INACTIVE without deleting', async () => {
@@ -602,12 +616,16 @@ describe('Electors import (e2e)', () => {
       expect(row!.created_at).toEqual(elector.created_at);
     });
 
-    it('EDES-2: returns 409 ELECTOR_ALREADY_INACTIVE when the elector is already inactive', async () => {
+    it('EDES-2: deactivating an INACTIVE elector is idempotent (200) without write side effects', async () => {
       const elector = await seedElector('INACTIVE');
 
-      const res = await deactivate(elector.id).expect(409);
+      const res = await deactivate(elector.id).expect(200);
 
-      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_ALREADY_INACTIVE' });
+      expect(res.body).toEqual({ message: 'Elector deactivated successfully.' });
+
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.status).toBe('INACTIVE');
+      expect(row!.updated_at).toEqual(elector.updated_at);
     });
 
     it('EDES-3: returns 404 when the elector is logically deleted', async () => {
@@ -620,15 +638,21 @@ describe('Electors import (e2e)', () => {
       await deactivate(elector.id).expect(404);
     });
 
-    it('EDES-4: enforces the guards (401/403) and validates the id (400)', async () => {
+    it('EDES-4: enforces the guards (401/403), validates the id (400), and drops the legacy PUT route', async () => {
       const elector = await seedElector();
 
       await request(app.getHttpServer())
-        .put(`/api/v1/electors/${elector.id}/desactive`)
+        .patch(`/api/v1/electors/${elector.id}/deactivate`)
         .expect(401);
       await deactivate(elector.id, 'not-a-real-token').expect(401);
       await deactivate(elector.id, auditorToken).expect(403);
       await deactivate('not-a-uuid').expect(400);
+
+      // Legacy verb removed: PUT /electors/:id/desactive is no longer registered
+      await request(app.getHttpServer())
+        .put(`/api/v1/electors/${elector.id}/desactive`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
     });
 
     it('EDES-5: a deactivated (non-deleted) elector remains visible in the list', async () => {
@@ -646,8 +670,10 @@ describe('Electors import (e2e)', () => {
       expect(data[0].status).toBe('INACTIVE');
     });
 
-    it('EDES-6: the old PATCH /electors/:id/desactive method is no longer registered (404)', async () => {
+    it('EDES-6: the canonical PATCH route responds while the legacy PATCH /desactive typo stays 404', async () => {
       const elector = await seedElector();
+
+      await deactivate(elector.id).expect(200);
 
       await request(app.getHttpServer())
         .patch(`/api/v1/electors/${elector.id}/desactive`)
@@ -656,7 +682,7 @@ describe('Electors import (e2e)', () => {
     });
   });
 
-  describe('PUT /electors/:id/active', () => {
+  describe('PATCH /electors/:id/activate', () => {
     let counter = 0;
     const seedElector = async (status: string) => {
       counter += 1;
@@ -677,7 +703,7 @@ describe('Electors import (e2e)', () => {
 
     const activate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
-        .put(`/api/v1/electors/${id}/active`)
+        .patch(`/api/v1/electors/${id}/activate`)
         .set('Authorization', `Bearer ${token}`);
 
     it('EACT-1: activates an INACTIVE elector with 200 and returns status ACTIVE', async () => {
@@ -685,19 +711,24 @@ describe('Electors import (e2e)', () => {
 
       const res = await activate(elector.id).expect(200);
 
-      expect(res.body).toMatchObject({ id: elector.id, status: 'ACTIVE' });
+      expect(res.body).toMatchObject({ message: 'Elector activated successfully.' });
 
       const row = await prisma.elector.findUnique({ where: { id: elector.id } });
       expect(row!.status).toBe('ACTIVE');
       expect(row!.deleted_at).toBeNull();
+      expect(row!.created_at).toEqual(elector.created_at);
     });
 
-    it('EACT-2: returns 409 ELECTOR_ALREADY_ACTIVE when the elector is already active', async () => {
+    it('EACT-2: activating an ACTIVE elector is idempotent (200) without write side effects', async () => {
       const elector = await seedElector('ACTIVE');
 
-      const res = await activate(elector.id).expect(409);
+      const res = await activate(elector.id).expect(200);
 
-      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_ALREADY_ACTIVE' });
+      expect(res.body).toMatchObject({ message: 'Elector activated successfully.' });
+
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.status).toBe('ACTIVE');
+      expect(row!.updated_at).toEqual(elector.updated_at);
     });
 
     it('EACT-3: returns 404 when the elector is logically deleted', async () => {
@@ -710,13 +741,21 @@ describe('Electors import (e2e)', () => {
       await activate(elector.id).expect(404);
     });
 
-    it('EACT-4: enforces the guards (401/403) and validates the id (400)', async () => {
+    it('EACT-4: enforces the guards (401/403), validates the id (400), and drops the legacy PUT route', async () => {
       const elector = await seedElector('INACTIVE');
 
-      await request(app.getHttpServer()).put(`/api/v1/electors/${elector.id}/active`).expect(401);
+      await request(app.getHttpServer())
+        .patch(`/api/v1/electors/${elector.id}/activate`)
+        .expect(401);
       await activate(elector.id, 'not-a-real-token').expect(401);
       await activate(elector.id, auditorToken).expect(403);
       await activate('not-a-uuid').expect(400);
+
+      // Legacy verb removed: PUT /electors/:id/active is no longer registered
+      await request(app.getHttpServer())
+        .put(`/api/v1/electors/${elector.id}/active`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
     });
 
     it('EACT-5: an activated elector becomes ACTIVE in the list', async () => {
@@ -744,6 +783,426 @@ describe('Electors import (e2e)', () => {
     });
   });
 
+  describe('GET /electors/:id', () => {
+    let counter = 0;
+    const seedElector = async (
+      overrides: {
+        identification?: string | null;
+        status?: string;
+        passwordHash?: string;
+      } = {},
+    ) => {
+      counter += 1;
+      const row = await prisma.elector.create({
+        data: {
+          first_name: 'Detail',
+          last_name: 'Elector',
+          email: `e2e-detail-${suffix}-${counter}@correounivalle.edu.co`,
+          password_hash: overrides.passwordHash ?? 'pbkdf2$placeholder',
+          student_code: `E2EDET-${suffix}-${counter}`,
+          program_code: '2710',
+          status: overrides.status ?? 'ACTIVE',
+          identification:
+            overrides.identification === undefined ? `1001234${counter}` : overrides.identification,
+        },
+      });
+      usedStudentCodes.push(row.student_code);
+      usedElectorIds.push(row.id);
+      return row;
+    };
+
+    const getDetail = (id: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .get(`/api/v1/electors/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    it('EDE-01: returns 200 with exactly the detail shape (identification set)', async () => {
+      const elector = await seedElector({ identification: '1009998887' });
+
+      const res = await getDetail(elector.id).expect(200);
+
+      const body = res.body as Record<string, unknown>;
+      expect(Object.keys(body).sort()).toEqual(
+        [
+          'createdAt',
+          'elections',
+          'email',
+          'firstName',
+          'id',
+          'identification',
+          'isActive',
+          'lastName',
+          'programCode',
+          'studentCode',
+          'updatedAt',
+        ].sort(),
+      );
+      expect(body).toMatchObject({
+        id: elector.id,
+        firstName: 'Detail',
+        lastName: 'Elector',
+        identification: '1009998887',
+        studentCode: elector.student_code,
+        programCode: '2710',
+        email: elector.email,
+        isActive: true,
+        elections: [],
+      });
+    });
+
+    it('EDE-02: isActive reflects the stored status (true ACTIVE, false INACTIVE)', async () => {
+      const active = await seedElector({ status: 'ACTIVE' });
+      const inactive = await seedElector({ status: 'INACTIVE' });
+
+      const activeRes = await getDetail(active.id).expect(200);
+      expect((activeRes.body as { isActive: boolean }).isActive).toBe(true);
+
+      const inactiveRes = await getDetail(inactive.id).expect(200);
+      expect((inactiveRes.body as { isActive: boolean }).isActive).toBe(false);
+    });
+
+    it('EDE-03: identification is null for rows created without one (CSV-import style)', async () => {
+      const elector = await seedElector({ identification: null });
+
+      const res = await getDetail(elector.id).expect(200);
+
+      expect((res.body as { identification: string | null }).identification).toBeNull();
+    });
+
+    it('EDE-04: elections lists each participation with isEligible true and real hasVoted', async () => {
+      const elector = await seedElector();
+      const election1 = await prisma.election.create({
+        data: {
+          name: `E2E-DETAIL-ELECTION-1-${suffix}`,
+          description: 'Detail election participation test 1.',
+          start_date: new Date(Date.UTC(2026, 9, 1)),
+          start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+          end_date: new Date(Date.UTC(2026, 9, 1)),
+          end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+          current_status: 'PENDING',
+        },
+      });
+      usedElectionIds.push(election1.id);
+
+      const election2 = await prisma.election.create({
+        data: {
+          name: `E2E-DETAIL-ELECTION-2-${suffix}`,
+          description: 'Detail election participation test 2.',
+          start_date: new Date(Date.UTC(2026, 9, 2)),
+          start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+          end_date: new Date(Date.UTC(2026, 9, 2)),
+          end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+          current_status: 'ACTIVE',
+        },
+      });
+      usedElectionIds.push(election2.id);
+
+      await prisma.electoralRoll.create({
+        data: { election_id: election1.id, elector_id: elector.id, has_voted: true },
+      });
+      await prisma.electoralRoll.create({
+        data: { election_id: election2.id, elector_id: elector.id, has_voted: false },
+      });
+
+      const res = await getDetail(elector.id).expect(200);
+
+      const elections = (res.body as { elections: Array<Record<string, unknown>> }).elections;
+      expect(elections).toHaveLength(2);
+      const byVoted = Object.fromEntries(elections.map((e) => [e.hasVoted as boolean, e]));
+      expect(byVoted[true]).toMatchObject({
+        id: election1.id,
+        name: election1.name,
+        status: 'PENDING',
+        isEligible: true,
+        hasVoted: true,
+      });
+      expect(byVoted[false]).toMatchObject({
+        id: election2.id,
+        name: election2.name,
+        status: 'ACTIVE',
+        isEligible: true,
+        hasVoted: false,
+      });
+    });
+
+    it('EDE-05: elections is an empty array for an elector without participation', async () => {
+      const elector = await seedElector();
+
+      const res = await getDetail(elector.id).expect(200);
+
+      expect((res.body as { elections: unknown[] }).elections).toEqual([]);
+    });
+
+    it('EDE-06: returns 404 ELECTOR_NOT_FOUND for an unknown id', async () => {
+      const res = await getDetail(crypto.randomUUID()).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'ELECTOR_NOT_FOUND' });
+    });
+
+    it('EDE-07: returns 404 for a logically deleted elector', async () => {
+      const elector = await seedElector();
+      await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${elector.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      await getDetail(elector.id).expect(404);
+    });
+
+    it('EDE-08: returns 400 for a malformed id', async () => {
+      await getDetail('not-a-uuid').expect(400);
+    });
+
+    it('EDE-09: returns 401 without or with an invalid token', async () => {
+      const elector = await seedElector();
+
+      await request(app.getHttpServer()).get(`/api/v1/electors/${elector.id}`).expect(401);
+      await getDetail(elector.id, 'not-a-real-token').expect(401);
+    });
+
+    it('EDE-10: returns 403 for a real elector (non-admin/auditor) token', async () => {
+      const elector = await seedElector({
+        passwordHash: await new NodeCryptoPasswordHasherService().hash('SuperSecret123!'),
+      });
+
+      const loginRes = await request(app.getHttpServer())
+        .post('/api/v1/auth/electors/login')
+        .send({ email: elector.email, password: 'SuperSecret123!' })
+        .expect(200);
+      const sessionId = (loginRes.body as LoginResponseBody).sessionId;
+      const code = emailService.last().code;
+      const verifyRes = await request(app.getHttpServer())
+        .post('/api/v1/auth/electors/mfa/verify')
+        .send({ sessionId, code })
+        .expect(201);
+      const electorToken = (verifyRes.body as TokensResponseBody).accessToken;
+
+      await getDetail(elector.id, electorToken).expect(403);
+    });
+
+    it('EDE-11: an auditor can read an elector detail', async () => {
+      const elector = await seedElector();
+
+      const res = await getDetail(elector.id, auditorToken).expect(200);
+
+      expect((res.body as { id: string }).id).toBe(elector.id);
+    });
+  });
+
+  describe('PUT /electors/:id', () => {
+    let counter = 0;
+    const seedElector = async (overrides: { identification?: string; status?: string } = {}) => {
+      counter += 1;
+      const row = await prisma.elector.create({
+        data: {
+          first_name: 'Update',
+          last_name: 'Elector',
+          email: `e2e-upd-${suffix}-${counter}@correounivalle.edu.co`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: `E2EUPD-${suffix}-${counter}`,
+          program_code: '2710',
+          status: overrides.status ?? 'ACTIVE',
+          identification: overrides.identification ?? `100000${counter}`,
+        },
+      });
+      usedStudentCodes.push(row.student_code);
+      usedElectorIds.push(row.id);
+      return row;
+    };
+
+    const validPayload = (overrides: Record<string, unknown> = {}) => ({
+      firstName: 'NewFirst',
+      lastName: 'NewLast',
+      identification: `1099${suffix}${counter}`,
+      studentCode: `E2ENEW-${suffix}-${counter}`,
+      programCode: '3741',
+      email: `new-${suffix}-${counter}@correounivalle.edu.co`,
+      ...overrides,
+    });
+
+    const updateElector = (
+      id: string,
+      payload: Record<string, unknown>,
+      token: string = adminToken,
+    ) =>
+      request(app.getHttpServer())
+        .put(`/api/v1/electors/${id}`)
+        .send(payload)
+        .set('Authorization', `Bearer ${token}`);
+
+    it('EDP-01: returns the expected envelope on a valid full replacement', async () => {
+      const elector = await seedElector();
+
+      const res = await updateElector(elector.id, validPayload()).expect(200);
+
+      expect(res.body).toEqual({
+        message: 'Elector updated successfully.',
+        data: { id: elector.id },
+      });
+    });
+
+    it('EDP-02: persists every field while created_at stays and updated_at advances', async () => {
+      const elector = await seedElector({ identification: '100000001' });
+      const before = await prisma.elector.findUnique({ where: { id: elector.id } });
+
+      const payload = validPayload({
+        firstName: 'Replaced',
+        lastName: 'Fully',
+        identification: '1111222233',
+        studentCode: `E2EREPL-${suffix}`,
+        programCode: '3741',
+        email: `replaced-${suffix}@correounivalle.edu.co`,
+      });
+      await updateElector(elector.id, payload).expect(200);
+
+      const after = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(after).toMatchObject({
+        first_name: 'Replaced',
+        last_name: 'Fully',
+        identification: '1111222233',
+        student_code: `E2EREPL-${suffix}`,
+        program_code: '3741',
+        email: `replaced-${suffix}@correounivalle.edu.co`,
+      });
+      expect(after!.status).toBe('ACTIVE');
+      expect(new Date(after!.created_at).getTime()).toBe(new Date(before!.created_at).getTime());
+      expect(new Date(after!.updated_at).getTime()).toBeGreaterThan(
+        new Date(before!.updated_at).getTime(),
+      );
+    });
+
+    it.each(['firstName', 'lastName', 'identification', 'studentCode', 'programCode', 'email'])(
+      'EDP-03: returns 400 and leaves the row unchanged when %s is missing (full replacement)',
+      async (missing) => {
+        const elector = await seedElector();
+        const payload: Record<string, unknown> = validPayload();
+        delete payload[missing];
+
+        const res = await updateElector(elector.id, payload).expect(400);
+        expect(res.body).toMatchObject({ statusCode: 400 });
+
+        const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+        expect(row!.first_name).toBe('Update');
+        expect(row!.last_name).toBe('Elector');
+        expect(row!.identification).toBe(elector.identification);
+      },
+    );
+
+    it('EDP-04: returns 400 with a message referencing the offending property on invalid fields', async () => {
+      const elector = await seedElector();
+
+      const queries: Array<[string, Record<string, unknown>, string]> = [
+        ['short name', validPayload({ firstName: 'A' }), 'firstName'],
+        ['bad program code', validPayload({ programCode: 'abc' }), 'program'],
+        ['bad email', validPayload({ email: 'not-an-email' }), 'email'],
+      ];
+
+      for (const [_label, payload, property] of queries) {
+        const res = await updateElector(elector.id, payload).expect(400);
+        const message = (res.body as { message?: unknown }).message;
+        const joined = Array.isArray(message) ? message.join(', ') : String(message);
+        expect(joined.toLowerCase()).toContain(property.toLowerCase());
+      }
+    });
+
+    it('EDP-05: returns 409 ELECTOR_CONFLICT when email is owned by another elector', async () => {
+      const elector = await seedElector();
+      const other = await seedElector();
+
+      const res = await updateElector(elector.id, validPayload({ email: other.email })).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.email).toBe(elector.email);
+    });
+
+    it('EDP-06: returns 409 ELECTOR_CONFLICT when studentCode is owned by another elector', async () => {
+      const elector = await seedElector();
+      const other = await seedElector();
+
+      const res = await updateElector(
+        elector.id,
+        validPayload({ studentCode: other.student_code }),
+      ).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.student_code).toBe(elector.student_code);
+    });
+
+    it('EDP-07: returns 409 ELECTOR_CONFLICT when identification is owned by another elector', async () => {
+      const elector = await seedElector({ identification: '100000002' });
+      const other = await seedElector({ identification: '100000003' });
+
+      const res = await updateElector(
+        elector.id,
+        validPayload({ identification: other.identification }),
+      ).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTOR_CONFLICT' });
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.identification).toBe(elector.identification);
+    });
+
+    it('EDP-08: returns 404 for an unknown id', async () => {
+      await updateElector(crypto.randomUUID(), validPayload()).expect(404);
+    });
+
+    it('EDP-09: returns 400 for a malformed id', async () => {
+      await updateElector('not-a-uuid', validPayload()).expect(400);
+    });
+
+    it('EDP-10: returns 401 without or with an invalid token', async () => {
+      const elector = await seedElector();
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/electors/${elector.id}`)
+        .send(validPayload())
+        .expect(401);
+      await updateElector(elector.id, validPayload(), 'not-a-real-token').expect(401);
+    });
+
+    it('EDP-11: an auditor is forbidden from updating an elector', async () => {
+      const elector = await seedElector();
+
+      await updateElector(elector.id, validPayload(), auditorToken).expect(403);
+    });
+
+    it('EDP-12: an INACTIVE elector can still be updated', async () => {
+      const elector = await seedElector({ status: 'INACTIVE' });
+
+      await updateElector(elector.id, validPayload({ firstName: 'Reactivated' })).expect(200);
+
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row!.first_name).toBe('Reactivated');
+    });
+
+    it('EDP-13: failed requests do not modify the target row', async () => {
+      const elector = await seedElector();
+      const other = await seedElector();
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/electors/${elector.id}`)
+        .send(validPayload())
+        .expect(401);
+      await updateElector(elector.id, validPayload(), auditorToken).expect(403);
+      await updateElector(crypto.randomUUID(), validPayload()).expect(404);
+      await updateElector(elector.id, validPayload({ email: other.email })).expect(409);
+      await updateElector('not-a-uuid', validPayload()).expect(400);
+
+      const row = await prisma.elector.findUnique({ where: { id: elector.id } });
+      expect(row).toMatchObject({
+        first_name: 'Update',
+        last_name: 'Elector',
+        email: elector.email,
+        student_code: elector.student_code,
+        program_code: elector.program_code,
+        identification: elector.identification,
+        status: elector.status,
+      });
+    });
+  });
+
   describe('GET /electors (query)', () => {
     let elq1: string;
     let elq2: string;
@@ -757,6 +1216,7 @@ describe('Electors import (e2e)', () => {
         programCode: string,
         status: string,
         created_at: string,
+        identification?: string,
       ) => {
         const row = await prisma.elector.create({
           data: {
@@ -768,9 +1228,11 @@ describe('Electors import (e2e)', () => {
             program_code: programCode,
             status,
             created_at: new Date(created_at),
+            identification: identification ?? null,
           },
         });
         usedStudentCodes.push(row.student_code);
+        usedElectorIds.push(row.id);
         return row;
       };
 
@@ -778,7 +1240,15 @@ describe('Electors import (e2e)', () => {
       elq2 = `ELQ-2-${suffix}`;
       elq5 = `ELQ-5-${suffix}`;
 
-      await seed(elq1, 'Juan Camilo', 'Garcia Saenz', '2710', 'ACTIVE', '2026-01-15T00:00:00.000Z');
+      await seed(
+        elq1,
+        'Juan Camilo',
+        'Garcia Saenz',
+        '2710',
+        'ACTIVE',
+        '2026-01-15T00:00:00.000Z',
+        '100000011',
+      );
       await seed(
         elq2,
         'Maria Fernanda',
@@ -786,6 +1256,7 @@ describe('Electors import (e2e)', () => {
         '2710',
         'ACTIVE',
         '2026-02-15T00:00:00.000Z',
+        '100000022',
       );
       await seed(
         `ELQ-3-${suffix}`,
@@ -794,6 +1265,7 @@ describe('Electors import (e2e)', () => {
         '2715',
         'ACTIVE',
         '2026-03-15T00:00:00.000Z',
+        '100000033',
       );
       await seed(
         `ELQ-4-${suffix}`,
@@ -802,6 +1274,7 @@ describe('Electors import (e2e)', () => {
         '2710',
         'INACTIVE',
         '2026-04-15T00:00:00.000Z',
+        '100000044',
       );
       const toDelete = await seed(
         elq5,
@@ -810,6 +1283,7 @@ describe('Electors import (e2e)', () => {
         '2710',
         'ACTIVE',
         '2026-05-15T00:00:00.000Z',
+        '100000055',
       );
 
       await request(app.getHttpServer())
@@ -1167,6 +1641,97 @@ describe('Electors import (e2e)', () => {
       expect(data).toHaveLength(1);
       expect(data[0].status).toBe('INACTIVE');
     });
+
+    it('E-Q29: status=ACTIVE returns only ACTIVE electors (excludes INACTIVE and deleted)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ status: 'ACTIVE', studentCode: 'ELQ-' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as {
+        data: Array<{ studentCode: string }>;
+        meta: { total: number };
+      };
+      expect(body.meta.total).toBe(3);
+      expect(body.data.map((e) => e.studentCode).sort()).toEqual([
+        `ELQ-1-${suffix}`,
+        `ELQ-2-${suffix}`,
+        `ELQ-3-${suffix}`,
+      ]);
+    });
+
+    it('E-Q30: status=INACTIVE returns only INACTIVE electors', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ status: 'INACTIVE', studentCode: 'ELQ-' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as {
+        data: Array<{ studentCode: string }>;
+        meta: { total: number };
+      };
+      expect(body.meta.total).toBe(1);
+      expect(body.data.map((e) => e.studentCode)).toEqual([`ELQ-4-${suffix}`]);
+    });
+
+    it('E-Q31: status combines with the existing filters via AND', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ status: 'INACTIVE', name: 'Deactivated', studentCode: 'ELQ-' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([`ELQ-4-${suffix}`]);
+    });
+
+    it('E-Q32: identification partial filter returns only the matching elector', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ identification: '000033', studentCode: 'ELQ-' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as {
+        data: Array<{ studentCode: string }>;
+        meta: { total: number };
+      };
+      expect(body.meta.total).toBe(1);
+      expect(body.data.map((e) => e.studentCode)).toEqual([`ELQ-3-${suffix}`]);
+    });
+
+    it('E-Q33: empty and whitespace-only identification behave like no filter', async () => {
+      const unfiltered = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: 'ELQ-' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const blank = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: 'ELQ-', identification: '   ' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect((blank.body as { meta: { total: number } }).meta.total).toBe(
+        (unfiltered.body as { meta: { total: number } }).meta.total,
+      );
+    });
+
+    it.each(['SUSPENDED', 'active'])(
+      'E-Q34: an invalid status value (%s) is rejected with 400',
+      async (status) => {
+        const res = await request(app.getHttpServer())
+          .get('/api/v1/electors')
+          .query({ status })
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(400);
+
+        expect(res.body).toMatchObject({ statusCode: 400 });
+      },
+    );
   });
 
   describe('Swagger / OpenAPI', () => {
@@ -1195,7 +1760,9 @@ describe('Electors import (e2e)', () => {
         (parameter) => parameter.in === 'query',
       );
       const queryNames = queryParameters.map((parameter) => parameter.name).sort();
-      expect(queryNames).toEqual(['limit', 'name', 'page', 'programCode', 'studentCode'].sort());
+      expect(queryNames).toEqual(
+        ['identification', 'limit', 'name', 'page', 'programCode', 'status', 'studentCode'].sort(),
+      );
       expect(queryNames).not.toContain('student_code');
       expect(queryNames).not.toContain('program_code');
       expect(new Set(queryNames).size).toBe(queryNames.length);
@@ -1215,6 +1782,93 @@ describe('Electors import (e2e)', () => {
       const schemaRef =
         queryOperation.get!.responses['200']?.content?.['application/json']?.schema?.$ref;
       expect(schemaRef).toMatch(/ElectorsListResponseDto/);
+    });
+
+    it('SW-8: GET /electors/{id} documents the parameter, security, and detail response', () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+
+      const idPathKey = Object.keys(document.paths).find(
+        (path) =>
+          path.includes('/electors/{id}') &&
+          !path.endsWith('/deactivate') &&
+          !path.endsWith('/activate'),
+      );
+      expect(idPathKey).toBeDefined();
+      const idOperation = document.paths[idPathKey!] as {
+        get?: SwaggerOperationShape;
+        put?: SwaggerOperationShape;
+      };
+
+      const detail = idOperation.get;
+      expect(detail).toBeDefined();
+      expect(detail!.tags).toContain('electors');
+      expect(detail!.security).toEqual([{ bearer: [] }]);
+      expect(detail!.parameters?.some((p) => p.name === 'id' && p.in === 'path')).toBe(true);
+      for (const status of ['200', '400', '401', '403', '404']) {
+        expect(detail!.responses[status]).toBeDefined();
+      }
+      const detailRef = detail!.responses['200']?.content?.['application/json']?.schema?.$ref;
+      expect(detailRef).toMatch(/ElectorDetailResponseDto/);
+    });
+
+    it('SW-9: PUT /electors/{id} documents the body, security, and update response', () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+
+      const idPathKey = Object.keys(document.paths).find(
+        (path) =>
+          path.includes('/electors/{id}') &&
+          !path.endsWith('/deactivate') &&
+          !path.endsWith('/activate'),
+      );
+      expect(idPathKey).toBeDefined();
+      const update = (document.paths[idPathKey!] as { put?: SwaggerOperationShape }).put;
+      expect(update).toBeDefined();
+      expect(update!.tags).toContain('electors');
+      expect(update!.security).toEqual([{ bearer: [] }]);
+      expect(update!.parameters?.some((p) => p.name === 'id' && p.in === 'path')).toBe(true);
+      const requestSchemaRef = update!.requestBody?.content?.['application/json']?.schema?.$ref;
+      expect(requestSchemaRef).toMatch(/UpdateElectorDto/);
+      for (const status of ['200', '400', '401', '403', '404', '409']) {
+        expect(update!.responses[status]).toBeDefined();
+      }
+      const updateRef = update!.responses['200']?.content?.['application/json']?.schema?.$ref;
+      expect(updateRef).toMatch(/UpdateElectorResponseDto/);
+    });
+
+    it('SW-10: PATCH deactivate/activate are documented against ElectorActionResponseDto', () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+
+      for (const suffixPath of ['/electors/{id}/deactivate', '/electors/{id}/activate']) {
+        const pathKey = Object.keys(document.paths).find((path) => path.endsWith(suffixPath));
+        expect(pathKey).toBeDefined();
+        const operation = (document.paths[pathKey!] as { patch?: SwaggerOperationShape }).patch;
+        expect(operation).toBeDefined();
+        expect(operation!.tags).toContain('electors');
+        expect(operation!.security).toEqual([{ bearer: [] }]);
+        for (const status of ['200', '400', '401', '403', '404']) {
+          expect(operation!.responses[status]).toBeDefined();
+        }
+        const actionRef = operation!.responses['200']?.content?.['application/json']?.schema?.$ref;
+        expect(actionRef).toMatch(/ElectorActionResponseDto/);
+      }
     });
   });
 });

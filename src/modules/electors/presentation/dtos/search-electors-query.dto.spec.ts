@@ -69,4 +69,33 @@ describe('SearchElectorsQueryDto', () => {
 
     expect(errors).toHaveLength(0);
   });
+
+  it.each(['ACTIVE', 'INACTIVE'])('DTO-Q-09: accepts status = %s', (status) => {
+    const errors = validate({ status });
+
+    expect(errors).toHaveLength(0);
+  });
+
+  it.each(['DELETED', 'foo', 'active', ''])('DTO-Q-10: rejects status = %j', (status) => {
+    const errors = validate({ status });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].property).toBe('status');
+  });
+
+  it.each(['123456789', ' 123456789 '])(
+    'DTO-Q-11: accepts identification = %j',
+    (identification) => {
+      const errors = validate({ identification });
+
+      expect(errors).toHaveLength(0);
+    },
+  );
+
+  it('DTO-Q-12: rejects an unknown parameter', () => {
+    const errors = validate({ unknown: 'x' });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].property).toBe('unknown');
+  });
 });

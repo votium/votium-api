@@ -1,5 +1,5 @@
 import { ElectorAlreadyInactiveError } from '../errors/elector-already-inactive.error';
-import { ElectorEntity } from './elector.entity';
+import { ELECTOR_STATUSES, ElectorEntity } from './elector.entity';
 
 describe('ElectorEntity', () => {
   const baseInput = {
@@ -59,15 +59,20 @@ describe('ElectorEntity', () => {
   describe('restore', () => {
     it('rebuilds all fields including id and createdAt', () => {
       const createdAt = new Date('2026-08-01T00:00:00.000Z');
+      const updatedAt = new Date('2026-08-02T00:00:00.000Z');
       const entity = ElectorEntity.restore({
         id: 'elector-1',
         ...baseInput,
+        identification: '1001234567',
         status: 'ACTIVE',
         createdAt,
+        updatedAt,
       });
 
       expect(entity.id).toBe('elector-1');
       expect(entity.createdAt).toBe(createdAt);
+      expect(entity.updatedAt).toBe(updatedAt);
+      expect(entity.identification).toBe('1001234567');
       expect(entity.firstName).toBe('Juan Camilo');
       expect(entity.lastName).toBe('Garcia Saenz');
       expect(entity.email).toBe('juan.garcia@correounivalle.edu.co');
@@ -75,6 +80,35 @@ describe('ElectorEntity', () => {
       expect(entity.studentCode).toBe('202012345');
       expect(entity.programCode).toBe('2710');
       expect(entity.status).toBe('ACTIVE');
+    });
+
+    it('E-ID-04: restore passes through identification and updatedAt', () => {
+      const updatedAt = new Date('2026-08-02T00:00:00.000Z');
+      const entity = ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        identification: '1001234567',
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt,
+      });
+
+      expect(entity.identification).toBe('1001234567');
+      expect(entity.updatedAt).toEqual(updatedAt);
+    });
+
+    it('E-ID-05: restore accepts null identification and updatedAt', () => {
+      const entity = ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        identification: null,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
+      });
+
+      expect(entity.identification).toBeNull();
+      expect(entity.updatedAt).toBeNull();
     });
 
     it('preserves values without re-normalizing them', () => {
@@ -86,8 +120,10 @@ describe('ElectorEntity', () => {
         passwordHash: 'hash',
         studentCode: '202012345',
         programCode: '2710',
+        identification: null,
         status: 'ACTIVE',
         createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
       });
 
       expect(entity.firstName).toBe('  Juan  ');
@@ -106,8 +142,10 @@ describe('ElectorEntity', () => {
       const entity = ElectorEntity.restore({
         id: 'elector-1',
         ...baseInput,
+        identification: null,
         status: 'INACTIVE',
         createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
       });
 
       expect(entity.isActive()).toBe(false);
@@ -126,8 +164,10 @@ describe('ElectorEntity', () => {
       const entity = ElectorEntity.restore({
         id: 'elector-1',
         ...baseInput,
+        identification: null,
         status: 'ACTIVE',
         createdAt,
+        updatedAt: createdAt,
       });
 
       entity.deactivate();
@@ -148,8 +188,10 @@ describe('ElectorEntity', () => {
       const entity = ElectorEntity.restore({
         id: 'elector-1',
         ...baseInput,
+        identification: null,
         status: 'INACTIVE',
         createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
       });
 
       expect(() => entity.deactivate()).toThrow(ElectorAlreadyInactiveError);
@@ -160,12 +202,90 @@ describe('ElectorEntity', () => {
       const entity = ElectorEntity.restore({
         id: 'elector-1',
         ...baseInput,
+        identification: null,
         status: 'INACTIVE',
         createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
       });
 
       expect(entity.status).toBe(ElectorEntity.INACTIVE_STATUS);
     });
+  });
+
+  describe('identification / updatedAt', () => {
+    it('E-ID-01: create() defaults identification and updatedAt to null', () => {
+      const entity = ElectorEntity.create(baseInput);
+
+      expect(entity.identification).toBeNull();
+      expect(entity.updatedAt).toBeNull();
+    });
+
+    it('E-ID-02: create() trims the identification', () => {
+      const entity = ElectorEntity.create({ ...baseInput, identification: '  1001234567  ' });
+
+      expect(entity.identification).toBe('1001234567');
+    });
+
+    it('E-ID-03: create() stores an empty-string identification as null', () => {
+      expect(ElectorEntity.create({ ...baseInput, identification: '' }).identification).toBeNull();
+      expect(
+        ElectorEntity.create({ ...baseInput, identification: '   ' }).identification,
+      ).toBeNull();
+    });
+
+    it('E-ID-06: update() trims identification when provided', () => {
+      const entity = restoredEntity();
+
+      entity.update({ identification: ' 99 ' });
+
+      expect(entity.identification).toBe('99');
+    });
+
+    it('E-ID-07: update() keeps identification when omitted', () => {
+      const entity = ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        identification: '1001234567',
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
+      });
+
+      entity.update({ firstName: 'X' });
+
+      expect(entity.identification).toBe('1001234567');
+    });
+
+    it('E-ID-08: update() never sets updatedAt from the input', () => {
+      const updatedAt = new Date('2026-08-02T00:00:00.000Z');
+      const entity = ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        identification: null,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt,
+      });
+
+      entity.update({ firstName: 'Maria', identification: '99' });
+
+      expect(entity.updatedAt).toEqual(updatedAt);
+    });
+
+    it('E-ID-09: exposes the ELECTOR_STATUSES constant', () => {
+      expect(ELECTOR_STATUSES).toEqual(['ACTIVE', 'INACTIVE']);
+    });
+
+    function restoredEntity() {
+      return ElectorEntity.restore({
+        id: 'elector-1',
+        ...baseInput,
+        identification: null,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
+      });
+    }
   });
 
   describe('update', () => {
@@ -173,8 +293,10 @@ describe('ElectorEntity', () => {
       return ElectorEntity.restore({
         id: 'elector-1',
         ...baseInput,
+        identification: null,
         status: 'ACTIVE',
         createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
       });
     }
 
@@ -260,8 +382,10 @@ describe('ElectorEntity', () => {
       return ElectorEntity.restore({
         id: 'elector-1',
         ...baseInput,
+        identification: null,
         status: 'ACTIVE',
         createdAt: new Date('2026-08-01T00:00:00.000Z'),
+        updatedAt: null,
         ...overrides,
       });
     }

@@ -1,5 +1,4 @@
 import { DeactivateElectorUseCase } from './deactivate-elector.use-case';
-import { ElectorAlreadyInactiveError } from '../../domain/errors/elector-already-inactive.error';
 import { ElectorNotFoundError } from '../../domain/errors/elector-not-found.error';
 import { ElectorEntity } from '../../domain/entities/elector.entity';
 import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
@@ -16,6 +15,7 @@ describe('DeactivateElectorUseCase', () => {
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn(),
+    findElectionParticipation: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),
@@ -37,6 +37,8 @@ describe('DeactivateElectorUseCase', () => {
       programCode: '2710',
       status: ElectorEntity.DEFAULT_STATUS,
       createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+      identification: null,
     });
   }
 
@@ -51,6 +53,8 @@ describe('DeactivateElectorUseCase', () => {
       programCode: '2710',
       status: ElectorEntity.INACTIVE_STATUS,
       createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+      identification: null,
     });
   }
 
@@ -82,15 +86,14 @@ describe('DeactivateElectorUseCase', () => {
     expect(audit.log.mock.calls).toHaveLength(0);
   });
 
-  it('U3: propagates ElectorAlreadyInactiveError when already inactive and does nothing else', async () => {
+  it('U3: returns without persisting or logging when already INACTIVE (idempotent)', async () => {
     electors.findById.mockResolvedValue(inactiveElector());
     const useCase = new DeactivateElectorUseCase(electors, audit);
 
-    await expect(useCase.execute(id, requestingUserId)).rejects.toBeInstanceOf(
-      ElectorAlreadyInactiveError,
-    );
+    await useCase.execute(id, requestingUserId);
 
     expect(electors.updateStatus.mock.calls).toHaveLength(0);
+    expect(electors.update.mock.calls).toHaveLength(0);
     expect(audit.log.mock.calls).toHaveLength(0);
   });
 

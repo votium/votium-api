@@ -78,6 +78,7 @@ describe('UpdateElectoralRollElectorUseCase', () => {
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn(),
+    findElectionParticipation: jest.fn(),
   };
 
   const rolls: jest.Mocked<ElectoralRollRepository> = {

@@ -1,4 +1,6 @@
 import { ElectorEntity } from '../../domain/entities/elector.entity';
+import type { ElectorElectionParticipation } from '../../domain/repositories/elector.repository.interface';
+import { ElectorDetailResponseDto, ElectorElectionDto } from '../dtos/elector-detail-response.dto';
 import { ElectorResponseDto } from '../dtos/elector-response.dto';
 
 export class ElectorPresenter {
@@ -17,5 +19,33 @@ export class ElectorPresenter {
 
   static toList(entities: ElectorEntity[]): ElectorResponseDto[] {
     return entities.map((entity) => ElectorPresenter.toResponse(entity));
+  }
+
+  static toDetail(
+    entity: ElectorEntity,
+    participation: ElectorElectionParticipation[],
+  ): ElectorDetailResponseDto {
+    return new ElectorDetailResponseDto({
+      id: entity.id as string,
+      firstName: entity.firstName,
+      lastName: entity.lastName,
+      identification: entity.identification,
+      studentCode: entity.studentCode,
+      programCode: entity.programCode,
+      email: entity.email,
+      isActive: entity.isActive(),
+      createdAt: entity.createdAt?.toISOString() ?? '',
+      updatedAt: entity.updatedAt?.toISOString() ?? '',
+      elections: participation.map(
+        (p) =>
+          new ElectorElectionDto({
+            id: p.electionId,
+            name: p.electionName,
+            status: p.electionStatus,
+            isEligible: true,
+            hasVoted: p.hasVoted,
+          }),
+      ),
+    });
   }
 }

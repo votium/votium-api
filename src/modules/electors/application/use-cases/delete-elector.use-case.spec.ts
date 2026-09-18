@@ -15,6 +15,7 @@ describe('DeleteElectorUseCase', () => {
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn(),
+    findElectionParticipation: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),

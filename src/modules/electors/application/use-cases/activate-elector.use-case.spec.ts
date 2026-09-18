@@ -1,5 +1,4 @@
 import { ElectorEntity } from '../../domain/entities/elector.entity';
-import { ElectorAlreadyActiveError } from '../../domain/errors/elector-already-active.error';
 import { ElectorNotFoundError } from '../../domain/errors/elector-not-found.error';
 import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
 import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.port';
@@ -16,6 +15,7 @@ describe('ActivateElectorUseCase', () => {
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn(),
+    findElectionParticipation: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),
@@ -38,6 +38,8 @@ describe('ActivateElectorUseCase', () => {
       programCode: '2710',
       status,
       createdAt,
+      updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+      identification: null,
       deletedAt: null,
     });
   }
@@ -74,14 +76,16 @@ describe('ActivateElectorUseCase', () => {
     expect(audit.log.mock.calls).toHaveLength(0);
   });
 
-  it('AE-3: throws ElectorAlreadyActiveError when the elector is already ACTIVE', async () => {
-    electors.findById.mockResolvedValue(electorWithStatus(ElectorEntity.DEFAULT_STATUS));
+  it('AE-3: returns the elector without persisting or logging when already ACTIVE (idempotent)', async () => {
+    const active = electorWithStatus(ElectorEntity.DEFAULT_STATUS);
+    electors.findById.mockResolvedValue(active);
 
-    await expect(buildUseCase().execute(id, requestingUserId)).rejects.toBeInstanceOf(
-      ElectorAlreadyActiveError,
-    );
+    const result = await buildUseCase().execute(id, requestingUserId);
 
+    expect(result).toBe(active);
+    expect(result.status).toBe('ACTIVE');
     expect(electors.updateStatus.mock.calls).toHaveLength(0);
+    expect(electors.update.mock.calls).toHaveLength(0);
     expect(audit.log.mock.calls).toHaveLength(0);
   });
 

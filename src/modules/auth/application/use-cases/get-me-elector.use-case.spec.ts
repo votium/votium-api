@@ -14,6 +14,7 @@ describe('GetMeElectorUseCase', () => {
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn(),
+    findElectionParticipation: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());
