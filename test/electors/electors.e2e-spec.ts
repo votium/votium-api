@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
@@ -32,6 +33,22 @@ interface LoginResponseBody {
 
 interface TokensResponseBody {
   accessToken: string;
+}
+
+interface SwaggerOperationShape {
+  tags?: string[];
+  parameters?: Array<{
+    name: string;
+    in: string;
+    required: boolean;
+    description?: string;
+  }>;
+  security?: Array<{ bearer: string[] }>;
+  requestBody?: {
+    required?: boolean;
+    content: Record<string, { schema: { $ref?: string } }>;
+  };
+  responses: Record<string, { content: Record<string, { schema: { $ref?: string } }> }>;
 }
 
 const VALID_CSV = [
@@ -496,7 +513,7 @@ describe('Electors import (e2e)', () => {
       await deleteElector(elector.id).expect(204);
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/electors?student_code=${elector.student_code}`)
+        .get(`/api/v1/electors?studentCode=${elector.student_code}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -619,7 +636,7 @@ describe('Electors import (e2e)', () => {
       await deactivate(elector.id).expect(200);
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/electors?student_code=${elector.student_code}`)
+        .get(`/api/v1/electors?studentCode=${elector.student_code}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -707,7 +724,7 @@ describe('Electors import (e2e)', () => {
       await activate(elector.id).expect(200);
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/electors?student_code=${elector.student_code}`)
+        .get(`/api/v1/electors?studentCode=${elector.student_code}`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
@@ -724,6 +741,480 @@ describe('Electors import (e2e)', () => {
         .patch(`/api/v1/electors/${elector.id}/active`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
+    });
+  });
+
+  describe('GET /electors (query)', () => {
+    let elq1: string;
+    let elq2: string;
+    let elq5: string;
+
+    beforeAll(async () => {
+      const seed = async (
+        studentCode: string,
+        firstName: string,
+        lastName: string,
+        programCode: string,
+        status: string,
+        created_at: string,
+      ) => {
+        const row = await prisma.elector.create({
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            email: `elq-${studentCode}-${suffix}@correounivalle.edu.co`,
+            password_hash: 'pbkdf2$placeholder',
+            student_code: studentCode,
+            program_code: programCode,
+            status,
+            created_at: new Date(created_at),
+          },
+        });
+        usedStudentCodes.push(row.student_code);
+        return row;
+      };
+
+      elq1 = `ELQ-1-${suffix}`;
+      elq2 = `ELQ-2-${suffix}`;
+      elq5 = `ELQ-5-${suffix}`;
+
+      await seed(elq1, 'Juan Camilo', 'Garcia Saenz', '2710', 'ACTIVE', '2026-01-15T00:00:00.000Z');
+      await seed(
+        elq2,
+        'Maria Fernanda',
+        'Rodriguez Perez',
+        '2710',
+        'ACTIVE',
+        '2026-02-15T00:00:00.000Z',
+      );
+      await seed(
+        `ELQ-3-${suffix}`,
+        'Ana Sofia',
+        'Martinez',
+        '2715',
+        'ACTIVE',
+        '2026-03-15T00:00:00.000Z',
+      );
+      await seed(
+        `ELQ-4-${suffix}`,
+        'Deactivated',
+        'User',
+        '2710',
+        'INACTIVE',
+        '2026-04-15T00:00:00.000Z',
+      );
+      const toDelete = await seed(
+        elq5,
+        'Deleted',
+        'User',
+        '2710',
+        'ACTIVE',
+        '2026-05-15T00:00:00.000Z',
+      );
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/electors/${toDelete.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+    });
+
+    it('E-Q01: no filters returns a paginated envelope with defaults and desc ordering', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as {
+        data: Array<{ studentCode: string }>;
+        meta: Record<string, unknown>;
+      };
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(Object.keys(body.meta).sort()).toEqual(['limit', 'page', 'total', 'totalPages']);
+      expect(body.meta).toMatchObject({ page: 1, limit: 10 });
+    });
+
+    it('E-Q02: name matches the first name (partial, case-insensitive)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ name: 'juan cam', studentCode: `ELQ-` })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([elq1]);
+    });
+
+    it('E-Q03: name matches the surname (partial, case-insensitive)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ name: 'saenz', studentCode: `ELQ-` })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([elq1]);
+    });
+
+    it('E-Q04: name matching neither field returns an empty collection', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ name: 'nobody' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect((res.body as { data: unknown[] }).data).toEqual([]);
+      expect((res.body as { meta: { total: number } }).meta.total).toBe(0);
+    });
+
+    it('E-Q05: studentCode partial prefix match returns all matching electors', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: `ELQ-` })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as {
+        data: Array<{ studentCode: string }>;
+        meta: { total: number };
+      };
+      expect(body.meta.total).toBe(4);
+      expect(body.data.map((e) => e.studentCode).sort()).toEqual([
+        `ELQ-1-${suffix}`,
+        `ELQ-2-${suffix}`,
+        `ELQ-3-${suffix}`,
+        `ELQ-4-${suffix}`,
+      ]);
+    });
+
+    it('E-Q06: studentCode middle substring match', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: `Q-3-${suffix}` })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([`ELQ-3-${suffix}`]);
+    });
+
+    it('E-Q07: studentCode full-code match still works', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: elq1 })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data).toHaveLength(1);
+      expect(data[0].studentCode).toBe(elq1);
+    });
+
+    it('E-Q08: studentCode non-matching value returns an empty collection', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: `NOPE-${suffix}` })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect((res.body as { data: unknown[] }).data).toEqual([]);
+    });
+
+    it('E-Q09: programCode partial prefix match returns all matching electors', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: 'ELQ-', programCode: '271' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as {
+        data: Array<{ studentCode: string }>;
+        meta: { total: number };
+      };
+      expect(body.meta.total).toBe(4);
+      expect(body.data.map((e) => e.studentCode).sort()).toEqual([
+        `ELQ-1-${suffix}`,
+        `ELQ-2-${suffix}`,
+        `ELQ-3-${suffix}`,
+        `ELQ-4-${suffix}`,
+      ]);
+    });
+
+    it('E-Q10: programCode full-code match still works', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ programCode: '2715' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([`ELQ-3-${suffix}`]);
+    });
+
+    it('E-Q11: programCode non-matching value returns an empty collection', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ programCode: '9999' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect((res.body as { data: unknown[] }).data).toEqual([]);
+    });
+
+    it('E-Q12: name + studentCode combine with AND', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ name: 'maria', studentCode: `ELQ-2-` })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([elq2]);
+    });
+
+    it('E-Q13: name + programCode combine with AND', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ name: 'fernanda', studentCode: 'ELQ-', programCode: '2710' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([elq2]);
+    });
+
+    it('E-Q14: studentCode + programCode combine with AND', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: 'ELQ-', programCode: '2715' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([`ELQ-3-${suffix}`]);
+    });
+
+    it('E-Q15: name + studentCode + programCode combine with AND', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ name: 'ana', studentCode: 'ELQ-', programCode: '2715' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ studentCode: string }> }).data;
+      expect(data.map((e) => e.studentCode)).toEqual([`ELQ-3-${suffix}`]);
+    });
+
+    it('E-Q16: affected filters combine with pagination', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: 'ELQ-', limit: '2', page: '2' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = res.body as {
+        data: Array<{ studentCode: string }>;
+        meta: { page: number; limit: number; total: number; totalPages: number };
+      };
+      expect(body.meta).toMatchObject({ page: 2, limit: 2, total: 4, totalPages: 2 });
+      expect(body.data).toHaveLength(2);
+    });
+
+    it('E-Q17: the legacy student_code parameter is rejected with 400', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ student_code: elq1 })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E-Q18: the legacy program_code parameter is rejected with 400', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ program_code: '2710' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E-Q19: an unknown query parameter is rejected with 400', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ unknown: 'value' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it.each([
+      ['invalid page', { page: '0' }],
+      ['invalid limit', { limit: 'abc' }],
+    ])('E-Q20: rejects %s with 400', async (_label, query) => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E-Q21: an unauthenticated request is rejected with 401', async () => {
+      await request(app.getHttpServer()).get('/api/v1/electors').expect(401);
+    });
+
+    it('E-Q22: an invalid token is rejected with 401', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .set('Authorization', 'Bearer not-a-real-token')
+        .expect(401);
+    });
+
+    it('E-Q23: an auditor can list electors', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .set('Authorization', `Bearer ${auditorToken}`)
+        .expect(200);
+
+      expect(Array.isArray((res.body as { data: unknown[] }).data)).toBe(true);
+    });
+
+    it('E-Q24: response items expose exactly the existing ElectorResponseDto contract', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: elq1 })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<Record<string, unknown>> }).data;
+      expect(data).toHaveLength(1);
+      expect(Object.keys(data[0]).sort()).toEqual(
+        [
+          'createdAt',
+          'email',
+          'firstName',
+          'id',
+          'lastName',
+          'programCode',
+          'status',
+          'studentCode',
+        ].sort(),
+      );
+    });
+
+    it('E-Q25: empty and whitespace-only filters behave like no filters', async () => {
+      const plain = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const blank = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ name: '   ', studentCode: '', programCode: '  ' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect((blank.body as { meta: { total: number } }).meta.total).toBe(
+        (plain.body as { meta: { total: number } }).meta.total,
+      );
+    });
+
+    it('E-Q26: an empty filter query returns all electors but excludes deleted ones', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ limit: '100' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const codes = (res.body as { data: Array<{ studentCode: string }> }).data.map(
+        (e) => e.studentCode,
+      );
+      for (const seeded of [
+        `ELQ-1-${suffix}`,
+        `ELQ-2-${suffix}`,
+        `ELQ-3-${suffix}`,
+        `ELQ-4-${suffix}`,
+      ]) {
+        expect(codes).toContain(seeded);
+      }
+      expect(codes).not.toContain(elq5);
+    });
+
+    it('E-Q27: the query endpoint is read-only', async () => {
+      const countBefore = await prisma.elector.count();
+
+      await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: 'ELQ-' })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const countAfter = await prisma.elector.count();
+      expect(countAfter).toBe(countBefore);
+    });
+
+    it('E-Q28: an INACTIVE (non-deleted) elector remains visible', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ studentCode: `ELQ-4-${suffix}` })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const data = (res.body as { data: Array<{ status: string }> }).data;
+      expect(data).toHaveLength(1);
+      expect(data[0].status).toBe('INACTIVE');
+    });
+  });
+
+  describe('Swagger / OpenAPI', () => {
+    it('SW-1..7: GET /electors documents the canonical query parameters and responses', () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+
+      const queryPathKey = Object.keys(document.paths).find(
+        (path) => path.endsWith('/electors') && !path.includes('{'),
+      );
+      expect(queryPathKey).toBeDefined();
+      const queryOperation = document.paths[queryPathKey!] as { get?: SwaggerOperationShape };
+      expect(queryOperation.get).toBeDefined();
+
+      // SW-1: operation metadata, tags and security
+      expect(queryOperation.get!.tags).toContain('electors');
+      expect(queryOperation.get!.security).toEqual([{ bearer: [] }]);
+
+      // SW-2: query parameters are exactly the canonical set, without the legacy names or duplicates
+      const queryParameters = (queryOperation.get!.parameters ?? []).filter(
+        (parameter) => parameter.in === 'query',
+      );
+      const queryNames = queryParameters.map((parameter) => parameter.name).sort();
+      expect(queryNames).toEqual(['limit', 'name', 'page', 'programCode', 'studentCode'].sort());
+      expect(queryNames).not.toContain('student_code');
+      expect(queryNames).not.toContain('program_code');
+      expect(new Set(queryNames).size).toBe(queryNames.length);
+
+      // SW-3..5: descriptions reflect the search semantics
+      const byName = Object.fromEntries(queryParameters.map((p) => [p.name, p]));
+      expect(byName['name'].description).toMatch(/first or last name/i);
+      expect(byName['studentCode'].description).toMatch(/partial/i);
+      expect(byName['programCode'].description).toMatch(/partial/i);
+
+      // SW-6: successful, validation, and security responses are documented
+      for (const status of ['200', '400', '401', '403']) {
+        expect(queryOperation.get!.responses[status]).toBeDefined();
+      }
+
+      // SW-7: the 200 response references the existing electors list response DTO
+      const schemaRef =
+        queryOperation.get!.responses['200']?.content?.['application/json']?.schema?.$ref;
+      expect(schemaRef).toMatch(/ElectorsListResponseDto/);
     });
   });
 });

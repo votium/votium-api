@@ -11,8 +11,8 @@ import { PrismaElectorMapper } from '../mappers/prisma-elector.mapper';
 
 type PrismaElectorWhere = {
   deleted_at?: null;
-  program_code?: string;
-  student_code?: string;
+  program_code?: string | { contains: string };
+  student_code?: string | { contains: string };
   OR?: Array<{
     first_name?: { contains: string; mode: 'insensitive' };
     last_name?: { contains: string; mode: 'insensitive' };
@@ -115,8 +115,8 @@ export class PrismaElectorRepository implements ElectorRepository {
 
     const where: PrismaElectorWhere = {
       deleted_at: null,
-      ...(programCode ? { program_code: programCode } : {}),
-      ...(studentCode ? { student_code: studentCode } : {}),
+      ...(programCode ? { program_code: { contains: programCode } } : {}),
+      ...(studentCode ? { student_code: { contains: studentCode } } : {}),
       ...(name
         ? {
             OR: [

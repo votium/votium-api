@@ -50,8 +50,9 @@ export interface ElectorRepository {
   // Excludes logically deleted electors (blocks login/MFA for deleted rows).
   findByEmail(email: string): Promise<ElectorEntity | null>;
 
-  // Searches electors using optional exact program_code / student_code filters and a
-  // case-insensitive partial name filter. Filters combine with AND. Logically
+  // Searches electors using optional partial program_code / student_code filters
+  // (case-sensitive substring matching) and a case-insensitive partial name
+  // filter on the first or last name. Filters combine with AND. Logically
   // deleted electors (`deleted_at != null`) are always EXCLUDED. Returns a page
   // of electors plus the total number of matching rows. Read-only.
   search(params: ElectorSearchParams): Promise<ElectorSearchResult>;
