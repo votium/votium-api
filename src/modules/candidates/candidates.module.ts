@@ -8,6 +8,7 @@ import {
 import { ActivateCandidateUseCase } from './application/use-cases/activate-candidate.use-case';
 import { DeactivateCandidateUseCase } from './application/use-cases/deactivate-candidate.use-case';
 import { DeleteCandidateUseCase } from './application/use-cases/delete-candidate.use-case';
+import { GetCandidateUseCase } from './application/use-cases/get-candidate.use-case';
 import { RegisterCandidateUseCase } from './application/use-cases/register-candidate.use-case';
 import { SearchCandidatesUseCase } from './application/use-cases/search-candidates.use-case';
 import { UpdateCandidateUseCase } from './application/use-cases/update-candidate.use-case';
@@ -32,6 +33,11 @@ import { CandidatesController } from './presentation/controllers/candidates.cont
     {
       provide: SearchCandidatesUseCase,
       useFactory: (candidates: CandidateRepository) => new SearchCandidatesUseCase(candidates),
+      inject: [CANDIDATE_REPOSITORY],
+    },
+    {
+      provide: GetCandidateUseCase,
+      useFactory: (candidates: CandidateRepository) => new GetCandidateUseCase(candidates),
       inject: [CANDIDATE_REPOSITORY],
     },
     {
