@@ -33,6 +33,7 @@ import { UpdateCandidateDto } from '../../application/dtos/update-candidate.dto'
 import { ActivateCandidateUseCase } from '../../application/use-cases/activate-candidate.use-case';
 import { DeactivateCandidateUseCase } from '../../application/use-cases/deactivate-candidate.use-case';
 import { DeleteCandidateUseCase } from '../../application/use-cases/delete-candidate.use-case';
+import { GetCandidateUseCase } from '../../application/use-cases/get-candidate.use-case';
 import { RegisterCandidateUseCase } from '../../application/use-cases/register-candidate.use-case';
 import { SearchCandidatesUseCase } from '../../application/use-cases/search-candidates.use-case';
 import { UpdateCandidateUseCase } from '../../application/use-cases/update-candidate.use-case';
@@ -57,6 +58,7 @@ export class CandidatesController {
   constructor(
     private readonly registerCandidate: RegisterCandidateUseCase,
     private readonly searchCandidates: SearchCandidatesUseCase,
+    private readonly getCandidate: GetCandidateUseCase,
     private readonly deactivateCandidate: DeactivateCandidateUseCase,
     private readonly deleteCandidate: DeleteCandidateUseCase,
     private readonly updateCandidate: UpdateCandidateUseCase,
@@ -150,6 +152,30 @@ export class CandidatesController {
       page: query.page,
       limit: query.limit,
     });
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get candidate by id',
+    description:
+      'Returns a single candidate by its unique identifier. Logically deleted candidates ' +
+      'are treated as not found. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the candidate.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Candidate retrieved successfully.',
+    type: CandidateResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'Candidate not found.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  async byId(@Param('id', ParseUUIDPipe) id: string) {
+    const candidate = await this.getCandidate.execute(id);
+    return CandidatePresenter.toResponse(candidate);
   }
 
   @Post()

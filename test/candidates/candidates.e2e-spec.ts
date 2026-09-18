@@ -72,9 +72,11 @@ describe('Candidates registration (e2e)', () => {
 
   const suffix = Date.now();
   const usedStudentCodes: string[] = [];
+  const usedElectorCodes: string[] = [];
 
   let adminToken = '';
   let auditorToken = '';
+  let electorToken = '';
 
   const validCandidate = (): CandidatePayload => ({
     firstName: 'Juan',
@@ -95,6 +97,23 @@ describe('Candidates registration (e2e)', () => {
 
     const verifyRes = await request(app.getHttpServer())
       .post('/api/v1/auth/mfa/verify')
+      .send({ sessionId, code })
+      .expect(201);
+
+    return (verifyRes.body as TokensResponseBody).accessToken;
+  };
+
+  const completeElectorLogin = async (email: string, password: string): Promise<string> => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/electors/login')
+      .send({ email, password })
+      .expect(200);
+
+    const sessionId = (loginRes.body as LoginResponseBody).sessionId;
+    const code = emailService.last().code;
+
+    const verifyRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/electors/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
 
@@ -176,13 +195,31 @@ describe('Candidates registration (e2e)', () => {
     adminUser.id = createdAdmin.id;
     auditorUser.id = createdAuditor.id;
 
+    const electorPassword = 'SuperSecret123!';
+    const elector = await prisma.elector.create({
+      data: {
+        first_name: 'E2E',
+        last_name: 'Elector',
+        email: `e2e-candidate-elector-${suffix}@correounivalle.edu.co`,
+        password_hash: await hasher.hash(electorPassword),
+        student_code: `E2ECAND-${suffix}`,
+        program_code: '9999',
+        status: 'ACTIVE',
+      },
+    });
+    usedElectorCodes.push(elector.student_code);
+
     adminToken = await completeLogin(adminUser.email, adminUser.password);
     auditorToken = await completeLogin(auditorUser.email, auditorUser.password);
+    electorToken = await completeElectorLogin(elector.email, electorPassword);
   });
 
   afterAll(async () => {
     if (usedStudentCodes.length > 0) {
       await prisma.candidate.deleteMany({ where: { student_code: { in: usedStudentCodes } } });
+    }
+    if (usedElectorCodes.length > 0) {
+      await prisma.elector.deleteMany({ where: { student_code: { in: usedElectorCodes } } });
     }
     const ids = [adminUser.id, auditorUser.id];
     await prisma.mfaChallenge.deleteMany({ where: { user_id: { in: ids } } });
@@ -1000,6 +1037,148 @@ describe('Candidates registration (e2e)', () => {
       await queryCandidates(`?name=PG-${suffix}&limit=1&page=2`).expect(200);
       await queryCandidates(`?studentCode=${inactiveStudentCode}&status=INACTIVE`).expect(200);
       await queryCandidates('?name=bruno&limit=10&page=1').expect(200);
+
+      const after = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+      expect(after).toBe(before);
+    });
+  });
+
+  describe('GET /candidates/:id', () => {
+    const byId = (id: string, token: string = adminToken) =>
+      request(app.getHttpServer())
+        .get(`/api/v1/candidates/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    let detailCounter = 0;
+    const registerSeed = async (
+      status: 'ACTIVE' | 'INACTIVE',
+    ): Promise<{ id: string; studentCode: string; identificationNumber: string }> => {
+      detailCounter += 1;
+      const code = `DET-${suffix}-${detailCounter}`;
+      const idn = `IDDET-${suffix}-${detailCounter}`;
+      const payload = validCandidate();
+      payload.studentCode = code;
+      payload.identificationNumber = idn;
+      const res = await register(payload, adminToken).expect(201);
+      usedStudentCodes.push(code);
+      const id = (res.body as { id: string }).id;
+      if (status === 'INACTIVE') {
+        await prisma.candidate.update({ where: { id }, data: { status: 'INACTIVE' } });
+      }
+      return { id, studentCode: code, identificationNumber: idn };
+    };
+
+    it('E1: an authenticated administrator retrieves a candidate by id (200, exact contract)', async () => {
+      const { id, studentCode, identificationNumber } = await registerSeed('ACTIVE');
+
+      const res = await byId(id).expect(200);
+      const body = res.body as CandidatePayload;
+
+      expect(body).toMatchObject({
+        id,
+        firstName: 'Juan',
+        lastName: 'Garcia',
+        studentCode,
+        programCode: '1234',
+        identificationNumber,
+        status: 'ACTIVE',
+      });
+      expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(Object.keys(body).sort()).toEqual(
+        [
+          'id',
+          'firstName',
+          'lastName',
+          'studentCode',
+          'programCode',
+          'identificationNumber',
+          'status',
+          'companionFirstName',
+          'companionLastName',
+          'companionStudentCode',
+          'companionProgramCode',
+          'companionIdentification',
+          'createdAt',
+        ].sort(),
+      );
+    });
+
+    it('E2: an INACTIVE candidate is returned with 200 and status INACTIVE', async () => {
+      const { id } = await registerSeed('INACTIVE');
+
+      const res = await byId(id).expect(200);
+
+      expect(res.body).toMatchObject({ id, status: 'INACTIVE' });
+    });
+
+    it('E3: the auditor role can retrieve a candidate (200)', async () => {
+      const { id } = await registerSeed('ACTIVE');
+
+      const res = await byId(id, auditorToken).expect(200);
+
+      expect((res.body as CandidatePayload).id).toBe(id);
+    });
+
+    it('E4: rejects unauthenticated requests with 401', async () => {
+      const { id } = await registerSeed('ACTIVE');
+
+      await request(app.getHttpServer()).get(`/api/v1/candidates/${id}`).expect(401);
+    });
+
+    it('E5: rejects an invalid token with 401', async () => {
+      const { id } = await registerSeed('ACTIVE');
+
+      const res = await byId(id, 'not-a-real-token').expect(401);
+
+      expect(res.body).toMatchObject({ statusCode: 401 });
+    });
+
+    it('E6: rejects an ELECTOR token with 403', async () => {
+      const { id } = await registerSeed('ACTIVE');
+
+      const res = await byId(id, electorToken).expect(403);
+
+      expect(res.body).toMatchObject({ statusCode: 403 });
+    });
+
+    it('E7: returns 404 CANDIDATE_NOT_FOUND for an unknown id', async () => {
+      const res = await byId(crypto.randomUUID()).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+    });
+
+    it('E8: treats a logically deleted candidate as not found (404)', async () => {
+      const { id } = await registerSeed('ACTIVE');
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/candidates/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(204);
+
+      const res = await byId(id).expect(404);
+
+      expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
+      const row = await prisma.candidate.findUnique({ where: { id } });
+      expect(row!.deleted_at).not.toBeNull();
+    });
+
+    it('E9: rejects a malformed id with 400', async () => {
+      const res = await byId('not-a-uuid').expect(400);
+
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
+    it('E10: the endpoint is read-only', async () => {
+      const { id } = await registerSeed('ACTIVE');
+      const before = await prisma.candidate.count({
+        where: { student_code: { in: usedStudentCodes } },
+      });
+
+      await byId(id).expect(200);
+      await byId(crypto.randomUUID()).expect(404);
+      await byId('not-a-uuid').expect(400);
 
       const after = await prisma.candidate.count({
         where: { student_code: { in: usedStudentCodes } },
@@ -2041,6 +2220,33 @@ describe('Candidates registration (e2e)', () => {
       }
       expect(queryOperation.get!.tags).toContain('candidates');
       expect(queryOperation.get!.security).toEqual([{ bearer: [] }]);
+    });
+
+    it('S6: GET /candidates/:id documents the id parameter and responses', () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addBearerAuth()
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+
+      const detailPathKey = Object.keys(document.paths).find((p) => p.endsWith('/candidates/{id}'));
+      expect(detailPathKey).toBeDefined();
+      const detailPathItem = document.paths[detailPathKey!] as {
+        get?: SwaggerOperationShape;
+      };
+      expect(detailPathItem.get).toBeDefined();
+      expect(detailPathItem.get!.tags).toContain('candidates');
+      expect(detailPathItem.get!.security).toEqual([{ bearer: [] }]);
+      expect(detailPathItem.get!.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'id', in: 'path', required: true }),
+        ]),
+      );
+      for (const status of ['200', '400', '401', '403', '404']) {
+        expect(detailPathItem.get!.responses[status]).toBeDefined();
+      }
     });
   });
 });
