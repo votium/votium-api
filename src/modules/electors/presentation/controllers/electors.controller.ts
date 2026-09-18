@@ -23,6 +23,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
@@ -69,7 +70,35 @@ export class ElectorsController {
   @Get()
   @ApiOperation({
     summary: 'Search electors by program code, student code, or name',
-    description: 'Returns a paginated list of electors. Requires ADMINISTRATOR or AUDITOR role.',
+    description:
+      'Returns a paginated list of electors. `name` searches the first or last name ' +
+      '(partial, case-insensitive); `studentCode` and `programCode` are partial search terms. ' +
+      'Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiQuery({ name: 'page', required: false, example: 1, description: '1-based page number.' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    example: 10,
+    description: 'Page size (number of electors per page).',
+  })
+  @ApiQuery({
+    name: 'name',
+    required: false,
+    example: 'Jane',
+    description: 'Partial, case-insensitive match on the first or last name.',
+  })
+  @ApiQuery({
+    name: 'studentCode',
+    required: false,
+    example: '202012345',
+    description: 'Partial match on the student code.',
+  })
+  @ApiQuery({
+    name: 'programCode',
+    required: false,
+    example: '2710',
+    description: 'Partial match on the program code.',
   })
   @ApiResponse({
     status: 200,
@@ -85,8 +114,8 @@ export class ElectorsController {
     const { electors, total } = await this.searchElectors.execute({
       page: query.page,
       limit: query.limit,
-      programCode: query.program_code,
-      studentCode: query.student_code,
+      programCode: query.programCode,
+      studentCode: query.studentCode,
       name: query.name,
     });
 

@@ -592,4 +592,394 @@ describe('PrismaElectorRepository integration', () => {
       expect(deleted).toBeNull();
     });
   });
+
+  describe('search', () => {
+    async function seedSearchElector(
+      studentCode: string,
+      email: string,
+      overrides: { firstName?: string; lastName?: string; programCode?: string } = {},
+    ): Promise<ElectorEntity> {
+      usedStudentCodes.push(studentCode);
+      return repository.create(
+        ElectorEntity.create({
+          firstName: overrides.firstName ?? 'Juan',
+          lastName: overrides.lastName ?? 'Garcia',
+          email,
+          passwordHash: 'pbkdf2$210000$salt$hash',
+          studentCode,
+          programCode: overrides.programCode ?? '2710',
+        }),
+      );
+    }
+
+    it('IS-01: studentCode prefix substring match', async () => {
+      const code = `SM-${suffix}-MID-202012345`;
+      await seedSearchElector(code, `sm-${suffix}@example.com`);
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `SM-${suffix}-MI`,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].studentCode).toBe(code);
+    });
+
+    it('IS-02: studentCode middle substring match', async () => {
+      const code = `SM-${suffix}-MID-202012345`;
+      await seedSearchElector(code, `sm2-${suffix}@example.com`);
+
+      const result = await repository.search({ page: 1, limit: 100, studentCode: 'ID-2020' });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].studentCode).toBe(code);
+    });
+
+    it('IS-03: studentCode exact/full value still matches', async () => {
+      const code = `SM-${suffix}-MID-202012345`;
+      await seedSearchElector(code, `sm3-${suffix}@example.com`);
+
+      const result = await repository.search({ page: 1, limit: 100, studentCode: code });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].studentCode).toBe(code);
+    });
+
+    it('IS-04: studentCode non-matching value returns nothing', async () => {
+      await seedSearchElector(`SM-${suffix}-MID-202012345`, `sm4-${suffix}@example.com`);
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `NOPE-${suffix}`,
+      });
+
+      expect(result.electors).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+
+    it('IS-05: programCode prefix substring match returns all matching rows', async () => {
+      await seedSearchElector(`PM-${suffix}-1`, `pm1-${suffix}@example.com`, {
+        programCode: '2710',
+      });
+      await seedSearchElector(`PM-${suffix}-2`, `pm2-${suffix}@example.com`, {
+        programCode: '2715',
+      });
+      await seedSearchElector(`PM-${suffix}-3`, `pm3-${suffix}@example.com`, {
+        programCode: '9999',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `PM-${suffix}`,
+        programCode: '271',
+      });
+
+      expect(result.total).toBe(2);
+      expect(result.electors.map((e) => e.programCode).sort()).toEqual(['2710', '2715']);
+    });
+
+    it('IS-06: programCode middle substring match', async () => {
+      await seedSearchElector(`PM-${suffix}-4`, `pm4-${suffix}@example.com`, {
+        programCode: '2710',
+      });
+      await seedSearchElector(`PM-${suffix}-5`, `pm5-${suffix}@example.com`, {
+        programCode: '0088',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `PM-${suffix}`,
+        programCode: '71',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].programCode).toBe('2710');
+    });
+
+    it('IS-07: programCode exact/full value still matches', async () => {
+      await seedSearchElector(`PM-${suffix}-6`, `pm6-${suffix}@example.com`, {
+        programCode: '2710',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `PM-${suffix}-6`,
+        programCode: '2710',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].programCode).toBe('2710');
+    });
+
+    it('IS-08: programCode non-matching value returns nothing', async () => {
+      await seedSearchElector(`PM-${suffix}-7`, `pm7-${suffix}@example.com`, {
+        programCode: '2710',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `PM-${suffix}-7`,
+        programCode: '9999',
+      });
+
+      expect(result.electors).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+
+    it('IS-09: name matches the first name (partial, case-insensitive)', async () => {
+      await seedSearchElector(`NM-${suffix}-1`, `nm1-${suffix}@example.com`, {
+        firstName: 'Juan Camilo',
+        lastName: 'Garcia Saenz',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `NM-${suffix}-1`,
+        name: 'juan cam',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].firstName).toBe('Juan Camilo');
+    });
+
+    it('IS-10: name matches the last name / surname (partial, case-insensitive)', async () => {
+      await seedSearchElector(`NM-${suffix}-2`, `nm2-${suffix}@example.com`, {
+        firstName: 'Juan Camilo',
+        lastName: 'Garcia Saenz',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `NM-${suffix}-2`,
+        name: 'saenz',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].lastName).toBe('Garcia Saenz');
+    });
+
+    it('IS-11: name matching neither field returns nothing', async () => {
+      await seedSearchElector(`NM-${suffix}-3`, `nm3-${suffix}@example.com`, {
+        firstName: 'Juan Camilo',
+        lastName: 'Garcia Saenz',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `NM-${suffix}-3`,
+        name: 'nobody',
+      });
+
+      expect(result.electors).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+
+    it('IS-12: name search is case-insensitive for both fields', async () => {
+      await seedSearchElector(`NM-${suffix}-4`, `nm4-${suffix}@example.com`, {
+        firstName: 'Juan Camilo',
+        lastName: 'Garcia Saenz',
+      });
+
+      const byFirstName = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `NM-${suffix}-4`,
+        name: 'JUAN CAMILO',
+      });
+      const byLastName = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `NM-${suffix}-4`,
+        name: 'gArCiA',
+      });
+
+      expect(byFirstName.total).toBe(1);
+      expect(byLastName.total).toBe(1);
+    });
+
+    it('IS-13: combined studentCode + programCode filters combine with AND', async () => {
+      await seedSearchElector(`CB-${suffix}-1`, `cb1-${suffix}@example.com`, {
+        programCode: '2710',
+      });
+      await seedSearchElector(`CB-${suffix}-2`, `cb2-${suffix}@example.com`, {
+        programCode: '2715',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `CB-${suffix}`,
+        programCode: '2710',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].studentCode).toBe(`CB-${suffix}-1`);
+    });
+
+    it('IS-14: combined name + studentCode + programCode filters narrow to the intersection', async () => {
+      await seedSearchElector(`CC-${suffix}-1`, `cc1-${suffix}@example.com`, {
+        firstName: 'Maria',
+        lastName: 'Rodriguez',
+        programCode: '2710',
+      });
+      await seedSearchElector(`CC-${suffix}-2`, `cc2-${suffix}@example.com`, {
+        firstName: 'Maria',
+        lastName: 'Perez',
+        programCode: '2715',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        name: 'maria',
+        studentCode: `CC-${suffix}`,
+        programCode: '2710',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].studentCode).toBe(`CC-${suffix}-1`);
+    });
+
+    it('IS-15: empty and whitespace-only filters are ignored', async () => {
+      await seedSearchElector(`WS-${suffix}-1`, `ws1-${suffix}@example.com`);
+      await seedSearchElector(`WS-${suffix}-2`, `ws2-${suffix}@example.com`);
+
+      const baseline = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `WS-${suffix}`,
+      });
+      const filtered = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `WS-${suffix}`,
+        name: '   ',
+        programCode: '  ',
+      });
+
+      expect(filtered.total).toBe(baseline.total);
+      expect(filtered.electors.map((e) => e.id).sort()).toEqual(
+        baseline.electors.map((e) => e.id).sort(),
+      );
+    });
+
+    it('IS-16: search excludes logically deleted electors and keeps the row in the database', async () => {
+      const code = `SD-IS16-${suffix}`;
+      const saved = await seedSearchElector(code, `sd-is16-${suffix}@example.com`);
+      await repository.softDelete(saved.id as string);
+
+      const result = await repository.search({ page: 1, limit: 100, studentCode: code });
+
+      expect(result.electors).toEqual([]);
+      expect(result.total).toBe(0);
+
+      const count = await prisma.elector.count({ where: { student_code: code } });
+      expect(count).toBe(1);
+    });
+
+    it('IS-17: filtering happens at the database level (findMany where includes contains)', async () => {
+      const code = `DBL-${suffix}-2020`;
+      await seedSearchElector(code, `dbl-${suffix}@example.com`);
+
+      const findManySpy = jest.spyOn(prisma.elector, 'findMany');
+
+      try {
+        await repository.search({ page: 1, limit: 100, studentCode: `DBL-${suffix}` });
+
+        expect(findManySpy.mock.calls[0][0]?.where).toEqual(
+          expect.objectContaining({
+            student_code: { contains: `DBL-${suffix}` },
+          }),
+        );
+      } finally {
+        findManySpy.mockRestore();
+      }
+    });
+
+    it('IS-18: pagination with a partial filter keeps the global total', async () => {
+      const first = await seedSearchElector(`PG-${suffix}-1`, `pg1-${suffix}@example.com`, {
+        firstName: 'PaginationOne',
+      });
+      const second = await seedSearchElector(`PG-${suffix}-2`, `pg2-${suffix}@example.com`, {
+        firstName: 'PaginationTwo',
+      });
+      const third = await seedSearchElector(`PG-${suffix}-3`, `pg3-${suffix}@example.com`, {
+        firstName: 'PaginationThree',
+      });
+
+      await prisma.elector.update({
+        where: { id: first.id },
+        data: { created_at: new Date('2026-01-01T00:00:00.000Z') },
+      });
+      await prisma.elector.update({
+        where: { id: second.id },
+        data: { created_at: new Date('2026-06-01T00:00:00.000Z') },
+      });
+      await prisma.elector.update({
+        where: { id: third.id },
+        data: { created_at: new Date('2026-12-01T00:00:00.000Z') },
+      });
+
+      const result = await repository.search({
+        page: 2,
+        limit: 2,
+        studentCode: `PG-${suffix}`,
+        name: 'Pagination',
+      });
+
+      expect(result.total).toBe(3);
+      expect(result.electors).toHaveLength(1);
+      expect(result.electors[0].firstName).toBe('PaginationOne');
+    });
+
+    it('IS-19: results are ordered by created_at descending regardless of filters', async () => {
+      const older = await seedSearchElector(`ORD-${suffix}-1`, `ord1-${suffix}@example.com`);
+      const middle = await seedSearchElector(`ORD-${suffix}-2`, `ord2-${suffix}@example.com`);
+      const newer = await seedSearchElector(`ORD-${suffix}-3`, `ord3-${suffix}@example.com`);
+
+      await prisma.elector.update({
+        where: { id: older.id },
+        data: { created_at: new Date('2026-01-01T00:00:00.000Z') },
+      });
+      await prisma.elector.update({
+        where: { id: middle.id },
+        data: { created_at: new Date('2026-06-01T00:00:00.000Z') },
+      });
+      await prisma.elector.update({
+        where: { id: newer.id },
+        data: { created_at: new Date('2026-12-01T00:00:00.000Z') },
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `ORD-${suffix}`,
+      });
+
+      expect(result.electors.map((e) => e.id)).toEqual([newer.id, middle.id, older.id]);
+    });
+
+    it('IS-20: studentCode and programCode matching keeps the default case-sensitive contains', async () => {
+      await seedSearchElector(`ABC${suffix}`, `cs-upper-${suffix}@example.com`);
+      await seedSearchElector(`abc${suffix}`, `cs-lower-${suffix}@example.com`);
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `abc${suffix}`,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].studentCode).toBe(`abc${suffix}`);
+    });
+  });
 });

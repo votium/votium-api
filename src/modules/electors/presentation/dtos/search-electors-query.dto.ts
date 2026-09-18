@@ -17,17 +17,29 @@ export class SearchElectorsQueryDto {
   @Min(1)
   limit: number = 10;
 
-  @ApiProperty({ example: '1234', required: false, description: 'Exactly four digits.' })
+  @ApiProperty({
+    example: '2710',
+    required: false,
+    description: 'Partial match on the program code.',
+  })
   @IsOptional()
   @IsString()
-  program_code?: string;
+  programCode?: string;
 
-  @ApiProperty({ example: 'E1234', required: false })
+  @ApiProperty({
+    example: '202012345',
+    required: false,
+    description: 'Partial match on the student code.',
+  })
   @IsOptional()
   @IsString()
-  student_code?: string;
+  studentCode?: string;
 
-  @ApiProperty({ example: 'Jane', required: false })
+  @ApiProperty({
+    example: 'Jane',
+    required: false,
+    description: 'Partial, case-insensitive match on the first or last name.',
+  })
   @IsOptional()
   @IsString()
   name?: string;
