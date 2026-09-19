@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-export class DeactivateElectorResponseDto {
+export class ElectorActionResponseDto {
   @ApiProperty({ example: 'Elector deactivated successfully.' })
   message!: string;
 

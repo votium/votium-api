@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { ELECTOR_STATUSES, type ElectorStatus } from '../../domain/entities/elector.entity';
 
 export class SearchElectorsQueryDto {
   @ApiProperty({ example: 1, required: false })
@@ -43,4 +44,23 @@ export class SearchElectorsQueryDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @ApiProperty({
+    example: 'ACTIVE',
+    required: false,
+    enum: ELECTOR_STATUSES,
+    description: 'Exact match on the elector status.',
+  })
+  @IsOptional()
+  @IsIn(ELECTOR_STATUSES)
+  status?: ElectorStatus;
+
+  @ApiProperty({
+    example: '123456789',
+    required: false,
+    description: 'Partial match on the identification number.',
+  })
+  @IsOptional()
+  @IsString()
+  identification?: string;
 }

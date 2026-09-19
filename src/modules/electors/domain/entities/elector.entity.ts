@@ -1,5 +1,9 @@
 import { ElectorAlreadyInactiveError } from '../errors/elector-already-inactive.error';
 
+export const ELECTOR_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
+
+export type ElectorStatus = (typeof ELECTOR_STATUSES)[number];
+
 export interface CreateElectorInput {
   firstName: string;
   lastName: string;
@@ -7,6 +11,7 @@ export interface CreateElectorInput {
   passwordHash: string;
   studentCode: string;
   programCode: string;
+  identification?: string | null;
   status?: string;
 }
 
@@ -18,8 +23,10 @@ export interface RestoreElectorInput {
   passwordHash: string;
   studentCode: string;
   programCode: string;
+  identification: string | null;
   status: string;
   createdAt: Date;
+  updatedAt: Date | null;
   deletedAt?: Date | null;
 }
 
@@ -29,11 +36,12 @@ export interface UpdateElectorInput {
   email?: string;
   studentCode?: string;
   programCode?: string;
+  identification?: string;
 }
 
 export class ElectorEntity {
-  static readonly DEFAULT_STATUS = 'ACTIVE';
-  static readonly INACTIVE_STATUS = 'INACTIVE';
+  static readonly DEFAULT_STATUS: ElectorStatus = 'ACTIVE';
+  static readonly INACTIVE_STATUS: ElectorStatus = 'INACTIVE';
 
   private constructor(
     public readonly id: string | null,
@@ -43,9 +51,11 @@ export class ElectorEntity {
     public readonly passwordHash: string,
     public studentCode: string,
     public programCode: string,
+    public identification: string | null,
     private _status: string,
     private _deletedAt: Date | null,
     public readonly createdAt: Date | null,
+    public readonly updatedAt: Date | null,
   ) {}
 
   static create(input: CreateElectorInput): ElectorEntity {
@@ -57,7 +67,9 @@ export class ElectorEntity {
       input.passwordHash,
       input.studentCode.trim(),
       input.programCode.trim(),
+      input.identification?.trim() || null,
       input.status ?? ElectorEntity.DEFAULT_STATUS,
+      null,
       null,
       null,
     );
@@ -72,9 +84,11 @@ export class ElectorEntity {
       input.passwordHash,
       input.studentCode,
       input.programCode,
+      input.identification,
       input.status,
       input.deletedAt ?? null,
       input.createdAt,
+      input.updatedAt,
     );
   }
 
@@ -131,6 +145,9 @@ export class ElectorEntity {
     }
     if (input.programCode !== undefined) {
       this.programCode = input.programCode.trim();
+    }
+    if (input.identification !== undefined) {
+      this.identification = input.identification.trim();
     }
   }
 }

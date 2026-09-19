@@ -211,16 +211,18 @@ model Result {
 }
 
 model Elector {
-  id            String   @id @default(uuid())
-  first_name    String
-  last_name     String
-  email         String   @unique
-  password_hash String
-  student_code  String   @unique
-  program_code  String
-  status        String
-  created_at    DateTime @default(now())
-  deleted_at    DateTime?
+  id             String    @id @default(uuid())
+  first_name     String
+  last_name      String
+  email          String    @unique
+  password_hash  String
+  student_code   String    @unique
+  program_code   String
+  identification String?   @unique
+  status         String
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
 
   electoralRolls ElectoralRoll[]
   mfaChallenges  ElectorMfaChallenge[]

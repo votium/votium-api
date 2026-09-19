@@ -8,16 +8,21 @@ export type PrismaElectorRow = {
   password_hash: string;
   student_code: string;
   program_code: string;
+  identification: string | null;
   status: string;
   created_at: Date;
+  updated_at: Date;
   deleted_at: Date | null;
 };
 
-export type PrismaElectorCreateData = Omit<PrismaElectorRow, 'id' | 'created_at' | 'deleted_at'>;
+export type PrismaElectorCreateData = Omit<
+  PrismaElectorRow,
+  'id' | 'created_at' | 'updated_at' | 'deleted_at'
+>;
 
 export type PrismaElectorUpdateData = Pick<
   PrismaElectorRow,
-  'first_name' | 'last_name' | 'email' | 'student_code' | 'program_code'
+  'first_name' | 'last_name' | 'email' | 'student_code' | 'program_code' | 'identification'
 >;
 
 export class PrismaElectorMapper {
@@ -30,8 +35,10 @@ export class PrismaElectorMapper {
       passwordHash: row.password_hash,
       studentCode: row.student_code,
       programCode: row.program_code,
+      identification: row.identification,
       status: row.status,
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
       deletedAt: row.deleted_at,
     });
   }
@@ -44,6 +51,7 @@ export class PrismaElectorMapper {
       password_hash: entity.passwordHash,
       student_code: entity.studentCode,
       program_code: entity.programCode,
+      identification: entity.identification,
       status: entity.status,
     };
   }
@@ -55,6 +63,7 @@ export class PrismaElectorMapper {
       email: entity.email,
       student_code: entity.studentCode,
       program_code: entity.programCode,
+      identification: entity.identification,
     };
   }
 }

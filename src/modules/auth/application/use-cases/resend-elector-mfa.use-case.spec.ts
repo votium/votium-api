@@ -32,6 +32,7 @@ describe('ResendElectorMfaUseCase', () => {
     findByEmail: jest.fn(),
     search: jest.fn(),
     findByStudentCodeAndProgramCode: jest.fn(),
+    findElectionParticipation: jest.fn(),
   };
   const otpGenerator: jest.Mocked<OtpGeneratorPort> = {
     generate: jest.fn(),

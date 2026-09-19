@@ -597,7 +597,13 @@ describe('PrismaElectorRepository integration', () => {
     async function seedSearchElector(
       studentCode: string,
       email: string,
-      overrides: { firstName?: string; lastName?: string; programCode?: string } = {},
+      overrides: {
+        firstName?: string;
+        lastName?: string;
+        programCode?: string;
+        status?: string;
+        identification?: string | null;
+      } = {},
     ): Promise<ElectorEntity> {
       usedStudentCodes.push(studentCode);
       return repository.create(
@@ -608,6 +614,8 @@ describe('PrismaElectorRepository integration', () => {
           passwordHash: 'pbkdf2$210000$salt$hash',
           studentCode,
           programCode: overrides.programCode ?? '2710',
+          status: overrides.status,
+          identification: overrides.identification,
         }),
       );
     }
@@ -980,6 +988,370 @@ describe('PrismaElectorRepository integration', () => {
 
       expect(result.total).toBe(1);
       expect(result.electors[0].studentCode).toBe(`abc${suffix}`);
+    });
+
+    it('IE-S-01: status ACTIVE returns only ACTIVE rows', async () => {
+      const active1 = await seedSearchElector(`ST-A-${suffix}-1`, `st-a1-${suffix}@example.com`, {
+        status: 'ACTIVE',
+      });
+      const active2 = await seedSearchElector(`ST-A-${suffix}-2`, `st-a2-${suffix}@example.com`, {
+        status: 'ACTIVE',
+      });
+      await seedSearchElector(`ST-A-${suffix}-3`, `st-a3-${suffix}@example.com`, {
+        status: 'INACTIVE',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `ST-A-${suffix}`,
+        status: 'ACTIVE',
+      });
+
+      expect(result.total).toBe(2);
+      expect(result.electors.map((e) => e.id).sort()).toEqual([active1.id, active2.id].sort());
+    });
+
+    it('IE-S-02: status INACTIVE returns only INACTIVE rows', async () => {
+      await seedSearchElector(`ST-I-${suffix}-1`, `st-i1-${suffix}@example.com`, {
+        status: 'ACTIVE',
+      });
+      const inactive = await seedSearchElector(`ST-I-${suffix}-2`, `st-i2-${suffix}@example.com`, {
+        status: 'INACTIVE',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `ST-I-${suffix}`,
+        status: 'INACTIVE',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].id).toBe(inactive.id);
+    });
+
+    it('IE-S-03: identification partial (case-sensitive contains)', async () => {
+      await seedSearchElector(`ID-${suffix}-1`, `id1-${suffix}@example.com`, {
+        identification: '1001234567',
+      });
+      await seedSearchElector(`ID-${suffix}-2`, `id2-${suffix}@example.com`, {
+        identification: '2001234567',
+      });
+
+      const first = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `ID-${suffix}`,
+        identification: '1001',
+      });
+      const second = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `ID-${suffix}`,
+        identification: '200',
+      });
+      const none = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `ID-${suffix}`,
+        identification: '900',
+      });
+
+      expect(first.total).toBe(1);
+      expect(first.electors[0].identification).toBe('1001234567');
+      expect(second.total).toBe(1);
+      expect(second.electors[0].identification).toBe('2001234567');
+      expect(none.total).toBe(0);
+    });
+
+    it('IE-S-04: empty/whitespace identification behaves like no filter', async () => {
+      await seedSearchElector(`EW-${suffix}-1`, `ew1-${suffix}@example.com`, {
+        identification: '1001234567',
+      });
+      await seedSearchElector(`EW-${suffix}-2`, `ew2-${suffix}@example.com`);
+
+      const baseline = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `EW-${suffix}`,
+      });
+      const filteredEmpty = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `EW-${suffix}`,
+        identification: '',
+      });
+      const filteredSpaces = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `EW-${suffix}`,
+        identification: '   ',
+      });
+
+      expect(filteredEmpty.total).toBe(baseline.total);
+      expect(filteredSpaces.total).toBe(baseline.total);
+    });
+
+    it('IE-S-05: status INACTIVE excludes logically deleted rows', async () => {
+      const inactive = await seedSearchElector(`SD-IN-${suffix}`, `sd-in-${suffix}@example.com`, {
+        status: 'INACTIVE',
+      });
+      await repository.softDelete(inactive.id as string);
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `SD-IN-${suffix}`,
+        status: 'INACTIVE',
+      });
+
+      expect(result.total).toBe(0);
+      const count = await prisma.elector.count({
+        where: { student_code: `SD-IN-${suffix}` },
+      });
+      expect(count).toBe(1);
+    });
+
+    it('IE-S-06: combined status + identification + existing filters narrow to the intersection (AND)', async () => {
+      await seedSearchElector(`CB2-${suffix}-1`, `cb2-1-${suffix}@example.com`, {
+        firstName: 'Maria',
+        programCode: '2710',
+        status: 'ACTIVE',
+        identification: '1001234567',
+      });
+      await seedSearchElector(`CB2-${suffix}-2`, `cb2-2-${suffix}@example.com`, {
+        firstName: 'Maria',
+        programCode: '2710',
+        status: 'INACTIVE',
+        identification: '2001234567',
+      });
+      await seedSearchElector(`CB2-${suffix}-3`, `cb2-3-${suffix}@example.com`, {
+        firstName: 'Maria',
+        programCode: '2715',
+        status: 'ACTIVE',
+        identification: '3001234567',
+      });
+
+      const result = await repository.search({
+        page: 1,
+        limit: 100,
+        studentCode: `CB2-${suffix}`,
+        status: 'ACTIVE',
+        identification: '1001',
+        programCode: '2710',
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.electors[0].studentCode).toBe(`CB2-${suffix}-1`);
+    });
+  });
+
+  describe('update identification / updated_at', () => {
+    async function buildSavedElector(code: string, email: string): Promise<ElectorEntity> {
+      usedStudentCodes.push(code);
+      return repository.create(buildEntity(code, email));
+    }
+
+    it('IE-U-01: update persists identification and bumps updated_at without touching created_at', async () => {
+      const code = `UPDID-${suffix}`;
+      const saved = await buildSavedElector(code, `updid-${suffix}@example.com`);
+
+      const before = await prisma.elector.findUnique({ where: { id: saved.id as string } });
+      expect(before?.identification).toBeNull();
+      expect(before?.updated_at).toBeInstanceOf(Date);
+
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      const loaded = await repository.findById(saved.id as string);
+      loaded!.update({ identification: '1001234567' });
+
+      const updated = await repository.update(loaded!);
+
+      expect(updated?.identification).toBe('1001234567');
+
+      const after = await prisma.elector.findUnique({ where: { id: saved.id as string } });
+      expect(after?.identification).toBe('1001234567');
+      expect(after?.created_at).toEqual(before?.created_at);
+      expect(after!.updated_at.getTime()).toBeGreaterThanOrEqual(
+        (before?.updated_at as Date).getTime(),
+      );
+    });
+
+    it('IE-U-02: update sets identification back to null', async () => {
+      const code = `UPDNIL-${suffix}`;
+      usedStudentCodes.push(code);
+      const saved = await repository.create(
+        ElectorEntity.create({
+          firstName: 'Juan',
+          lastName: 'Garcia',
+          email: `updnil-${suffix}@example.com`,
+          passwordHash: 'pbkdf2$210000$salt$hash',
+          studentCode: code,
+          programCode: '2710',
+          identification: '1001234567',
+        }),
+      );
+
+      const row = await prisma.elector.findUnique({ where: { id: saved.id as string } });
+      const entityWithNullIdentification = ElectorEntity.restore({
+        id: row!.id,
+        firstName: row!.first_name,
+        lastName: row!.last_name,
+        email: row!.email,
+        passwordHash: row!.password_hash,
+        studentCode: row!.student_code,
+        programCode: row!.program_code,
+        identification: null,
+        status: row!.status,
+        createdAt: row!.created_at,
+        updatedAt: row!.updated_at,
+      });
+
+      const updated = await repository.update(entityWithNullIdentification);
+
+      expect(updated?.identification).toBeNull();
+      const after = await prisma.elector.findUnique({ where: { id: saved.id as string } });
+      expect(after?.identification).toBeNull();
+    });
+
+    it('IE-U-03: duplicate identification on update raises ElectorDuplicateError without partial write', async () => {
+      const codeA = `UPDDUP-A-${suffix}`;
+      const codeB = `UPDDUP-B-${suffix}`;
+      usedStudentCodes.push(codeA, codeB);
+      const _savedA = await repository.create(
+        ElectorEntity.create({
+          firstName: 'Juan',
+          lastName: 'Garcia',
+          email: `upddup-a-${suffix}@example.com`,
+          passwordHash: 'pbkdf2$210000$salt$hash',
+          studentCode: codeA,
+          programCode: '2710',
+          identification: '1001234567',
+        }),
+      );
+      const savedB = await repository.create(
+        ElectorEntity.create({
+          firstName: 'Maria',
+          lastName: 'Rodriguez',
+          email: `upddup-b-${suffix}@example.com`,
+          passwordHash: 'pbkdf2$210000$salt$hash',
+          studentCode: codeB,
+          programCode: '2710',
+          identification: null,
+        }),
+      );
+
+      const loadedB = await repository.findById(savedB.id as string);
+      loadedB!.update({ identification: '1001234567' });
+
+      await expect(repository.update(loadedB!)).rejects.toBeInstanceOf(ElectorDuplicateError);
+
+      const afterB = await prisma.elector.findUnique({ where: { id: savedB.id as string } });
+      expect(afterB?.identification).toBeNull();
+    });
+  });
+
+  describe('findElectionParticipation', () => {
+    async function seedElectronWithRoll(
+      code: string,
+      email: string,
+    ): Promise<{ elector: ElectorEntity; election: { id: string } }> {
+      usedStudentCodes.push(code);
+      const elector = await repository.create(buildEntity(code, email));
+      const election = await prisma.election.create({
+        data: {
+          name: `Election ${code}`,
+          description: 'Integration test election',
+          start_date: new Date('2026-09-01T00:00:00.000Z'),
+          start_time: new Date('2026-09-01T08:00:00.000Z'),
+          end_date: new Date('2026-09-15T00:00:00.000Z'),
+          end_time: new Date('2026-09-15T18:00:00.000Z'),
+        },
+      });
+      return { elector, election: { id: election.id } };
+    }
+
+    it('IE-P-01: returns roll memberships with election details and hasVoted', async () => {
+      const code = `PART-${suffix}`;
+      const { elector, election } = await seedElectronWithRoll(code, `part-${suffix}@example.com`);
+      const election2 = await prisma.election.create({
+        data: {
+          name: `Election Two ${code}`,
+          description: 'Integration test election 2',
+          start_date: new Date('2026-09-01T00:00:00.000Z'),
+          start_time: new Date('2026-09-01T08:00:00.000Z'),
+          end_date: new Date('2026-09-15T00:00:00.000Z'),
+          end_time: new Date('2026-09-15T18:00:00.000Z'),
+        },
+      });
+
+      try {
+        await prisma.electoralRoll.create({
+          data: { election_id: election.id, elector_id: elector.id as string, has_voted: true },
+        });
+        await prisma.electoralRoll.create({
+          data: {
+            election_id: election2.id,
+            elector_id: elector.id as string,
+            has_voted: false,
+          },
+        });
+
+        const participation = await repository.findElectionParticipation(elector.id as string);
+
+        expect(participation).toHaveLength(2);
+        expect(participation).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              electionId: election.id,
+              electionName: `Election ${code}`,
+              electionStatus: 'CREATED',
+              hasVoted: true,
+            }),
+            expect.objectContaining({
+              electionId: election2.id,
+              electionName: `Election Two ${code}`,
+              electionStatus: 'CREATED',
+              hasVoted: false,
+            }),
+          ]),
+        );
+      } finally {
+        await prisma.electoralRoll.deleteMany({ where: { elector_id: elector.id as string } });
+        await prisma.election.deleteMany({
+          where: { id: { in: [election.id, election2.id] } },
+        });
+      }
+    });
+
+    it('IE-P-02: returns an empty array for an elector with no rolls', async () => {
+      const code = `NOPART-${suffix}`;
+      const saved = await repository.create(buildEntity(code, `nopart-${suffix}@example.com`));
+
+      const participation = await repository.findElectionParticipation(saved.id as string);
+
+      expect(participation).toEqual([]);
+    });
+
+    it('IE-P-03: preserves the repository order', async () => {
+      const code = `PORD-${suffix}`;
+      const { elector, election } = await seedElectronWithRoll(code, `pord-${suffix}@example.com`);
+
+      try {
+        await prisma.electoralRoll.create({
+          data: { election_id: election.id, elector_id: elector.id as string, has_voted: true },
+        });
+
+        const participation = await repository.findElectionParticipation(elector.id as string);
+
+        expect(participation).toHaveLength(1);
+        expect(participation[0].electionId).toBe(election.id);
+        expect(participation[0].hasVoted).toBe(true);
+      } finally {
+        await prisma.electoralRoll.deleteMany({ where: { elector_id: elector.id as string } });
+        await prisma.election.deleteMany({ where: { id: election.id } });
+      }
     });
   });
 });

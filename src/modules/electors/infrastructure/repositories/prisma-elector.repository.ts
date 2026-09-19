@@ -3,6 +3,7 @@ import { PrismaService } from 'src/shared/database/prisma.service';
 import { ElectorEntity } from '../../domain/entities/elector.entity';
 import { ElectorDuplicateError } from '../../domain/errors/elector-duplicate.error';
 import {
+  ElectorElectionParticipation,
   ElectorSearchParams,
   ElectorSearchResult,
   ElectorRepository,
@@ -13,6 +14,8 @@ type PrismaElectorWhere = {
   deleted_at?: null;
   program_code?: string | { contains: string };
   student_code?: string | { contains: string };
+  identification?: { contains: string };
+  status?: string;
   OR?: Array<{
     first_name?: { contains: string; mode: 'insensitive' };
     last_name?: { contains: string; mode: 'insensitive' };
@@ -112,11 +115,14 @@ export class PrismaElectorRepository implements ElectorRepository {
     const programCode = params.programCode?.trim();
     const studentCode = params.studentCode?.trim();
     const name = params.name?.trim();
+    const identification = params.identification?.trim();
 
     const where: PrismaElectorWhere = {
       deleted_at: null,
       ...(programCode ? { program_code: { contains: programCode } } : {}),
       ...(studentCode ? { student_code: { contains: studentCode } } : {}),
+      ...(identification ? { identification: { contains: identification } } : {}),
+      ...(params.status ? { status: params.status } : {}),
       ...(name
         ? {
             OR: [
@@ -156,6 +162,22 @@ export class PrismaElectorRepository implements ElectorRepository {
     });
 
     return rows.map((row) => PrismaElectorMapper.toDomain(row));
+  }
+
+  async findElectionParticipation(electorId: string): Promise<ElectorElectionParticipation[]> {
+    const rows = await this.prisma.electoralRoll.findMany({
+      where: { elector_id: electorId },
+      select: {
+        has_voted: true,
+        election: { select: { id: true, name: true, current_status: true } },
+      },
+    });
+    return rows.map((row) => ({
+      electionId: row.election.id,
+      electionName: row.election.name,
+      electionStatus: row.election.current_status,
+      hasVoted: row.has_voted,
+    }));
   }
 }
 

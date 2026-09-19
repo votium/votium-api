@@ -12,6 +12,8 @@ export class DeactivateElectorUseCase {
     const elector = await this.electors.findById(id);
     if (!elector) throw new ElectorNotFoundError(id);
 
+    if (!elector.isActive()) return; // idempotent no-op, no audit
+
     elector.deactivate();
 
     const updated = await this.electors.updateStatus(id, elector.status);

@@ -1,4 +1,4 @@
-import { ElectorEntity } from '../entities/elector.entity';
+import { ElectorEntity, ElectorStatus } from '../entities/elector.entity';
 
 export const ELECTOR_REPOSITORY = 'ElectorRepository';
 
@@ -8,11 +8,20 @@ export interface ElectorSearchParams {
   programCode?: string;
   studentCode?: string;
   name?: string;
+  status?: ElectorStatus;
+  identification?: string;
 }
 
 export interface ElectorSearchResult {
   electors: ElectorEntity[];
   total: number;
+}
+
+export interface ElectorElectionParticipation {
+  electionId: string;
+  electionName: string;
+  electionStatus: string; // StatusElection enum value
+  hasVoted: boolean;
 }
 
 export interface ElectorRepository {
@@ -63,4 +72,9 @@ export interface ElectorRepository {
   findByStudentCodeAndProgramCode(
     pairs: Array<{ studentCode: string; programCode: string }>,
   ): Promise<ElectorEntity[]>;
+
+  // Returns the elections the elector is part of (electoral-roll membership ==
+  // eligibility), including their voting status. Read-only. Empty when the
+  // elector has no participation.
+  findElectionParticipation(electorId: string): Promise<ElectorElectionParticipation[]>;
 }
