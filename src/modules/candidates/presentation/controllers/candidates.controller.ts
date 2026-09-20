@@ -174,8 +174,8 @@ export class CandidatesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
   async byId(@Param('id', ParseUUIDPipe) id: string) {
-    const candidate = await this.getCandidate.execute(id);
-    return CandidatePresenter.toResponse(candidate);
+    const result = await this.getCandidate.execute(id);
+    return CandidatePresenter.toDetail(result.candidate, result.elections);
   }
 
   @Post()
