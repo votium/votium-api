@@ -1,10 +1,15 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { IamModule } from 'src/modules/iam/iam.module';
+import { CandidaciesModule } from 'src/modules/candidacies/candidacies.module';
 import {
   AUDIT_LOG_PORT,
   type AuditLogPort,
 } from 'src/modules/iam/application/ports/audit-log.port';
+import {
+  CANDIDACY_REPOSITORY,
+  type CandidacyRepository,
+} from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
 import { ActivateCandidateUseCase } from './application/use-cases/activate-candidate.use-case';
 import { DeactivateCandidateUseCase } from './application/use-cases/deactivate-candidate.use-case';
 import { DeleteCandidateUseCase } from './application/use-cases/delete-candidate.use-case';
@@ -20,7 +25,7 @@ import { PrismaCandidateRepository } from './infrastructure/repositories/prisma-
 import { CandidatesController } from './presentation/controllers/candidates.controller';
 
 @Module({
-  imports: [IamModule, AuthModule],
+  imports: [IamModule, AuthModule, forwardRef(() => CandidaciesModule)],
   controllers: [CandidatesController],
   providers: [
     { provide: CANDIDATE_REPOSITORY, useClass: PrismaCandidateRepository },
@@ -37,8 +42,9 @@ import { CandidatesController } from './presentation/controllers/candidates.cont
     },
     {
       provide: GetCandidateUseCase,
-      useFactory: (candidates: CandidateRepository) => new GetCandidateUseCase(candidates),
-      inject: [CANDIDATE_REPOSITORY],
+      useFactory: (candidates: CandidateRepository, candidacies: CandidacyRepository) =>
+        new GetCandidateUseCase(candidates, candidacies),
+      inject: [CANDIDATE_REPOSITORY, CANDIDACY_REPOSITORY],
     },
     {
       provide: DeactivateCandidateUseCase,

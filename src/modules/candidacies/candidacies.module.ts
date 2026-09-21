@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { IamModule } from 'src/modules/iam/iam.module';
 import {
@@ -30,7 +30,7 @@ import { CandidaciesController } from './presentation/controllers/candidacies.co
 import { ElectionCandidaciesController } from './presentation/controllers/election-candidacies.controller';
 
 @Module({
-  imports: [IamModule, AuthModule, ElectionsModule, CandidatesModule],
+  imports: [IamModule, AuthModule, ElectionsModule, forwardRef(() => CandidatesModule)],
   controllers: [CandidaciesController, ElectionCandidaciesController, BallotController],
   providers: [
     { provide: CANDIDACY_REPOSITORY, useClass: PrismaCandidacyRepository },
@@ -75,5 +75,6 @@ import { ElectionCandidaciesController } from './presentation/controllers/electi
       inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
+  exports: [CANDIDACY_REPOSITORY],
 })
 export class CandidaciesModule {}

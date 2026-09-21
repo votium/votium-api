@@ -35,12 +35,23 @@ interface TokensResponseBody {
   accessToken: string;
 }
 
+interface CandidateElectionDto {
+  id: string;
+  name: string;
+  status: string;
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
+  isScheduleActive: boolean;
+}
+
 interface CandidatePayload {
-  firstName?: string;
-  lastName?: string;
-  studentCode?: string;
-  programCode?: string;
-  identificationNumber?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  studentCode?: string | null;
+  programCode?: string | null;
+  identificationNumber?: string | null;
   id?: string;
   createdAt?: string;
   status?: string;
@@ -49,6 +60,8 @@ interface CandidatePayload {
   companionStudentCode?: string | null;
   companionProgramCode?: string | null;
   companionIdentification?: string | null;
+  elections?: CandidateElectionDto[];
+  isCurrentlyActive?: boolean;
 }
 
 interface SwaggerOperationShape {
@@ -1084,6 +1097,8 @@ describe('Candidates registration (e2e)', () => {
         programCode: '1234',
         identificationNumber,
         status: 'ACTIVE',
+        elections: [],
+        isCurrentlyActive: false,
       });
       expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
       expect(Object.keys(body).sort()).toEqual(
@@ -1101,6 +1116,8 @@ describe('Candidates registration (e2e)', () => {
           'companionProgramCode',
           'companionIdentification',
           'createdAt',
+          'elections',
+          'isCurrentlyActive',
         ].sort(),
       );
     });
