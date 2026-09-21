@@ -7,6 +7,7 @@ import type {
   CandidacyListParams,
   CandidacyRepository,
   CandidacyWithCandidate,
+  CandidacyWithElection,
 } from '../../domain/repositories/candidacy.repository.interface';
 import { PrismaCandidacyMapper } from '../mappers/prisma-candidacy.mapper';
 
@@ -101,6 +102,45 @@ export class PrismaCandidacyRepository implements CandidacyRepository {
       where: { id: candidacyId, election_id: electionId },
     });
     return result.count > 0;
+  }
+
+  async findByCandidate(candidateId: string): Promise<CandidacyWithElection[]> {
+    const rows = await this.prisma.candiday.findMany({
+      where: {
+        candidate_id: candidateId,
+      },
+      include: {
+        election: {
+          select: {
+            id: true,
+            name: true,
+            current_status: true,
+            start_date: true,
+            start_time: true,
+            end_date: true,
+            end_time: true,
+          },
+        },
+      },
+      orderBy: {
+        election: {
+          start_date: 'desc',
+        },
+      },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      electionId: row.election_id,
+      candidateId: row.candidate_id,
+      electionName: row.election.name,
+      electionStatus: row.election.current_status,
+      electionStartDate: row.election.start_date,
+      electionStartTime: row.election.start_time,
+      electionEndDate: row.election.end_date,
+      electionEndTime: row.election.end_time,
+      createdAt: row.created_at,
+    }));
   }
 }
 

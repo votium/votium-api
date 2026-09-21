@@ -51,6 +51,28 @@ interface SwaggerOperationShape {
   responses: Record<string, { content: Record<string, { schema: { $ref?: string } }> }>;
 }
 
+interface ElectorElectionDto {
+  id: string;
+  name: string;
+  status: string;
+  isEligible: boolean;
+  hasVoted: boolean;
+}
+
+interface ElectorDetailResponse {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  studentCode: string;
+  programCode: string;
+  status: string;
+  isActive: boolean;
+  identification: string | null;
+  elections: ElectorElectionDto[];
+  createdAt: string;
+}
+
 const VALID_CSV = [
   '202012345,Juan Camilo,Garcia Saenz,2710,juan.garcia@correounivalle.edu.co',
   '202012346,Maria Fernanda,Rodriguez Perez,2710,maria.rodriguez@correounivalle.edu.co',
@@ -906,17 +928,18 @@ describe('Electors import (e2e)', () => {
 
       const res = await getDetail(elector.id).expect(200);
 
-      const elections = (res.body as { elections: Array<Record<string, unknown>> }).elections;
+      const elections = (res.body as ElectorDetailResponse).elections;
       expect(elections).toHaveLength(2);
-      const byVoted = Object.fromEntries(elections.map((e) => [e.hasVoted as boolean, e]));
-      expect(byVoted[true]).toMatchObject({
+      const voted = elections.find((e) => e.hasVoted)!;
+      const notVoted = elections.find((e) => !e.hasVoted)!;
+      expect(voted).toMatchObject({
         id: election1.id,
         name: election1.name,
         status: 'PENDING',
         isEligible: true,
         hasVoted: true,
       });
-      expect(byVoted[false]).toMatchObject({
+      expect(notVoted).toMatchObject({
         id: election2.id,
         name: election2.name,
         status: 'ACTIVE',

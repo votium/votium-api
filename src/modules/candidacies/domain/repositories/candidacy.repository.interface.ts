@@ -16,6 +16,21 @@ export interface CandidacyWithCandidate {
   createdAt: Date;
 }
 
+// Read-model returned by findByCandidate: a candidacy joined with election
+// details required by the candidate detail query.
+export interface CandidacyWithElection {
+  id: string;
+  electionId: string;
+  candidateId: string;
+  electionName: string;
+  electionStatus: string;
+  electionStartDate: Date;
+  electionStartTime: Date;
+  electionEndDate: Date;
+  electionEndTime: Date;
+  createdAt: Date;
+}
+
 // Optional filters accepted by findByElection.
 export interface CandidacyListParams {
   // Partial, case-insensitive match on the candidate first or last name.
@@ -47,6 +62,11 @@ export interface CandidacyRepository {
 
   // Returns the candidacy with the given id, or null when it does not exist.
   findById(id: string): Promise<CandidacyEntity | null>;
+
+  // Returns all candidacies for a candidate, joined with election details.
+  // Ordered by election start date descending (most recent first).
+  // Excludes logically deleted elections.
+  findByCandidate(candidateId: string): Promise<CandidacyWithElection[]>;
 
   // Updates ONLY the editable fields present in input (positionNumber,
   // imageUrl). `imageUrl: null` clears the stored image; `undefined` leaves
