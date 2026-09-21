@@ -1204,10 +1204,10 @@ describe('Candidates registration (e2e)', () => {
     });
   });
 
-  describe('PUT /candidates/:id/desactive', () => {
+  describe('PATCH /candidates/:id/deactivate', () => {
     const deactivateCandidate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
-        .put(`/api/v1/candidates/${id}/desactive`)
+        .patch(`/api/v1/candidates/${id}/deactivate`)
         .set('Authorization', `Bearer ${token}`);
 
     const registerCandidate = async (): Promise<{ id: string; studentCode: string }> => {
@@ -1283,7 +1283,7 @@ describe('Candidates registration (e2e)', () => {
     it('E5: rejects unauthenticated requests with 401', async () => {
       const { id } = await registerCandidate();
 
-      await request(app.getHttpServer()).put(`/api/v1/candidates/${id}/desactive`).expect(401);
+      await request(app.getHttpServer()).patch(`/api/v1/candidates/${id}/deactivate`).expect(401);
     });
 
     it('E6: rejects an invalid token with 401', async () => {
@@ -1466,7 +1466,7 @@ describe('Candidates registration (e2e)', () => {
       usedStudentCodes.push(`PUT9-${suffix}`);
 
       await request(app.getHttpServer())
-        .put(`/api/v1/candidates/${id}/desactive`)
+        .patch(`/api/v1/candidates/${id}/deactivate`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(204);
 
@@ -1718,10 +1718,10 @@ describe('Candidates registration (e2e)', () => {
     });
   });
 
-  describe('PUT /candidates/:id/active', () => {
+  describe('PATCH /candidates/:id/activate', () => {
     const reactivate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
-        .put(`/api/v1/candidates/${id}/active`)
+        .patch(`/api/v1/candidates/${id}/activate`)
         .set('Authorization', `Bearer ${token}`);
 
     let reactCounter = 0;
@@ -1754,7 +1754,7 @@ describe('Candidates registration (e2e)', () => {
       const { id } = await registerInactive();
 
       const res = await request(app.getHttpServer())
-        .put(`/api/v1/candidates/${id}/active`)
+        .patch(`/api/v1/candidates/${id}/activate`)
         .expect(401);
 
       expect(res.body).toMatchObject({ statusCode: 401 });
@@ -2056,9 +2056,9 @@ describe('Candidates registration (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 404 });
     });
 
-    it('L2: the old PATCH /candidates/:id/desactive method is no longer registered (404)', async () => {
+    it('L2: the old PUT /candidates/:id/desactive method is no longer registered (404)', async () => {
       const res = await request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${legacyId}/desactive`)
+        .put(`/api/v1/candidates/${legacyId}/desactive`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
 
@@ -2074,9 +2074,9 @@ describe('Candidates registration (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 404 });
     });
 
-    it('L4: the old PATCH /candidates/:id/active method is no longer registered (404)', async () => {
+    it('L4: the old PUT /candidates/:id/active method is no longer registered (404)', async () => {
       const res = await request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${legacyId}/active`)
+        .put(`/api/v1/candidates/${legacyId}/active`)
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
 
@@ -2136,41 +2136,41 @@ describe('Candidates registration (e2e)', () => {
         expect(updatePathItem.put!.responses[status]).toBeDefined();
       }
 
-      // S2: deactivation is documented as PUT on /candidates/{id}/desactive; DELETE is gone.
+      // S2: deactivation is documented as PATCH on /candidates/{id}/deactivate; DELETE is gone.
       const desactivePathKey = Object.keys(document.paths).find((p) =>
-        p.endsWith('/candidates/{id}/desactive'),
+        p.endsWith('/candidates/{id}/deactivate'),
       );
       expect(desactivePathKey).toBeDefined();
       const desactivePathItem = document.paths[desactivePathKey!] as {
-        put?: SwaggerOperationShape;
+        patch?: SwaggerOperationShape;
         delete?: SwaggerOperationShape;
       };
-      expect(desactivePathItem.put).toBeDefined();
+      expect(desactivePathItem.patch).toBeDefined();
       expect(desactivePathItem.delete).toBeUndefined();
-      expect(desactivePathItem.put!.tags).toContain('candidates');
-      expect(desactivePathItem.put!.security).toEqual([{ bearer: [] }]);
-      expect(desactivePathItem.put!.parameters).toEqual(
+      expect(desactivePathItem.patch!.tags).toContain('candidates');
+      expect(desactivePathItem.patch!.security).toEqual([{ bearer: [] }]);
+      expect(desactivePathItem.patch!.parameters).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'id', in: 'path', required: true }),
         ]),
       );
       for (const status of ['204', '400', '401', '403', '404']) {
-        expect(desactivePathItem.put!.responses[status]).toBeDefined();
+        expect(desactivePathItem.patch!.responses[status]).toBeDefined();
       }
 
-      // S3: activation is documented as PUT on /candidates/{id}/active.
+      // S3: activation is documented as PATCH on /candidates/{id}/activate.
       const activePathKey = Object.keys(document.paths).find((p) =>
-        p.endsWith('/candidates/{id}/active'),
+        p.endsWith('/candidates/{id}/activate'),
       );
       expect(activePathKey).toBeDefined();
       const activePathItem = document.paths[activePathKey!] as {
-        put?: SwaggerOperationShape;
+        patch?: SwaggerOperationShape;
       };
-      expect(activePathItem.put).toBeDefined();
-      expect(activePathItem.put!.tags).toContain('candidates');
-      expect(activePathItem.put!.security).toEqual([{ bearer: [] }]);
+      expect(activePathItem.patch).toBeDefined();
+      expect(activePathItem.patch!.tags).toContain('candidates');
+      expect(activePathItem.patch!.security).toEqual([{ bearer: [] }]);
       for (const status of ['200', '400', '401', '403', '404', '409']) {
-        expect(activePathItem.put!.responses[status]).toBeDefined();
+        expect(activePathItem.patch!.responses[status]).toBeDefined();
       }
 
       // S2b: /candidates/{id} now exposes DELETE for the logical deletion.
