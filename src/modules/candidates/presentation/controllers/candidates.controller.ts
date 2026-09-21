@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -211,7 +212,7 @@ export class CandidatesController {
     return CandidatePresenter.toResponse(candidate);
   }
 
-  @Put(':id/desactive')
+  @Patch(':id/deactivate')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Deactivate a candidate',
@@ -289,7 +290,7 @@ export class CandidatesController {
     return CandidatePresenter.toResponse(candidate);
   }
 
-  @Put(':id/active')
+  @Patch(':id/activate')
   @ApiOperation({
     summary: 'Activate a candidate',
     description: 'Sets the candidate status to ACTIVE. Requires ADMINISTRATOR role.',
