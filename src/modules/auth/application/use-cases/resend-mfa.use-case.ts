@@ -1,5 +1,4 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { EmailDeliveryException } from 'src/shared/exceptions/base/email-delivery.exception';
 import { ForbiddenException } from 'src/shared/exceptions/base/forbidden.exception';
 import { TooManyRequestsException } from 'src/shared/exceptions/base/too-many-requests.exception';
 import { UnauthorizedException } from 'src/shared/exceptions/base/unauthorized.exception';
@@ -7,10 +6,6 @@ import {
   USER_REPOSITORY,
   type UserRepository,
 } from 'src/modules/iam/domain/repositories/user.repository.interface';
-import {
-  PASSWORD_HASHER_PORT,
-  type PasswordHasherPort,
-} from 'src/modules/iam/application/ports/password-hasher.port';
 import {
   AUDIT_LOG_PORT,
   type AuditLogPort,
@@ -21,7 +16,11 @@ import {
   type MfaChallengeRepository,
 } from 'src/modules/auth/domain/repositories/mfa-challenge.repository.interface';
 import { OTP_TTL_MS, RESEND_COOLDOWN_MS } from 'src/shared/constants/mfa.constants';
-import { EMAIL_SERVICE_PORT, type EmailServicePort } from '../ports/email-service.port';
+import {
+  ASYNC_EMAIL_SERVICE_PORT,
+  type AsyncEmailServicePort,
+} from '../ports/async-email-service.port';
+import { MFA_HASHER_PORT, type MfaHasherPort } from '../ports/mfa-hasher.port';
 import { OTP_GENERATOR_PORT, type OtpGeneratorPort } from '../ports/otp-generator.port';
 
 @Injectable()
@@ -32,8 +31,8 @@ export class ResendMfaUseCase {
     @Inject(MFA_CHALLENGE_REPOSITORY) private readonly challenges: MfaChallengeRepository,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
     @Inject(OTP_GENERATOR_PORT) private readonly otpGenerator: OtpGeneratorPort,
-    @Inject(PASSWORD_HASHER_PORT) private readonly hasher: PasswordHasherPort,
-    @Inject(EMAIL_SERVICE_PORT) private readonly emailService: EmailServicePort,
+    @Inject(MFA_HASHER_PORT) private readonly mfaHasher: MfaHasherPort,
+    @Inject(ASYNC_EMAIL_SERVICE_PORT) private readonly emailService: AsyncEmailServicePort,
     @Inject(AUDIT_LOG_PORT) private readonly audit: AuditLogPort,
   ) {}
 
@@ -54,7 +53,7 @@ export class ResendMfaUseCase {
     }
 
     const otp = this.otpGenerator.generate();
-    const otpHash = await this.hasher.hash(otp);
+    const otpHash = await this.mfaHasher.hash(otp);
     challenge.rotate(
       otpHash,
       new Date(now.getTime() + OTP_TTL_MS),
@@ -63,11 +62,9 @@ export class ResendMfaUseCase {
     await this.challenges.save(challenge);
 
     try {
-      await this.emailService.sendVerificationCode(user.email, otp);
+      await this.emailService.queueVerificationCode(user.email, otp);
     } catch (error) {
-      this.logger.error('Failed to send MFA verification email', error);
-      await this.challenges.deleteBySessionId(challenge.sessionId);
-      throw new EmailDeliveryException('Unable to send verification email.');
+      this.logger.error('Failed to queue MFA verification email', error);
     }
 
     await this.audit.log('MFA_RESEND', user.id, { sessionId: input.sessionId });

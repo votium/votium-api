@@ -6,10 +6,10 @@ import { UserEntity } from 'src/modules/iam/domain/entities/user.entity';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from 'src/modules/iam/domain/value-objects/user-status.vo';
 import type { UserRepository } from 'src/modules/iam/domain/repositories/user.repository.interface';
-import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
 import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.port';
 import { MfaChallengeEntity } from 'src/modules/auth/domain/entities/mfa-challenge.entity';
 import type { MfaChallengeRepository } from 'src/modules/auth/domain/repositories/mfa-challenge.repository.interface';
+import type { MfaHasherPort } from '../ports/mfa-hasher.port';
 import type { TokenServicePort } from '../ports/token-service.port';
 import { VerifyMfaUseCase } from './verify-mfa.use-case';
 
@@ -27,7 +27,7 @@ describe('VerifyMfaUseCase', () => {
     save: jest.fn(),
     findAll: jest.fn(),
   };
-  const hasher: jest.Mocked<PasswordHasherPort> = {
+  const hasher: jest.Mocked<MfaHasherPort> = {
     hash: jest.fn(),
     verify: jest.fn(),
   };
@@ -85,6 +85,17 @@ describe('VerifyMfaUseCase', () => {
     expect(result.expiresIn).toBe(3600);
     expect(challenges.save.mock.calls[0][0].consumedAt).toBeInstanceOf(Date);
     expect(audit.log.mock.calls[0][0]).toBe('MFA_VERIFY_SUCCESS');
+  });
+
+  it('verifies the code against the stored MFA hash', async () => {
+    challenges.findBySessionId.mockResolvedValue(buildChallenge());
+    hasher.verify.mockResolvedValue(true);
+    users.findById.mockResolvedValue(buildUser(UserStatus.ACTIVE));
+    tokens.signAccessToken.mockResolvedValue('access-token');
+
+    await useCase().execute({ sessionId: 'session-1', code: '483912' });
+
+    expect(hasher.verify.mock.calls[0]).toEqual(['483912', 'pbkdf2$hashed-otp']);
   });
 
   it('signs tokens with the user identity', async () => {

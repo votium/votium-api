@@ -1,4 +1,4 @@
-import { EmailDeliveryException } from 'src/shared/exceptions/base/email-delivery.exception';
+import { Logger } from '@nestjs/common';
 import { ForbiddenException } from 'src/shared/exceptions/base/forbidden.exception';
 import { TooManyRequestsException } from 'src/shared/exceptions/base/too-many-requests.exception';
 import { UnauthorizedException } from 'src/shared/exceptions/base/unauthorized.exception';
@@ -6,11 +6,11 @@ import { UserEntity } from 'src/modules/iam/domain/entities/user.entity';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from 'src/modules/iam/domain/value-objects/user-status.vo';
 import type { UserRepository } from 'src/modules/iam/domain/repositories/user.repository.interface';
-import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
 import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.port';
 import { MfaChallengeEntity } from 'src/modules/auth/domain/entities/mfa-challenge.entity';
 import type { MfaChallengeRepository } from 'src/modules/auth/domain/repositories/mfa-challenge.repository.interface';
-import type { EmailServicePort } from '../ports/email-service.port';
+import type { AsyncEmailServicePort } from '../ports/async-email-service.port';
+import type { MfaHasherPort } from '../ports/mfa-hasher.port';
 import type { OtpGeneratorPort } from '../ports/otp-generator.port';
 import { ResendMfaUseCase } from './resend-mfa.use-case';
 
@@ -31,12 +31,13 @@ describe('ResendMfaUseCase', () => {
   const otpGenerator: jest.Mocked<OtpGeneratorPort> = {
     generate: jest.fn(),
   };
-  const hasher: jest.Mocked<PasswordHasherPort> = {
+  const mfaHasher: jest.Mocked<MfaHasherPort> = {
     hash: jest.fn(),
     verify: jest.fn(),
   };
-  const emailService: jest.Mocked<EmailServicePort> = {
+  const emailService: jest.Mocked<AsyncEmailServicePort> = {
     sendVerificationCode: jest.fn(),
+    queueVerificationCode: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),
@@ -50,7 +51,7 @@ describe('ResendMfaUseCase', () => {
       'challenge-1',
       'user-1',
       'session-1',
-      'pbkdf2$old-otp',
+      'old-otp-hash',
       3,
       overrides.expiresAt ?? new Date(now + 300_000),
       overrides.resendAt ?? new Date(now - 60_000),
@@ -75,24 +76,29 @@ describe('ResendMfaUseCase', () => {
   }
 
   const useCase = () =>
-    new ResendMfaUseCase(challenges, users, otpGenerator, hasher, emailService, audit);
+    new ResendMfaUseCase(challenges, users, otpGenerator, mfaHasher, emailService, audit);
 
-  it('rotates the OTP, resets attempts and sends the new code', async () => {
+  function expectResendToSucceed() {
     challenges.findBySessionId.mockResolvedValue(buildChallenge());
     users.findById.mockResolvedValue(buildUser(UserStatus.ACTIVE));
     otpGenerator.generate.mockReturnValue('654321');
-    hasher.hash.mockResolvedValue('pbkdf2$new-otp');
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    mfaHasher.hash.mockResolvedValue('sha256$new-otp');
+    challenges.save.mockResolvedValue({} as never);
+    emailService.queueVerificationCode.mockResolvedValue(undefined);
+  }
+
+  it('rotates the OTP, resets attempts and queues the new code', async () => {
+    expectResendToSucceed();
 
     const result = await useCase().execute({ sessionId: 'session-1' });
 
     expect(result).toEqual({ message: 'A new verification code has been sent.' });
     const saved = challenges.save.mock.calls[0][0];
-    expect(saved.otpHash).toBe('pbkdf2$new-otp');
-    expect(saved.otpHash).not.toBe('pbkdf2$old-otp');
+    expect(saved.otpHash).toBe('sha256$new-otp');
+    expect(saved.otpHash).not.toBe('old-otp-hash');
     expect(saved.attempts).toBe(0);
     expect(saved.consumedAt).toBeNull();
-    expect(emailService.sendVerificationCode.mock.calls[0]).toEqual([
+    expect(emailService.queueVerificationCode.mock.calls[0]).toEqual([
       'admin@example.com',
       '654321',
     ]);
@@ -100,11 +106,7 @@ describe('ResendMfaUseCase', () => {
   });
 
   it('renews the expiry and resend cooldown on resend', async () => {
-    challenges.findBySessionId.mockResolvedValue(buildChallenge());
-    users.findById.mockResolvedValue(buildUser(UserStatus.ACTIVE));
-    otpGenerator.generate.mockReturnValue('654321');
-    hasher.hash.mockResolvedValue('pbkdf2$new-otp');
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    expectResendToSucceed();
     const before = Date.now();
 
     await useCase().execute({ sessionId: 'session-1' });
@@ -112,6 +114,19 @@ describe('ResendMfaUseCase', () => {
     const saved = challenges.save.mock.calls[0][0];
     expect(saved.expiresAt.getTime()).toBeGreaterThanOrEqual(before + 300_000 - 1000);
     expect(saved.resendAt!.getTime()).toBeGreaterThanOrEqual(before + 60_000 - 1000);
+  });
+
+  it('persists the rotated challenge before queueing the email and auditing', async () => {
+    expectResendToSucceed();
+
+    await useCase().execute({ sessionId: 'session-1' });
+
+    expect(challenges.save.mock.invocationCallOrder[0]).toBeLessThan(
+      emailService.queueVerificationCode.mock.invocationCallOrder[0],
+    );
+    expect(emailService.queueVerificationCode.mock.invocationCallOrder[0]).toBeLessThan(
+      audit.log.mock.invocationCallOrder[0],
+    );
   });
 
   it('allows resend exactly at the cooldown boundary', async () => {
@@ -122,8 +137,8 @@ describe('ResendMfaUseCase', () => {
     );
     users.findById.mockResolvedValue(buildUser(UserStatus.ACTIVE));
     otpGenerator.generate.mockReturnValue('654321');
-    hasher.hash.mockResolvedValue('pbkdf2$new-otp');
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    mfaHasher.hash.mockResolvedValue('sha256$new-otp');
+    emailService.queueVerificationCode.mockResolvedValue(undefined);
 
     await expect(useCase().execute({ sessionId: 'session-1' })).resolves.toBeDefined();
     jest.useRealTimers();
@@ -135,7 +150,7 @@ describe('ResendMfaUseCase', () => {
     await expect(useCase().execute({ sessionId: 'missing' })).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
-    expect(emailService.sendVerificationCode.mock.calls.length).toBe(0);
+    expect(emailService.queueVerificationCode.mock.calls.length).toBe(0);
   });
 
   it('rejects a consumed session and does not reactivate it', async () => {
@@ -147,7 +162,7 @@ describe('ResendMfaUseCase', () => {
       UnauthorizedException,
     );
     expect(challenges.save.mock.calls.length).toBe(0);
-    expect(emailService.sendVerificationCode.mock.calls.length).toBe(0);
+    expect(emailService.queueVerificationCode.mock.calls.length).toBe(0);
   });
 
   it('rejects a disabled user with ForbiddenException', async () => {
@@ -157,7 +172,7 @@ describe('ResendMfaUseCase', () => {
     await expect(useCase().execute({ sessionId: 'session-1' })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
-    expect(emailService.sendVerificationCode.mock.calls.length).toBe(0);
+    expect(emailService.queueVerificationCode.mock.calls.length).toBe(0);
   });
 
   it('rejects a resend within the cooldown with TooManyRequestsException', async () => {
@@ -169,35 +184,45 @@ describe('ResendMfaUseCase', () => {
     await expect(useCase().execute({ sessionId: 'session-1' })).rejects.toBeInstanceOf(
       TooManyRequestsException,
     );
-    expect(emailService.sendVerificationCode.mock.calls.length).toBe(0);
+    expect(emailService.queueVerificationCode.mock.calls.length).toBe(0);
     expect(challenges.save.mock.calls.length).toBe(0);
   });
 
-  it('throws EmailDeliveryException and destroys the session when email fails', async () => {
+  it('does not queue email when challenge persistence fails', async () => {
     challenges.findBySessionId.mockResolvedValue(buildChallenge());
     users.findById.mockResolvedValue(buildUser(UserStatus.ACTIVE));
     otpGenerator.generate.mockReturnValue('654321');
-    hasher.hash.mockResolvedValue('pbkdf2$new-otp');
-    emailService.sendVerificationCode.mockRejectedValue(new Error('smtp down'));
+    mfaHasher.hash.mockResolvedValue('sha256$new-otp');
+    challenges.save.mockRejectedValue(new Error('db down'));
 
-    await expect(useCase().execute({ sessionId: 'session-1' })).rejects.toBeInstanceOf(
-      EmailDeliveryException,
-    );
-    expect(challenges.deleteBySessionId.mock.calls[0]).toEqual(['session-1']);
+    await expect(useCase().execute({ sessionId: 'session-1' })).rejects.toThrow('db down');
+    expect(emailService.queueVerificationCode.mock.calls.length).toBe(0);
   });
 
-  it('never includes the OTP in the email failure error', async () => {
-    challenges.findBySessionId.mockResolvedValue(buildChallenge());
-    users.findById.mockResolvedValue(buildUser(UserStatus.ACTIVE));
-    otpGenerator.generate.mockReturnValue('654321');
-    hasher.hash.mockResolvedValue('pbkdf2$new-otp');
-    emailService.sendVerificationCode.mockRejectedValue(new Error('smtp down'));
+  it('keeps the session when email queueing fails', async () => {
+    expectResendToSucceed();
+    emailService.queueVerificationCode.mockRejectedValue(new Error('smtp down'));
 
-    const error = await useCase()
-      .execute({ sessionId: 'session-1' })
-      .catch((e: unknown) => e);
+    const result = await useCase().execute({ sessionId: 'session-1' });
 
-    expect(error).toBeInstanceOf(EmailDeliveryException);
-    expect((error as Error).message).not.toContain('654321');
+    expect(result).toEqual({ message: 'A new verification code has been sent.' });
+    expect(challenges.deleteBySessionId.mock.calls.length).toBe(0);
+    expect(challenges.save.mock.calls.length).toBe(1);
+    expect(audit.log.mock.calls[0][0]).toBe('MFA_RESEND');
+  });
+
+  it('never includes the OTP in the email queueing failure log', async () => {
+    const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      expectResendToSucceed();
+      emailService.queueVerificationCode.mockRejectedValue(new Error('smtp down'));
+
+      await useCase().execute({ sessionId: 'session-1' });
+
+      const logged = JSON.stringify(loggerError.mock.calls);
+      expect(logged).not.toContain('654321');
+    } finally {
+      loggerError.mockRestore();
+    }
   });
 });
