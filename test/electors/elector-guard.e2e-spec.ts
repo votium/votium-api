@@ -15,9 +15,9 @@ import { AuthModule } from '../../src/modules/auth/auth.module';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import {
-  EMAIL_SERVICE_PORT,
-  type EmailServicePort,
-} from '../../src/modules/auth/application/ports/email-service.port';
+  ASYNC_EMAIL_SERVICE_PORT,
+  type AsyncEmailServicePort,
+} from '../../src/modules/auth/application/ports/async-email-service.port';
 import { JwtAuthGuard } from '../../src/modules/auth/presentation/guards/jwt-auth.guard';
 import { ElectorGuard } from '../../src/modules/auth/presentation/guards/elector.guard';
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
@@ -45,10 +45,14 @@ class GuardProbeController {
 })
 class GuardProbeModule {}
 
-class FakeEmailService implements EmailServicePort {
+class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
 
   sendVerificationCode(to: string, code: string): Promise<void> {
+    return this.queueVerificationCode(to, code);
+  }
+
+  queueVerificationCode(to: string, code: string): Promise<void> {
     this.sent.push({ to, code });
     return Promise.resolve();
   }
@@ -139,7 +143,7 @@ describe('ElectorGuard (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule, GuardProbeModule],
     })
-      .overrideProvider(EMAIL_SERVICE_PORT)
+      .overrideProvider(ASYNC_EMAIL_SERVICE_PORT)
       .useValue(new FakeEmailService())
       .compile();
 
@@ -156,7 +160,7 @@ describe('ElectorGuard (e2e)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
-    emailService = app.get<FakeEmailService>(EMAIL_SERVICE_PORT);
+    emailService = app.get<FakeEmailService>(ASYNC_EMAIL_SERVICE_PORT);
 
     const hasher = new NodeCryptoPasswordHasherService();
 

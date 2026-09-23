@@ -14,6 +14,11 @@ import { GetMeUserUseCase } from './application/use-cases/get-me-user.use-case';
 import { TOKEN_SERVICE_PORT, type TokenServicePort } from './application/ports/token-service.port';
 import { OTP_GENERATOR_PORT, type OtpGeneratorPort } from './application/ports/otp-generator.port';
 import { EMAIL_SERVICE_PORT, type EmailServicePort } from './application/ports/email-service.port';
+import {
+  ASYNC_EMAIL_SERVICE_PORT,
+  type AsyncEmailServicePort,
+} from './application/ports/async-email-service.port';
+import { MFA_HASHER_PORT, type MfaHasherPort } from './application/ports/mfa-hasher.port';
 import { MFA_CHALLENGE_REPOSITORY } from './domain/repositories/mfa-challenge.repository.interface';
 import {
   ELECTOR_MFA_CHALLENGE_REPOSITORY,
@@ -34,6 +39,8 @@ import {
 import { JwtTokenService } from './infrastructure/services/jwt-token.service';
 import { CryptoOtpGeneratorService } from './infrastructure/services/crypto-otp-generator.service';
 import { NodemailerEmailService } from './infrastructure/services/nodemailer-email.service';
+import { AsyncNodemailerEmailService } from './infrastructure/services/async-nodemailer-email.service';
+import { Sha256MfaHasherService } from './infrastructure/services/sha256-mfa-hasher.service';
 import { PrismaMfaChallengeRepository } from './infrastructure/repositories/prisma-mfa-challenge.repository';
 import { PrismaElectorMfaChallengeRepository } from './infrastructure/repositories/prisma-elector-mfa-challenge.repository';
 import { JwtAuthGuard } from './presentation/guards/jwt-auth.guard';
@@ -67,6 +74,12 @@ import { ElectorAuthController } from './presentation/controllers/elector-auth.c
     { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService },
     { provide: OTP_GENERATOR_PORT, useClass: CryptoOtpGeneratorService },
     { provide: EMAIL_SERVICE_PORT, useClass: NodemailerEmailService },
+    { provide: MFA_HASHER_PORT, useClass: Sha256MfaHasherService },
+    {
+      provide: ASYNC_EMAIL_SERVICE_PORT,
+      useFactory: (emailService: EmailServicePort) => new AsyncNodemailerEmailService(emailService),
+      inject: [EMAIL_SERVICE_PORT],
+    },
     {
       provide: LoginElectorUseCase,
       useFactory: (
@@ -74,14 +87,24 @@ import { ElectorAuthController } from './presentation/controllers/elector-auth.c
         hasher: PasswordHasherPort,
         challenges: ElectorMfaChallengeRepository,
         otpGenerator: OtpGeneratorPort,
-        emailService: EmailServicePort,
-      ) => new LoginElectorUseCase(electors, hasher, challenges, otpGenerator, emailService),
+        mfaHasher: MfaHasherPort,
+        emailService: AsyncEmailServicePort,
+      ) =>
+        new LoginElectorUseCase(
+          electors,
+          hasher,
+          challenges,
+          otpGenerator,
+          mfaHasher,
+          emailService,
+        ),
       inject: [
         ELECTOR_REPOSITORY,
         PASSWORD_HASHER_PORT,
         ELECTOR_MFA_CHALLENGE_REPOSITORY,
         OTP_GENERATOR_PORT,
-        EMAIL_SERVICE_PORT,
+        MFA_HASHER_PORT,
+        ASYNC_EMAIL_SERVICE_PORT,
       ],
     },
     {
@@ -89,13 +112,13 @@ import { ElectorAuthController } from './presentation/controllers/elector-auth.c
       useFactory: (
         challenges: ElectorMfaChallengeRepository,
         electors: ElectorRepository,
-        hasher: PasswordHasherPort,
+        mfaHasher: MfaHasherPort,
         tokens: TokenServicePort,
-      ) => new VerifyElectorMfaUseCase(challenges, electors, hasher, tokens),
+      ) => new VerifyElectorMfaUseCase(challenges, electors, mfaHasher, tokens),
       inject: [
         ELECTOR_MFA_CHALLENGE_REPOSITORY,
         ELECTOR_REPOSITORY,
-        PASSWORD_HASHER_PORT,
+        MFA_HASHER_PORT,
         TOKEN_SERVICE_PORT,
       ],
     },
@@ -105,15 +128,15 @@ import { ElectorAuthController } from './presentation/controllers/elector-auth.c
         challenges: ElectorMfaChallengeRepository,
         electors: ElectorRepository,
         otpGenerator: OtpGeneratorPort,
-        hasher: PasswordHasherPort,
-        emailService: EmailServicePort,
-      ) => new ResendElectorMfaUseCase(challenges, electors, otpGenerator, hasher, emailService),
+        mfaHasher: MfaHasherPort,
+        emailService: AsyncEmailServicePort,
+      ) => new ResendElectorMfaUseCase(challenges, electors, otpGenerator, mfaHasher, emailService),
       inject: [
         ELECTOR_MFA_CHALLENGE_REPOSITORY,
         ELECTOR_REPOSITORY,
         OTP_GENERATOR_PORT,
-        PASSWORD_HASHER_PORT,
-        EMAIL_SERVICE_PORT,
+        MFA_HASHER_PORT,
+        ASYNC_EMAIL_SERVICE_PORT,
       ],
     },
     {

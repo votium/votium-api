@@ -1,4 +1,4 @@
-import { EmailDeliveryException } from 'src/shared/exceptions/base/email-delivery.exception';
+import { Logger } from '@nestjs/common';
 import { UnauthorizedException } from 'src/shared/exceptions/base/unauthorized.exception';
 import {
   ElectorEntity,
@@ -7,7 +7,8 @@ import {
 import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
 import type { ElectorMfaChallengeRepository } from 'src/modules/auth/domain/repositories/elector-mfa-challenge.repository.interface';
 import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
-import type { EmailServicePort } from 'src/modules/auth/application/ports/email-service.port';
+import type { AsyncEmailServicePort } from 'src/modules/auth/application/ports/async-email-service.port';
+import type { MfaHasherPort } from 'src/modules/auth/application/ports/mfa-hasher.port';
 import type { OtpGeneratorPort } from 'src/modules/auth/application/ports/otp-generator.port';
 import { LoginElectorUseCase } from './login-elector.use-case';
 
@@ -38,8 +39,13 @@ describe('LoginElectorUseCase', () => {
   const otpGenerator: jest.Mocked<OtpGeneratorPort> = {
     generate: jest.fn(),
   };
-  const emailService: jest.Mocked<EmailServicePort> = {
+  const mfaHasher: jest.Mocked<MfaHasherPort> = {
+    hash: jest.fn(),
+    verify: jest.fn(),
+  };
+  const emailService: jest.Mocked<AsyncEmailServicePort> = {
     sendVerificationCode: jest.fn(),
+    queueVerificationCode: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -54,7 +60,9 @@ describe('LoginElectorUseCase', () => {
       studentCode: '202012345',
       programCode: '2710',
       status: ElectorEntity.DEFAULT_STATUS,
+      identification: null,
       createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
       ...overrides,
     });
   }
@@ -64,15 +72,19 @@ describe('LoginElectorUseCase', () => {
   }
 
   const useCase = () =>
-    new LoginElectorUseCase(electors, hasher, challenges, otpGenerator, emailService);
+    new LoginElectorUseCase(electors, hasher, challenges, otpGenerator, mfaHasher, emailService);
 
-  it('L1: returns mfaRequired with sessionId and no access token on valid credentials', async () => {
+  function expectLoginToSucceed() {
     electors.findByEmail.mockResolvedValue(buildActiveElector());
     hasher.verify.mockResolvedValue(true);
     otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
+    mfaHasher.hash.mockResolvedValue('sha256$hashed-otp');
     challenges.create.mockResolvedValue({} as never);
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    emailService.queueVerificationCode.mockResolvedValue(undefined);
+  }
+
+  it('L1: returns mfaRequired with sessionId and no access token on valid credentials', async () => {
+    expectLoginToSucceed();
 
     const result = await useCase().execute({ email: 'juan@example.com', password: 'secret' });
 
@@ -86,41 +98,29 @@ describe('LoginElectorUseCase', () => {
   });
 
   it('L2: stores the OTP hashed, never in plain text', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({} as never);
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    expectLoginToSucceed();
 
     await useCase().execute({ email: 'juan@example.com', password: 'secret' });
 
-    expect(hasher.hash.mock.calls[0]).toEqual(['483912']);
-    expect(challenges.create.mock.calls[0][0].otpHash).toBe('pbkdf2$hashed-otp');
+    expect(mfaHasher.hash.mock.calls[0]).toEqual(['483912']);
+    expect(challenges.create.mock.calls[0][0].otpHash).toBe('sha256$hashed-otp');
     expect(challenges.create.mock.calls[0][0].otpHash).not.toBe('483912');
   });
 
-  it('L3: sends the generated six-digit code to the elector email', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({} as never);
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+  it('L3: queues the generated six-digit code to the elector email', async () => {
+    expectLoginToSucceed();
 
     await useCase().execute({ email: 'juan@example.com', password: 'secret' });
 
-    expect(emailService.sendVerificationCode.mock.calls[0]).toEqual(['juan@example.com', '483912']);
+    expect(emailService.queueVerificationCode.mock.calls[0]).toEqual([
+      'juan@example.com',
+      '483912',
+    ]);
     expect('483912').toMatch(/^\d{6}$/);
   });
 
   it('L4: invalidates previous challenges before creating a new one', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({} as never);
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    expectLoginToSucceed();
 
     await useCase().execute({ email: 'juan@example.com', password: 'secret' });
 
@@ -129,12 +129,7 @@ describe('LoginElectorUseCase', () => {
   });
 
   it('L5: persists a five-minute TTL and resend cooldown', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({} as never);
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    expectLoginToSucceed();
     const before = Date.now();
 
     await useCase().execute({ email: 'juan@example.com', password: 'secret' });
@@ -152,7 +147,7 @@ describe('LoginElectorUseCase', () => {
       useCase().execute({ email: 'unknown@example.com', password: 'secret' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(challenges.create.mock.calls.length).toBe(0);
-    expect(emailService.sendVerificationCode.mock.calls.length).toBe(0);
+    expect(emailService.queueVerificationCode.mock.calls.length).toBe(0);
   });
 
   it('L7: rejects a wrong password without generating an OTP', async () => {
@@ -163,7 +158,7 @@ describe('LoginElectorUseCase', () => {
       useCase().execute({ email: 'juan@example.com', password: 'wrong' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(challenges.create.mock.calls.length).toBe(0);
-    expect(emailService.sendVerificationCode.mock.calls.length).toBe(0);
+    expect(emailService.queueVerificationCode.mock.calls.length).toBe(0);
   });
 
   it('L8: produces identical error for unknown email and wrong password (no enumeration)', async () => {
@@ -185,60 +180,41 @@ describe('LoginElectorUseCase', () => {
     await expect(
       useCase().execute({ email: 'juan@example.com', password: 'secret' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
-    expect(emailService.sendVerificationCode.mock.calls.length).toBe(0);
+    expect(emailService.queueVerificationCode.mock.calls.length).toBe(0);
     expect(challenges.create.mock.calls.length).toBe(0);
   });
 
-  it('L10: throws EmailDeliveryException and destroys the session when email fails', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({
-      id: 'challenge-1',
-      electorId: 'elector-1',
-      sessionId: 'session-1',
-      otpHash: 'pbkdf2$hashed-otp',
-      attempts: 0,
-      expiresAt: new Date(Date.now() + 300_000),
-      resendAt: new Date(Date.now() + 60_000),
-      consumedAt: null,
-      createdAt: new Date(),
-    } as never);
-    emailService.sendVerificationCode.mockRejectedValue(new Error('smtp down'));
+  it('L10: keeps the session when email queueing fails', async () => {
+    expectLoginToSucceed();
+    emailService.queueVerificationCode.mockRejectedValue(new Error('smtp down'));
 
-    await expect(
-      useCase().execute({ email: 'juan@example.com', password: 'secret' }),
-    ).rejects.toBeInstanceOf(EmailDeliveryException);
-    expect(challenges.deleteBySessionId.mock.calls[0]).toEqual(['session-1']);
+    const result = await useCase().execute({ email: 'juan@example.com', password: 'secret' });
+
+    expect(result).toMatchObject({
+      mfaRequired: true,
+      message: 'A verification code has been sent to your registered email.',
+    });
+    expect(challenges.deleteBySessionId.mock.calls.length).toBe(0);
+    expect(challenges.create.mock.calls.length).toBe(1);
   });
 
-  it('L11: never includes the OTP in the email failure error', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({
-      id: 'challenge-1',
-      sessionId: 'session-1',
-    } as never);
-    emailService.sendVerificationCode.mockRejectedValue(new Error('smtp down'));
+  it('L11: never includes the OTP in the email queueing failure log', async () => {
+    const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      expectLoginToSucceed();
+      emailService.queueVerificationCode.mockRejectedValue(new Error('smtp down'));
 
-    const error = await useCase()
-      .execute({ email: 'juan@example.com', password: 'secret' })
-      .catch((e: unknown) => e);
+      await useCase().execute({ email: 'juan@example.com', password: 'secret' });
 
-    expect(error).toBeInstanceOf(EmailDeliveryException);
-    expect((error as Error).message).not.toContain('483912');
+      const logged = JSON.stringify(loggerError.mock.calls);
+      expect(logged).not.toContain('483912');
+    } finally {
+      loggerError.mockRestore();
+    }
   });
 
   it('L12: does not sign any token after rework', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({} as never);
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    expectLoginToSucceed();
 
     const result = await useCase().execute({ email: 'juan@example.com', password: 'secret' });
 
@@ -254,12 +230,7 @@ describe('LoginElectorUseCase', () => {
   });
 
   it('L14: locks the exact response shape (mfaRequired, sessionId, expiresIn, message)', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({} as never);
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+    expectLoginToSucceed();
 
     const result = await useCase().execute({ email: 'juan@example.com', password: 'secret' });
 
@@ -278,21 +249,16 @@ describe('LoginElectorUseCase', () => {
     );
   });
 
-  it('L15: runs invalidateByElectorId, create and sendVerificationCode in that order', async () => {
-    electors.findByEmail.mockResolvedValue(buildActiveElector());
-    hasher.verify.mockResolvedValue(true);
-    otpGenerator.generate.mockReturnValue('483912');
-    hasher.hash.mockResolvedValue('pbkdf2$hashed-otp');
-    challenges.create.mockResolvedValue({} as never);
-    emailService.sendVerificationCode.mockResolvedValue(undefined);
+  it('L15: runs invalidateByElectorId, create and queueVerificationCode in that order', async () => {
+    expectLoginToSucceed();
 
     await useCase().execute({ email: 'juan@example.com', password: 'secret' });
 
     const invalidateOrder = challenges.invalidateByElectorId.mock.invocationCallOrder[0];
     const createOrder = challenges.create.mock.invocationCallOrder[0];
-    const sendOrder = emailService.sendVerificationCode.mock.invocationCallOrder[0];
+    const queueOrder = emailService.queueVerificationCode.mock.invocationCallOrder[0];
 
     expect(invalidateOrder).toBeLessThan(createOrder);
-    expect(createOrder).toBeLessThan(sendOrder);
+    expect(createOrder).toBeLessThan(queueOrder);
   });
 });

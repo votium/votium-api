@@ -9,10 +9,6 @@ import {
   type UserRepository,
 } from 'src/modules/iam/domain/repositories/user.repository.interface';
 import {
-  PASSWORD_HASHER_PORT,
-  type PasswordHasherPort,
-} from 'src/modules/iam/application/ports/password-hasher.port';
-import {
   AUDIT_LOG_PORT,
   type AuditLogPort,
 } from 'src/modules/iam/application/ports/audit-log.port';
@@ -22,6 +18,7 @@ import {
   type MfaChallengeRepository,
 } from 'src/modules/auth/domain/repositories/mfa-challenge.repository.interface';
 import { MAX_VERIFICATION_ATTEMPTS } from 'src/shared/constants/mfa.constants';
+import { MFA_HASHER_PORT, type MfaHasherPort } from '../ports/mfa-hasher.port';
 import { TOKEN_SERVICE_PORT, type TokenServicePort } from '../ports/token-service.port';
 
 @Injectable()
@@ -29,7 +26,7 @@ export class VerifyMfaUseCase {
   constructor(
     @Inject(MFA_CHALLENGE_REPOSITORY) private readonly challenges: MfaChallengeRepository,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
-    @Inject(PASSWORD_HASHER_PORT) private readonly hasher: PasswordHasherPort,
+    @Inject(MFA_HASHER_PORT) private readonly mfaHasher: MfaHasherPort,
     @Inject(TOKEN_SERVICE_PORT) private readonly tokens: TokenServicePort,
     @Inject(AUDIT_LOG_PORT) private readonly audit: AuditLogPort,
   ) {}
@@ -50,7 +47,7 @@ export class VerifyMfaUseCase {
       throw new BadRequestException('Maximum verification attempts exceeded.');
     }
 
-    const codeOk = await this.hasher.verify(input.code, challenge.otpHash);
+    const codeOk = await this.mfaHasher.verify(input.code, challenge.otpHash);
     if (!codeOk) {
       challenge.registerFailedAttempt();
       if (challenge.hasExceededAttempts(MAX_VERIFICATION_ATTEMPTS)) {

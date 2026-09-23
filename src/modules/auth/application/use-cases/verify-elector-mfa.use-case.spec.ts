@@ -10,7 +10,7 @@ import {
 import { ElectorMfaChallengeEntity } from 'src/modules/auth/domain/entities/elector-mfa-challenge.entity';
 import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
 import type { ElectorMfaChallengeRepository } from 'src/modules/auth/domain/repositories/elector-mfa-challenge.repository.interface';
-import type { PasswordHasherPort } from 'src/modules/iam/application/ports/password-hasher.port';
+import type { MfaHasherPort } from 'src/modules/auth/application/ports/mfa-hasher.port';
 import type { TokenServicePort } from 'src/modules/auth/application/ports/token-service.port';
 import { VerifyElectorMfaUseCase } from './verify-elector-mfa.use-case';
 
@@ -34,7 +34,7 @@ describe('VerifyElectorMfaUseCase', () => {
     findByStudentCodeAndProgramCode: jest.fn(),
     findElectionParticipation: jest.fn(),
   };
-  const hasher: jest.Mocked<PasswordHasherPort> = {
+  const hasher: jest.Mocked<MfaHasherPort> = {
     hash: jest.fn(),
     verify: jest.fn(),
   };
@@ -72,7 +72,9 @@ describe('VerifyElectorMfaUseCase', () => {
       studentCode: '202012345',
       programCode: '2710',
       status: ElectorEntity.DEFAULT_STATUS,
+      identification: null,
       createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
       ...overrides,
     });
   }
@@ -90,6 +92,17 @@ describe('VerifyElectorMfaUseCase', () => {
     expect(result).toMatchObject({ accessToken: 'access-token' });
     expect(result.expiresIn).toBe(envs.jwtExpiresIn);
     expect(challenges.save.mock.calls[0][0].consumedAt).toBeInstanceOf(Date);
+  });
+
+  it('V1b: verifies the code against the stored MFA hash', async () => {
+    challenges.findBySessionId.mockResolvedValue(buildChallenge());
+    hasher.verify.mockResolvedValue(true);
+    electors.findById.mockResolvedValue(buildElector());
+    tokens.signAccessToken.mockResolvedValue('access-token');
+
+    await useCase().execute({ sessionId: 'session-1', code: '483912' });
+
+    expect(hasher.verify.mock.calls[0]).toEqual(['483912', 'pbkdf2$hashed-otp']);
   });
 
   it('V2: signs the token with the elector identity and actorType ELECTOR', async () => {

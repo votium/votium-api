@@ -8,20 +8,24 @@ import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import {
-  EMAIL_SERVICE_PORT,
-  type EmailServicePort,
-} from '../../src/modules/auth/application/ports/email-service.port';
+  ASYNC_EMAIL_SERVICE_PORT,
+  type AsyncEmailServicePort,
+} from '../../src/modules/auth/application/ports/async-email-service.port';
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 
-class FakeEmailService implements EmailServicePort {
+class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
   shouldFail = false;
 
   sendVerificationCode(to: string, code: string): Promise<void> {
-    if (this.shouldFail) return Promise.reject(new Error('smtp unavailable'));
+    return this.queueVerificationCode(to, code);
+  }
+
+  queueVerificationCode(to: string, code: string): Promise<void> {
     this.sent.push({ to, code });
+    if (this.shouldFail) return Promise.reject(new Error('smtp unavailable'));
     return Promise.resolve();
   }
 
@@ -76,7 +80,7 @@ describe('Elector auth MFA (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(EMAIL_SERVICE_PORT)
+      .overrideProvider(ASYNC_EMAIL_SERVICE_PORT)
       .useValue(new FakeEmailService())
       .compile();
 
@@ -93,7 +97,7 @@ describe('Elector auth MFA (e2e)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
-    emailService = app.get<FakeEmailService>(EMAIL_SERVICE_PORT);
+    emailService = app.get<FakeEmailService>(ASYNC_EMAIL_SERVICE_PORT);
 
     const hasher = new NodeCryptoPasswordHasherService();
 
@@ -237,14 +241,22 @@ describe('Elector auth MFA (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
 
-    it('E7: returns 500 and removes the session when email cannot be sent', async () => {
+    it('E7: returns 200 and keeps the session when email cannot be sent', async () => {
+      emailService.sent = [];
       emailService.shouldFail = true;
       try {
         const res = await request(app.getHttpServer())
           .post('/api/v1/auth/electors/login')
           .send({ email: activeElector.email, password: activeElector.password })
-          .expect(500);
-        expect(res.body).toMatchObject({ message: 'Unable to send verification email.' });
+          .expect(200);
+
+        const body = res.body as LoginResponseBody;
+        expect(body.mfaRequired).toBe(true);
+        expect(body.sessionId).toEqual(expect.any(String));
+
+        const attempted = emailService.last();
+        expect(attempted).toBeDefined();
+        expect(JSON.stringify(res.body)).not.toContain(attempted.code);
       } finally {
         emailService.shouldFail = false;
       }
@@ -252,7 +264,7 @@ describe('Elector auth MFA (e2e)', () => {
       const remaining = await prisma.electorMfaChallenge.count({
         where: { elector_id: activeElector.id },
       });
-      expect(remaining).toBe(0);
+      expect(remaining).toBe(1);
     });
   });
 
