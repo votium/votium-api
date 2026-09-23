@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from '../../src/app.module';
+import { envs } from '../../src/config';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import {
@@ -13,6 +15,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -33,10 +36,6 @@ class FakeEmailService implements AsyncEmailServicePort {
 
 interface LoginResponseBody {
   sessionId: string;
-}
-
-interface TokensResponseBody {
-  accessToken: string;
 }
 
 interface CandidateElectionDto {
@@ -71,7 +70,7 @@ interface CandidatePayload {
 interface SwaggerOperationShape {
   tags?: string[];
   parameters?: Array<{ name: string; in: string; required: boolean }>;
-  security?: Array<{ bearer: string[] }>;
+  security?: Array<{ cookie: string[] }>;
   requestBody?: {
     required?: boolean;
     content: Record<string, { schema: { $ref?: string } }>;
@@ -117,7 +116,7 @@ describe('Candidates registration (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const completeElectorLogin = async (email: string, password: string): Promise<string> => {
@@ -134,14 +133,11 @@ describe('Candidates registration (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const register = (payload: CandidatePayload, token: string) =>
-    request(app.getHttpServer())
-      .post('/api/v1/candidates')
-      .set('Authorization', `Bearer ${token}`)
-      .send(payload);
+    request(app.getHttpServer()).post('/api/v1/candidates').set('Cookie', token).send(payload);
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -152,6 +148,7 @@ describe('Candidates registration (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -590,9 +587,7 @@ describe('Candidates registration (e2e)', () => {
 
   describe('GET /candidates (query)', () => {
     const queryCandidates = (qs: string, token: string = adminToken) =>
-      request(app.getHttpServer())
-        .get(`/api/v1/candidates${qs}`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).get(`/api/v1/candidates${qs}`).set('Cookie', token);
 
     // Names/codes intentionally unique so they cannot collide with candidates created by the
     // POST tests (which persist until the top-level afterAll cleanup).
@@ -1064,9 +1059,7 @@ describe('Candidates registration (e2e)', () => {
 
   describe('GET /candidates/:id', () => {
     const byId = (id: string, token: string = adminToken) =>
-      request(app.getHttpServer())
-        .get(`/api/v1/candidates/${id}`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).get(`/api/v1/candidates/${id}`).set('Cookie', token);
 
     let detailCounter = 0;
     const registerSeed = async (
@@ -1175,7 +1168,7 @@ describe('Candidates registration (e2e)', () => {
 
       await request(app.getHttpServer())
         .delete(`/api/v1/candidates/${id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(204);
 
       const res = await byId(id).expect(404);
@@ -1212,7 +1205,7 @@ describe('Candidates registration (e2e)', () => {
     const deactivateCandidate = (id: string, token: string = adminToken) =>
       request(app.getHttpServer())
         .patch(`/api/v1/candidates/${id}/deactivate`)
-        .set('Authorization', `Bearer ${token}`);
+        .set('Cookie', token);
 
     const registerCandidate = async (): Promise<{ id: string; studentCode: string }> => {
       const payload = validCandidate();
@@ -1262,7 +1255,7 @@ describe('Candidates registration (e2e)', () => {
 
       const byDefault = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
       const defaultBody = byDefault.body as {
         data: Array<{ studentCode: string; status: string }>;
@@ -1272,7 +1265,7 @@ describe('Candidates registration (e2e)', () => {
 
       const activeOnly = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}&status=ACTIVE`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
       expect((activeOnly.body as { data: unknown[] }).data).toEqual([]);
     });
@@ -1349,7 +1342,7 @@ describe('Candidates registration (e2e)', () => {
       const { id } = await registerCandidate();
       await request(app.getHttpServer())
         .delete(`/api/v1/candidates/${id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(204);
 
       const res = await deactivateCandidate(id).expect(404);
@@ -1366,7 +1359,7 @@ describe('Candidates registration (e2e)', () => {
     const updateCandidate = (id: string, payload: CandidatePayload, token: string = adminToken) =>
       request(app.getHttpServer())
         .put(`/api/v1/candidates/${id}`)
-        .set('Authorization', `Bearer ${token}`)
+        .set('Cookie', token)
         .send(payload);
 
     const registerAndGetId = async (payload: CandidatePayload): Promise<string> => {
@@ -1471,7 +1464,7 @@ describe('Candidates registration (e2e)', () => {
 
       await request(app.getHttpServer())
         .patch(`/api/v1/candidates/${id}/deactivate`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(204);
 
       const res = await updateCandidate(id, { firstName: 'Updated' }).expect(404);
@@ -1724,9 +1717,7 @@ describe('Candidates registration (e2e)', () => {
 
   describe('PATCH /candidates/:id/activate', () => {
     const reactivate = (id: string, token: string = adminToken) =>
-      request(app.getHttpServer())
-        .patch(`/api/v1/candidates/${id}/activate`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).patch(`/api/v1/candidates/${id}/activate`).set('Cookie', token);
 
     let reactCounter = 0;
     const registerInactive = async (): Promise<{ id: string; studentCode: string }> => {
@@ -1829,7 +1820,7 @@ describe('Candidates registration (e2e)', () => {
 
       const before = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
       const beforeBody = before.body as { data: Array<{ id: string; status: string }> };
       expect(beforeBody.data).toHaveLength(1);
@@ -1840,7 +1831,7 @@ describe('Candidates registration (e2e)', () => {
 
       const visible = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
       const visibleBody = visible.body as { data: Array<{ id: string; status: string }> };
       expect(visibleBody.data).toHaveLength(1);
@@ -1873,7 +1864,7 @@ describe('Candidates registration (e2e)', () => {
       const { id } = await registerInactive();
       await request(app.getHttpServer())
         .delete(`/api/v1/candidates/${id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(204);
 
       const res = await reactivate(id).expect(404);
@@ -1898,9 +1889,7 @@ describe('Candidates registration (e2e)', () => {
 
   describe('DELETE /candidates/:id', () => {
     const deleteCandidate = (id: string, token: string = adminToken) =>
-      request(app.getHttpServer())
-        .delete(`/api/v1/candidates/${id}`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).delete(`/api/v1/candidates/${id}`).set('Cookie', token);
 
     let deleteCounter = 0;
     const registerActive = async (): Promise<{ id: string; studentCode: string }> => {
@@ -1946,7 +1935,7 @@ describe('Candidates registration (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       expect((res.body as { data: unknown[] }).data).toEqual([]);
@@ -1958,7 +1947,7 @@ describe('Candidates registration (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}&status=ACTIVE`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       expect((res.body as { data: unknown[] }).data).toEqual([]);
@@ -2038,7 +2027,7 @@ describe('Candidates registration (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/candidates?studentCode=${studentCode}&status=INACTIVE`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ id: string }> }).data;
@@ -2054,7 +2043,7 @@ describe('Candidates registration (e2e)', () => {
     it('L1: the old PATCH /candidates/:id update method is no longer registered (404)', async () => {
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/candidates/${legacyId}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
 
       expect(res.body).toMatchObject({ statusCode: 404 });
@@ -2063,7 +2052,7 @@ describe('Candidates registration (e2e)', () => {
     it('L2: the old PUT /candidates/:id/desactive method is no longer registered (404)', async () => {
       const res = await request(app.getHttpServer())
         .put(`/api/v1/candidates/${legacyId}/desactive`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
 
       expect(res.body).toMatchObject({ statusCode: 404 });
@@ -2072,7 +2061,7 @@ describe('Candidates registration (e2e)', () => {
     it('L3: the old /candidates/:id/reactivate activation path is no longer registered (404)', async () => {
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/candidates/${legacyId}/reactivate`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
 
       expect(res.body).toMatchObject({ statusCode: 404 });
@@ -2081,7 +2070,7 @@ describe('Candidates registration (e2e)', () => {
     it('L4: the old PUT /candidates/:id/active method is no longer registered (404)', async () => {
       const res = await request(app.getHttpServer())
         .put(`/api/v1/candidates/${legacyId}/active`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
 
       expect(res.body).toMatchObject({ statusCode: 404 });
@@ -2094,7 +2083,7 @@ describe('Candidates registration (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -2108,7 +2097,7 @@ describe('Candidates registration (e2e)', () => {
       expect(updatePathItem.put).toBeDefined();
       expect(updatePathItem.patch).toBeUndefined();
       expect(updatePathItem.put!.tags).toContain('candidates');
-      expect(updatePathItem.put!.security).toEqual([{ bearer: [] }]);
+      expect(updatePathItem.put!.security).toEqual([{ cookie: [] }]);
       expect(updatePathItem.put!.parameters).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'id', in: 'path', required: true }),
@@ -2152,7 +2141,7 @@ describe('Candidates registration (e2e)', () => {
       expect(desactivePathItem.patch).toBeDefined();
       expect(desactivePathItem.delete).toBeUndefined();
       expect(desactivePathItem.patch!.tags).toContain('candidates');
-      expect(desactivePathItem.patch!.security).toEqual([{ bearer: [] }]);
+      expect(desactivePathItem.patch!.security).toEqual([{ cookie: [] }]);
       expect(desactivePathItem.patch!.parameters).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'id', in: 'path', required: true }),
@@ -2172,7 +2161,7 @@ describe('Candidates registration (e2e)', () => {
       };
       expect(activePathItem.patch).toBeDefined();
       expect(activePathItem.patch!.tags).toContain('candidates');
-      expect(activePathItem.patch!.security).toEqual([{ bearer: [] }]);
+      expect(activePathItem.patch!.security).toEqual([{ cookie: [] }]);
       for (const status of ['200', '400', '401', '403', '404', '409']) {
         expect(activePathItem.patch!.responses[status]).toBeDefined();
       }
@@ -2181,7 +2170,7 @@ describe('Candidates registration (e2e)', () => {
       const deleteOperation = (updatePathItem as { delete?: SwaggerOperationShape }).delete;
       expect(deleteOperation).toBeDefined();
       expect(deleteOperation!.tags).toContain('candidates');
-      expect(deleteOperation!.security).toEqual([{ bearer: [] }]);
+      expect(deleteOperation!.security).toEqual([{ cookie: [] }]);
       expect(deleteOperation!.parameters).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'id', in: 'path', required: true }),
@@ -2191,11 +2180,11 @@ describe('Candidates registration (e2e)', () => {
         expect(deleteOperation!.responses[status]).toBeDefined();
       }
 
-      // S4: registration of the CRUD methods is the expected one and the bearer scheme exists.
+      // S4: registration of the CRUD methods is the expected one and the cookie scheme exists.
       expect(desactivePathItem.delete).toBeUndefined();
       expect((activePathItem as { delete?: SwaggerOperationShape }).delete).toBeUndefined();
       expect(deleteOperation).toBeDefined();
-      expect(document.components?.securitySchemes?.bearer).toBeDefined();
+      expect(document.components?.securitySchemes?.cookie).toBeDefined();
     });
 
     it('S5: GET /candidates documents the query parameters and responses', () => {
@@ -2203,7 +2192,7 @@ describe('Candidates registration (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -2240,7 +2229,7 @@ describe('Candidates registration (e2e)', () => {
         expect(queryOperation.get!.responses[status]).toBeDefined();
       }
       expect(queryOperation.get!.tags).toContain('candidates');
-      expect(queryOperation.get!.security).toEqual([{ bearer: [] }]);
+      expect(queryOperation.get!.security).toEqual([{ cookie: [] }]);
     });
 
     it('S6: GET /candidates/:id documents the id parameter and responses', () => {
@@ -2248,7 +2237,7 @@ describe('Candidates registration (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -2259,7 +2248,7 @@ describe('Candidates registration (e2e)', () => {
       };
       expect(detailPathItem.get).toBeDefined();
       expect(detailPathItem.get!.tags).toContain('candidates');
-      expect(detailPathItem.get!.security).toEqual([{ bearer: [] }]);
+      expect(detailPathItem.get!.security).toEqual([{ cookie: [] }]);
       expect(detailPathItem.get!.parameters).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: 'id', in: 'path', required: true }),

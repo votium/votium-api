@@ -1,10 +1,21 @@
-import { ApiBearerAuth, ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { ApiCookieAuth, ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { LoginDto } from '../../application/dtos/login.dto';
 import { MfaRequiredResponseDto } from '../../application/dtos/mfa-required-response.dto';
 import { AuthTokensResponseDto } from '../../application/dtos/auth-tokens-response.dto';
+import { LogoutResponseDto } from '../../application/dtos/logout-response.dto';
 import { VerifyMfaDto } from '../../application/dtos/verify-mfa.dto';
 import { ResendMfaDto } from '../../application/dtos/resend-mfa.dto';
 import { ResendMfaResponseDto } from '../../application/dtos/resend-mfa-response.dto';
@@ -17,6 +28,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../guards/roles.decorator';
 import { AuthPresenter } from '../presenters/auth.presenter';
+import { AuthCookieService } from '../services/auth-cookie.service';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -34,6 +46,7 @@ export class AuthController {
     private readonly verifyMfa: VerifyMfaUseCase,
     private readonly resendMfa: ResendMfaUseCase,
     private readonly getMeUser: GetMeUserUseCase,
+    private readonly cookies: AuthCookieService,
   ) {}
 
   @Post('login')
@@ -54,14 +67,28 @@ export class AuthController {
   @ApiOperation({ summary: 'Verify the six-digit OTP and complete authentication' })
   @ApiResponse({
     status: 201,
-    description: 'Authentication completed. Tokens issued.',
+    description: 'Authentication completed. The JWT is set as an HttpOnly cookie.',
     type: AuthTokensResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid request data.' })
   @ApiResponse({ status: 401, description: 'Invalid or expired code.' })
-  async verifyMfaCode(@Body() dto: VerifyMfaDto) {
+  async verifyMfaCode(@Body() dto: VerifyMfaDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.verifyMfa.execute(dto);
-    return new AuthTokensResponseDto(result);
+    this.cookies.setAccessToken(res, result.accessToken, result.expiresIn);
+    return new AuthTokensResponseDto({ expiresIn: result.expiresIn });
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Log out by clearing the authentication cookie' })
+  @ApiResponse({
+    status: 200,
+    description: 'The authentication cookie was cleared.',
+    type: LogoutResponseDto,
+  })
+  logout(@Res({ passthrough: true }) res: Response) {
+    this.cookies.clearAccessToken(res);
+    return new LogoutResponseDto('Logged out successfully.');
   }
 
   @Post('mfa/resend')
@@ -81,7 +108,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
-  @ApiBearerAuth()
+  @ApiCookieAuth()
   @ApiOperation({
     summary: 'Get currently authenticated user',
     description:

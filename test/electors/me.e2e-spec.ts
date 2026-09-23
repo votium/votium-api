@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import * as jwt from 'jsonwebtoken';
 import { AppModule } from '../../src/app.module';
@@ -15,6 +16,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import { envs } from '../../src/config';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -35,10 +37,6 @@ class FakeEmailService implements AsyncEmailServicePort {
 
 interface LoginResponseBody {
   sessionId: string;
-}
-
-interface VerifyResponseBody {
-  accessToken: string;
 }
 
 interface ErrorBody {
@@ -85,7 +83,7 @@ describe('GET /auth/electors/me (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as VerifyResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const completeAdminLogin = async (email: string, password: string): Promise<string> => {
@@ -102,12 +100,12 @@ describe('GET /auth/electors/me (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as VerifyResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
-  const meGet = (token?: string, extra: Record<string, string> = {}) => {
+  const meGet = (cookie?: string, extra: Record<string, string> = {}) => {
     const req = request(app.getHttpServer()).get('/api/v1/auth/electors/me');
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (cookie) req.set('Cookie', cookie);
     Object.entries(extra).forEach(([k, v]) => {
       req.set(k, v);
     });
@@ -123,6 +121,7 @@ describe('GET /auth/electors/me (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -218,7 +217,7 @@ describe('GET /auth/electors/me (e2e)', () => {
         envs.jwtSecret,
         { expiresIn: envs.jwtExpiresIn },
       );
-      const res = await meGet(noActor).expect(403);
+      const res = await meGet(buildAuthCookie(noActor)).expect(403);
       expect((res.body as ErrorBody).statusCode).toBe(403);
     });
 
@@ -229,7 +228,7 @@ describe('GET /auth/electors/me (e2e)', () => {
           envs.jwtSecret,
           { expiresIn: envs.jwtExpiresIn },
         );
-        const res = await meGet(bad).expect(403);
+        const res = await meGet(buildAuthCookie(bad)).expect(403);
         expect((res.body as ErrorBody).statusCode).toBe(403);
       }
     });
@@ -240,7 +239,8 @@ describe('GET /auth/electors/me (e2e)', () => {
     });
 
     it('E7: an invalid JWT is rejected with 401', async () => {
-      const res = await meGet(`${electorToken.slice(0, -2)}xx`).expect(401);
+      const tampered = buildAuthCookie(`${electorToken.split('=')[1].slice(0, -2)}xx`);
+      const res = await meGet(tampered).expect(401);
       expect((res.body as ErrorBody).statusCode).toBe(401);
     });
 
@@ -250,7 +250,7 @@ describe('GET /auth/electors/me (e2e)', () => {
         envs.jwtSecret,
         { expiresIn: -60 },
       );
-      const res = await meGet(expired).expect(401);
+      const res = await meGet(buildAuthCookie(expired)).expect(401);
       expect((res.body as ErrorBody).statusCode).toBe(401);
     });
 
@@ -278,7 +278,7 @@ describe('GET /auth/electors/me (e2e)', () => {
         envs.jwtSecret,
         { expiresIn: envs.jwtExpiresIn },
       );
-      const res = await meGet(orphan).expect(404);
+      const res = await meGet(buildAuthCookie(orphan)).expect(404);
       expect((res.body as ErrorBody).statusCode).toBe(404);
     });
 
@@ -303,7 +303,7 @@ describe('GET /auth/electors/me (e2e)', () => {
         { expiresIn: envs.jwtExpiresIn },
       );
 
-      const res = await meGet(token).expect(404);
+      const res = await meGet(buildAuthCookie(token)).expect(404);
       expect((res.body as ErrorBody).statusCode).toBe(404);
     });
 
@@ -313,6 +313,7 @@ describe('GET /auth/electors/me (e2e)', () => {
       expect(bodyStr).not.toContain('password');
       expect(bodyStr).not.toContain(envs.jwtSecret);
       expect(bodyStr).not.toContain(electorToken);
+      expect(bodyStr).not.toContain(electorToken.split('=')[1]);
       expect(bodyStr).not.toContain('studentCode');
       expect(bodyStr).not.toContain('programCode');
       expect(Object.keys(res.body as MeResponse)).toEqual(['user']);
@@ -329,7 +330,7 @@ describe('GET /auth/electors/me (e2e)', () => {
     it('R1: a USER token still cannot list electors', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
       expect(Array.isArray((res.body as { data: unknown[] }).data)).toBe(true);
     });
@@ -337,7 +338,7 @@ describe('GET /auth/electors/me (e2e)', () => {
     it('R2: an ELECTOR token is not granted admin access on /users', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/users')
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .expect(403);
     });
   });

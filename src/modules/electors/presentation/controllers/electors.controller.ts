@@ -24,7 +24,7 @@ import {
   ApiTags,
   ApiResponse,
   ApiParam,
-  ApiBearerAuth,
+  ApiCookieAuth,
   ApiQuery,
 } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -62,7 +62,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @ApiTags('electors')
-@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller('electors')
 export class ElectorsController {
   constructor(

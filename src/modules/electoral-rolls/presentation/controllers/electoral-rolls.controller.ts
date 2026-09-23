@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
-  ApiBearerAuth,
+  ApiCookieAuth,
   ApiBody,
   ApiConsumes,
   ApiOperation,
@@ -54,7 +54,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @ApiTags('electoral-rolls')
-@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller('electoral-rolls')
 export class ElectoralRollsController {
   constructor(

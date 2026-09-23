@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import * as jwt from 'jsonwebtoken';
 import { envs } from '../../src/config';
@@ -15,6 +16,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -31,10 +33,6 @@ class FakeEmailService implements AsyncEmailServicePort {
   last(): { to: string; code: string } {
     return this.sent[this.sent.length - 1];
   }
-}
-
-interface TokensResponseBody {
-  accessToken: string;
 }
 
 interface LoginResponseBody {
@@ -57,7 +55,7 @@ interface ManualRegisterResponse {
 interface SwaggerOperationShape {
   tags?: string[];
   parameters?: Array<{ name: string; in: string; required: boolean }>;
-  security?: Array<{ bearer: string[] }>;
+  security?: Array<{ cookie: string[] }>;
   requestBody?: {
     required?: boolean;
     content: Record<string, { schema: { $ref?: string } }>;
@@ -105,7 +103,7 @@ describe('Manual electoral roll registration (e2e)', () => {
       .post('/api/v1/auth/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const completeElectorLogin = async (email: string, password: string): Promise<string> => {
@@ -119,7 +117,7 @@ describe('Manual electoral roll registration (e2e)', () => {
       .post('/api/v1/auth/electors/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const craftToken = (
@@ -129,7 +127,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   const manualRegister = (electionId: string, body: Record<string, unknown>, token?: string) => {
     const req = request(app.getHttpServer()).post(`/api/v1/electoral-rolls/register/${electionId}`);
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (token) req.set('Cookie', token);
     return req.send(body);
   };
 
@@ -191,6 +189,7 @@ describe('Manual electoral roll registration (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -361,9 +360,11 @@ describe('Manual electoral roll registration (e2e)', () => {
         role: 'SOME_OTHER',
       });
 
-      const res = await manualRegister(electionId, entries([codeA, '2710']), unauthorized).expect(
-        403,
-      );
+      const res = await manualRegister(
+        electionId,
+        entries([codeA, '2710']),
+        buildAuthCookie(unauthorized),
+      ).expect(403);
 
       expect(res.body).toMatchObject({ statusCode: 403 });
     });
@@ -387,7 +388,11 @@ describe('Manual electoral roll registration (e2e)', () => {
         -60,
       );
 
-      const res = await manualRegister(electionId, entries([codeA, '2710']), expired).expect(401);
+      const res = await manualRegister(
+        electionId,
+        entries([codeA, '2710']),
+        buildAuthCookie(expired),
+      ).expect(401);
 
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
@@ -397,7 +402,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/register/${electionId}`)
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .set('x-role', 'ADMINISTRATOR')
         .send(entries([codeA, '2710']))
         .expect(403);
@@ -412,7 +417,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/register/${electionId}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(400);
 
       expect(res.body).toMatchObject({ statusCode: 400 });
@@ -1134,7 +1139,7 @@ describe('Manual electoral roll registration (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -1161,8 +1166,8 @@ describe('Manual electoral roll registration (e2e)', () => {
       );
 
       // MS4: authentication is documented at the operation level.
-      expect(operation.security).toEqual([{ bearer: [] }]);
-      expect(document.components?.securitySchemes?.bearer).toBeDefined();
+      expect(operation.security).toEqual([{ cookie: [] }]);
+      expect(document.components?.securitySchemes?.cookie).toBeDefined();
 
       // MS5: the successful response schema is the bulk registration response DTO.
       const success = operation.responses['200'];

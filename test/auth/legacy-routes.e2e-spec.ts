@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import * as jwt from 'jsonwebtoken';
 import { AppModule } from '../../src/app.module';
@@ -14,6 +15,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import { envs } from '../../src/config';
+import { buildAuthCookie } from './auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -53,6 +55,7 @@ describe('Legacy auth routes removed (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -117,17 +120,21 @@ describe('Legacy auth routes removed (e2e)', () => {
   });
 
   const electorToken = () =>
-    jwt.sign(
-      { sub: activeElector.id, email: activeElector.email, actorType: 'ELECTOR' },
-      envs.jwtSecret,
-      { expiresIn: envs.jwtExpiresIn },
+    buildAuthCookie(
+      jwt.sign(
+        { sub: activeElector.id, email: activeElector.email, actorType: 'ELECTOR' },
+        envs.jwtSecret,
+        { expiresIn: envs.jwtExpiresIn },
+      ),
     );
 
   const adminToken = () =>
-    jwt.sign(
-      { sub: adminUser.id, email: adminUser.email, actorType: 'USER', role: 'ADMINISTRATOR' },
-      envs.jwtSecret,
-      { expiresIn: envs.jwtExpiresIn },
+    buildAuthCookie(
+      jwt.sign(
+        { sub: adminUser.id, email: adminUser.email, actorType: 'USER', role: 'ADMINISTRATOR' },
+        envs.jwtSecret,
+        { expiresIn: envs.jwtExpiresIn },
+      ),
     );
 
   describe('legacy paths return 404', () => {
@@ -155,14 +162,14 @@ describe('Legacy auth routes removed (e2e)', () => {
     it('E4-04: GET /api/v1/electors/me is removed', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/electors/me')
-        .set('Authorization', `Bearer ${electorToken()}`)
+        .set('Cookie', electorToken())
         .expect(404);
     });
 
     it('E4-05: GET /api/v1/users/me is removed', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/users/me')
-        .set('Authorization', `Bearer ${adminToken()}`)
+        .set('Cookie', adminToken())
         .expect(404);
     });
   });
@@ -177,12 +184,13 @@ describe('Legacy auth routes removed (e2e)', () => {
       expect(res.body).toMatchObject({ mfaRequired: true, expiresIn: 300 });
       expect(res.body).toHaveProperty('sessionId');
       expect(emailService.last().code).toMatch(/^\d{6}$/);
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
 
     it('E4-07: GET /api/v1/auth/electors/me returns 200', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/auth/electors/me')
-        .set('Authorization', `Bearer ${electorToken()}`)
+        .set('Cookie', electorToken())
         .expect(200);
 
       expect(res.body).toMatchObject({
@@ -193,7 +201,7 @@ describe('Legacy auth routes removed (e2e)', () => {
     it('E4-08: GET /api/v1/auth/me returns 200', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/auth/me')
-        .set('Authorization', `Bearer ${adminToken()}`)
+        .set('Cookie', adminToken())
         .expect(200);
 
       expect(res.body).toMatchObject({

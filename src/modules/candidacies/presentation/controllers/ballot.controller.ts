@@ -1,5 +1,5 @@
 import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiCookieAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BallotAccessGuard } from 'src/modules/auth/presentation/guards/ballot-access.guard';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
 import { GetElectionBallotUseCase } from '../../application/use-cases/get-election-ballot.use-case';
@@ -7,7 +7,7 @@ import { BallotResponseDto } from '../dtos/ballot-response.dto';
 import { BallotPresenter } from '../presenters/ballot.presenter';
 
 @ApiTags('candidacies')
-@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller('elections')
 export class BallotController {
   constructor(private readonly getElectionBallot: GetElectionBallotUseCase) {}

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { decode } from 'jsonwebtoken';
 import { envs } from '../../src/config';
@@ -14,6 +15,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { extractAuthCookie, getAuthCookieHeader, parseSetCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -39,11 +41,6 @@ interface LoginResponseBody {
   sessionId: string;
   expiresIn: number;
   message: string;
-}
-
-interface TokensResponseBody {
-  accessToken: string;
-  expiresIn: number;
 }
 
 interface JwtClaims {
@@ -85,6 +82,7 @@ describe('Elector auth MFA (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -191,6 +189,7 @@ describe('Elector auth MFA (e2e)', () => {
       });
       expect(body.sessionId).toEqual(expect.any(String));
       expect(body).not.toHaveProperty('accessToken');
+      expect(res.headers['set-cookie']).toBeUndefined();
 
       expect(emailService.last().to).toBe(activeElector.email);
       expect(emailService.last().code).toMatch(/^\d{6}$/);
@@ -269,7 +268,7 @@ describe('Elector auth MFA (e2e)', () => {
   });
 
   describe('POST /auth/electors/mfa/verify', () => {
-    it('E8: completes auth with correct code and returns ELECTOR JWT without role', async () => {
+    it('E8: completes auth with correct code and sets an ELECTOR JWT cookie without role', async () => {
       const sessionId = await startLogin(activeElector.email, activeElector.password);
       const code = emailService.last().code;
 
@@ -278,11 +277,13 @@ describe('Elector auth MFA (e2e)', () => {
         .send({ sessionId, code })
         .expect(201);
 
-      const body = res.body as TokensResponseBody;
-      expect(body.accessToken).toEqual(expect.any(String));
-      expect(body.expiresIn).toBe(envs.jwtExpiresIn);
+      const body = res.body as { expiresIn: number };
+      expect(body).toEqual({ expiresIn: envs.jwtExpiresIn });
+      expect(JSON.stringify(body)).not.toContain('accessToken');
+      expect(res.headers['set-cookie']).toBeDefined();
 
-      const claims = decode(body.accessToken) as JwtClaims;
+      const jwt = extractAuthCookie(res).split('=')[1];
+      const claims = decode(jwt) as JwtClaims;
       expect(claims).toMatchObject({
         actorType: 'ELECTOR',
         sub: activeElector.id,
@@ -291,6 +292,13 @@ describe('Elector auth MFA (e2e)', () => {
       expect(claims).not.toHaveProperty('role');
       expect(claims).not.toHaveProperty('studentCode');
       expect(claims).not.toHaveProperty('programCode');
+
+      const attrs = parseSetCookie(getAuthCookieHeader(res));
+      expect(attrs.HttpOnly).toBe(true);
+      expect(attrs.Secure).toBe(true);
+      expect(String(attrs.SameSite).toLowerCase()).toBe(envs.authCookieSameSite.toLowerCase());
+      expect(attrs.Path).toBe('/');
+      expect(attrs['Max-Age']).toBe(String(envs.jwtExpiresIn));
     });
 
     it('E9: rejects an invalid code with 400', async () => {
@@ -302,6 +310,7 @@ describe('Elector auth MFA (e2e)', () => {
         .expect(400);
 
       expect(res.body).toMatchObject({ message: 'Invalid verification code.' });
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
 
     it('E10: rejects an expired session with 410', async () => {
@@ -317,6 +326,7 @@ describe('Elector auth MFA (e2e)', () => {
         .expect(410);
 
       expect(res.body).toMatchObject({ message: 'Verification code has expired.' });
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
 
     it('E11: rejects an unknown session with 401', async () => {
@@ -362,11 +372,11 @@ describe('Elector auth MFA (e2e)', () => {
         .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
-      const token = (verifyRes.body as TokensResponseBody).accessToken;
+      const cookie = extractAuthCookie(verifyRes);
 
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Cookie', cookie)
         .expect(403);
 
       expect(res.body).toMatchObject({ statusCode: 403 });
@@ -438,11 +448,11 @@ describe('Elector auth MFA (e2e)', () => {
         .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
-      const token = (verifyRes.body as TokensResponseBody).accessToken;
+      const cookie = extractAuthCookie(verifyRes);
 
       const res = await request(app.getHttpServer())
         .get('/api/v1/users')
-        .set('Authorization', `Bearer ${token}`)
+        .set('Cookie', cookie)
         .expect(403);
 
       expect(res.body).toMatchObject({ statusCode: 403 });
@@ -457,6 +467,7 @@ describe('Elector auth MFA (e2e)', () => {
       expect(res.body).toMatchObject({ mfaRequired: true });
       expect(res.body).not.toHaveProperty('accessToken');
       expect(res.body).not.toHaveProperty('refreshToken');
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
 
     it('E21: existing users MFA endpoints remain unaffected', async () => {

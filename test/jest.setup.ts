@@ -11,3 +11,7 @@ process.env.SMTP_SECURE = process.env.SMTP_SECURE ?? 'false';
 process.env.SMTP_USER = process.env.SMTP_USER ?? 'votiumvalleu@gmail.com';
 process.env.SMTP_PASS = process.env.SMTP_PASS ?? 'test-smtp-pass';
 process.env.EMAIL_FROM = process.env.EMAIL_FROM ?? 'votiumvalleu@gmail.com';
+process.env.AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME ?? 'access_token';
+process.env.AUTH_COOKIE_SECURE = process.env.AUTH_COOKIE_SECURE ?? 'true';
+process.env.AUTH_COOKIE_SAMESITE = process.env.AUTH_COOKIE_SAMESITE ?? 'lax';
+process.env.CORS_ORIGINS = process.env.CORS_ORIGINS ?? 'http://localhost:5173';

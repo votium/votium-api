@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
+import { decode } from 'jsonwebtoken';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
@@ -12,6 +14,8 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { envs } from '../../src/config';
+import { extractAuthCookie, getAuthCookieHeader, parseSetCookie } from './auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -39,9 +43,11 @@ interface LoginResponseBody {
   message: string;
 }
 
-interface TokensResponseBody {
-  accessToken: string;
-  expiresIn: number;
+interface JwtClaims {
+  sub: string;
+  email: string;
+  actorType: string;
+  role?: string;
 }
 
 describe('Auth MFA (e2e)', () => {
@@ -72,6 +78,7 @@ describe('Auth MFA (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -222,7 +229,7 @@ describe('Auth MFA (e2e)', () => {
   });
 
   describe('POST /auth/mfa/verify', () => {
-    it('completes authentication with the correct code and issues tokens', async () => {
+    it('completes authentication with the correct code and sets the auth cookie (no JWT in body)', async () => {
       const sessionId = await startLogin(adminUser.email, adminUser.password);
       const code = emailService.last().code;
 
@@ -231,14 +238,39 @@ describe('Auth MFA (e2e)', () => {
         .send({ sessionId, code })
         .expect(201);
 
-      const body = res.body as TokensResponseBody;
-      expect(body.accessToken).toEqual(expect.any(String));
-      expect(body.expiresIn).toBe(3600);
+      const body = res.body as { expiresIn: number };
+      expect(body).toEqual({ expiresIn: envs.jwtExpiresIn });
+      expect(JSON.stringify(body)).not.toContain('accessToken');
+      expect(res.headers['set-cookie']).toBeDefined();
 
-      await request(app.getHttpServer())
-        .get('/api/v1/users')
-        .set('Authorization', `Bearer ${body.accessToken}`)
-        .expect(200);
+      const cookie = extractAuthCookie(res);
+      const jwt = cookie.split('=')[1];
+      const claims = decode(jwt) as JwtClaims;
+      expect(claims).toMatchObject({
+        actorType: 'USER',
+        sub: adminUser.id,
+        email: adminUser.email,
+      });
+      expect(claims.role).toBe('ADMINISTRATOR');
+
+      await request(app.getHttpServer()).get('/api/v1/users').set('Cookie', cookie).expect(200);
+    });
+
+    it('cookie attributes match the spec (HttpOnly, Secure, SameSite, Path, Max-Age)', async () => {
+      const sessionId = await startLogin(adminUser.email, adminUser.password);
+      const code = emailService.last().code;
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/mfa/verify')
+        .send({ sessionId, code })
+        .expect(201);
+
+      const attrs = parseSetCookie(getAuthCookieHeader(res));
+      expect(attrs.HttpOnly).toBe(true);
+      expect(attrs.Secure).toBe(true);
+      expect(String(attrs.SameSite).toLowerCase()).toBe(envs.authCookieSameSite.toLowerCase());
+      expect(attrs.Path).toBe('/');
+      expect(attrs['Max-Age']).toBe(String(envs.jwtExpiresIn));
     });
 
     it('rejects an invalid code with 400', async () => {
@@ -250,6 +282,7 @@ describe('Auth MFA (e2e)', () => {
         .expect(400);
 
       expect(res.body).toMatchObject({ message: 'Invalid verification code.' });
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
 
     it('rejects an expired session with 410', async () => {
@@ -265,6 +298,7 @@ describe('Auth MFA (e2e)', () => {
         .expect(410);
 
       expect(res.body).toMatchObject({ message: 'Verification code has expired.' });
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
 
     it('rejects an unknown session with 401', async () => {
@@ -274,6 +308,7 @@ describe('Auth MFA (e2e)', () => {
         .expect(401);
 
       expect(res.body).toMatchObject({ message: 'Authentication session is invalid.' });
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
 
     it('rejects a reused code with 400', async () => {
@@ -291,15 +326,18 @@ describe('Auth MFA (e2e)', () => {
         .expect(400);
 
       expect(res.body).toMatchObject({ message: 'Verification code has already been used.' });
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
 
     it('rejects a malformed code with 400', async () => {
       const sessionId = await startLogin(adminUser.email, adminUser.password);
 
-      await request(app.getHttpServer())
+      const res = await request(app.getHttpServer())
         .post('/api/v1/auth/mfa/verify')
         .send({ sessionId, code: 'abc' })
         .expect(400);
+
+      expect(res.headers['set-cookie']).toBeUndefined();
     });
   });
 

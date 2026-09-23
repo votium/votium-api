@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiBearerAuth,
+  ApiCookieAuth,
   ApiBody,
   ApiOperation,
   ApiParam,
@@ -37,7 +37,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @ApiTags('candidacies')
-@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller('candidacies')
 export class CandidaciesController {
   constructor(
