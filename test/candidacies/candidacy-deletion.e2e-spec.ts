@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from '../../src/app.module';
+import { envs } from '../../src/config';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import {
@@ -14,6 +16,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
+import { extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -34,10 +37,6 @@ class FakeEmailService implements AsyncEmailServicePort {
 
 interface LoginResponseBody {
   sessionId: string;
-}
-
-interface TokensResponseBody {
-  accessToken: string;
 }
 
 interface SwaggerOperationShape {
@@ -78,19 +77,16 @@ describe('Candidacy deletion (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const deleteCandidacy = (electionId: string, candidacyId: string, token: string) =>
     request(app.getHttpServer())
       .delete(`/api/v1/elections/${electionId}/candidacies/${candidacyId}`)
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', token);
 
   const registerCandidacy = (payload: Record<string, unknown>, token: string) =>
-    request(app.getHttpServer())
-      .post('/api/v1/candidacies')
-      .set('Authorization', `Bearer ${token}`)
-      .send(payload);
+    request(app.getHttpServer()).post('/api/v1/candidacies').set('Cookie', token).send(payload);
 
   async function seedElection(status: ElectionStatus): Promise<string> {
     const row = await prisma.election.create({
@@ -156,6 +152,7 @@ describe('Candidacy deletion (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -421,7 +418,7 @@ describe('Candidacy deletion (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -446,9 +443,9 @@ describe('Candidacy deletion (e2e)', () => {
         ]),
       );
 
-      // SW-D5: bearer authentication is documented at the operation level.
-      expect(operation.security).toEqual([{ bearer: [] }]);
-      expect(document.components?.securitySchemes?.bearer).toBeDefined();
+      // SW-D5: cookie authentication is documented at the operation level.
+      expect(operation.security).toEqual([{ cookie: [] }]);
+      expect(document.components?.securitySchemes?.cookie).toBeDefined();
 
       // SW-D6: the 204 response is documented without a body schema.
       const success = operation.responses?.['204'];

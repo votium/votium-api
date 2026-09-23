@@ -2,8 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { envs } from '../../src/config';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import {
@@ -13,6 +15,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -35,10 +38,6 @@ interface LoginResponseBody {
   sessionId: string;
 }
 
-interface TokensResponseBody {
-  accessToken: string;
-}
-
 interface SwaggerOperationShape {
   tags?: string[];
   parameters?: Array<{
@@ -47,7 +46,7 @@ interface SwaggerOperationShape {
     required: boolean;
     description?: string;
   }>;
-  security?: Array<{ bearer: string[] }>;
+  security?: Array<{ cookie: string[] }>;
   requestBody?: {
     required?: boolean;
     content: Record<string, { schema: { $ref?: string } }>;
@@ -112,13 +111,13 @@ describe('Electors import (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const upload = (csv: string, filename = 'registry.csv', token = adminToken) =>
     request(app.getHttpServer())
       .post('/api/v1/electors/import')
-      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', token)
       .attach('file', Buffer.from(csv, 'utf8'), { filename });
 
   beforeAll(async () => {
@@ -130,6 +129,7 @@ describe('Electors import (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -433,7 +433,7 @@ describe('Electors import (e2e)', () => {
     it('E9: rejects a missing file with 400', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/electors/import')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(400);
 
       expect(res.body).toMatchObject({ message: 'CSV file is required.' });
@@ -488,7 +488,7 @@ describe('Electors import (e2e)', () => {
     it('E16: rejects an invalid token with 401', async () => {
       await request(app.getHttpServer())
         .post('/api/v1/electors/import')
-        .set('Authorization', 'Bearer not-a-real-token')
+        .set('Cookie', buildAuthCookie('not-a-real-token'))
         .attach('file', Buffer.from(VALID_CSV, 'utf8'), { filename: 'registry.csv' })
         .expect(401);
     });
@@ -520,9 +520,7 @@ describe('Electors import (e2e)', () => {
     };
 
     const deleteElector = (id: string, token: string = adminToken) =>
-      request(app.getHttpServer())
-        .delete(`/api/v1/electors/${id}`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).delete(`/api/v1/electors/${id}`).set('Cookie', token);
 
     it('ED-1: an authenticated administrator deletes an elector with 204 and no body', async () => {
       const elector = await seedElector();
@@ -554,7 +552,7 @@ describe('Electors import (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/electors?studentCode=${elector.student_code}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       expect((res.body as { data: unknown[] }).data).toEqual([]);
@@ -625,9 +623,7 @@ describe('Electors import (e2e)', () => {
     };
 
     const deactivate = (id: string, token: string = adminToken) =>
-      request(app.getHttpServer())
-        .patch(`/api/v1/electors/${id}/deactivate`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).patch(`/api/v1/electors/${id}/deactivate`).set('Cookie', token);
 
     it('EDES-1: deactivates an elector with 200 and sets status INACTIVE without deleting', async () => {
       const elector = await seedElector();
@@ -658,7 +654,7 @@ describe('Electors import (e2e)', () => {
       const elector = await seedElector();
       await request(app.getHttpServer())
         .delete(`/api/v1/electors/${elector.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(204);
 
       await deactivate(elector.id).expect(404);
@@ -677,7 +673,7 @@ describe('Electors import (e2e)', () => {
       // Legacy verb removed: PUT /electors/:id/desactive is no longer registered
       await request(app.getHttpServer())
         .put(`/api/v1/electors/${elector.id}/desactive`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
     });
 
@@ -687,7 +683,7 @@ describe('Electors import (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/electors?studentCode=${elector.student_code}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ id: string; status: string }> }).data;
@@ -703,7 +699,7 @@ describe('Electors import (e2e)', () => {
 
       await request(app.getHttpServer())
         .patch(`/api/v1/electors/${elector.id}/desactive`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
     });
   });
@@ -728,9 +724,7 @@ describe('Electors import (e2e)', () => {
     };
 
     const activate = (id: string, token: string = adminToken) =>
-      request(app.getHttpServer())
-        .patch(`/api/v1/electors/${id}/activate`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).patch(`/api/v1/electors/${id}/activate`).set('Cookie', token);
 
     it('EACT-1: activates an INACTIVE elector with 200 and returns status ACTIVE', async () => {
       const elector = await seedElector('INACTIVE');
@@ -761,7 +755,7 @@ describe('Electors import (e2e)', () => {
       const elector = await seedElector('INACTIVE');
       await request(app.getHttpServer())
         .delete(`/api/v1/electors/${elector.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(204);
 
       await activate(elector.id).expect(404);
@@ -780,7 +774,7 @@ describe('Electors import (e2e)', () => {
       // Legacy verb removed: PUT /electors/:id/active is no longer registered
       await request(app.getHttpServer())
         .put(`/api/v1/electors/${elector.id}/active`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
     });
 
@@ -790,7 +784,7 @@ describe('Electors import (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/electors?studentCode=${elector.student_code}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ id: string; status: string }> }).data;
@@ -804,7 +798,7 @@ describe('Electors import (e2e)', () => {
 
       await request(app.getHttpServer())
         .patch(`/api/v1/electors/${elector.id}/active`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
     });
   });
@@ -838,9 +832,7 @@ describe('Electors import (e2e)', () => {
     };
 
     const getDetail = (id: string, token: string = adminToken) =>
-      request(app.getHttpServer())
-        .get(`/api/v1/electors/${id}`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).get(`/api/v1/electors/${id}`).set('Cookie', token);
 
     it('EDE-01: returns 200 with exactly the detail shape (identification set)', async () => {
       const elector = await seedElector({ identification: '1009998887' });
@@ -970,7 +962,7 @@ describe('Electors import (e2e)', () => {
       const elector = await seedElector();
       await request(app.getHttpServer())
         .delete(`/api/v1/electors/${elector.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(204);
 
       await getDetail(elector.id).expect(404);
@@ -1002,7 +994,7 @@ describe('Electors import (e2e)', () => {
         .post('/api/v1/auth/electors/mfa/verify')
         .send({ sessionId, code })
         .expect(201);
-      const electorToken = (verifyRes.body as TokensResponseBody).accessToken;
+      const electorToken = extractAuthCookie(verifyRes);
 
       await getDetail(elector.id, electorToken).expect(403);
     });
@@ -1052,10 +1044,7 @@ describe('Electors import (e2e)', () => {
       payload: Record<string, unknown>,
       token: string = adminToken,
     ) =>
-      request(app.getHttpServer())
-        .put(`/api/v1/electors/${id}`)
-        .send(payload)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).put(`/api/v1/electors/${id}`).send(payload).set('Cookie', token);
 
     it('EDP-01: returns the expected envelope on a valid full replacement', async () => {
       const elector = await seedElector();
@@ -1315,14 +1304,14 @@ describe('Electors import (e2e)', () => {
 
       await request(app.getHttpServer())
         .delete(`/api/v1/electors/${toDelete.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(204);
     });
 
     it('E-Q01: no filters returns a paginated envelope with defaults and desc ordering', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const body = res.body as {
@@ -1338,7 +1327,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ name: 'juan cam', studentCode: `ELQ-` })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1349,7 +1338,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ name: 'saenz', studentCode: `ELQ-` })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1360,7 +1349,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ name: 'nobody' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       expect((res.body as { data: unknown[] }).data).toEqual([]);
@@ -1371,7 +1360,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: `ELQ-` })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const body = res.body as {
@@ -1391,7 +1380,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: `Q-3-${suffix}` })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1402,7 +1391,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: elq1 })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1414,7 +1403,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: `NOPE-${suffix}` })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       expect((res.body as { data: unknown[] }).data).toEqual([]);
@@ -1424,7 +1413,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: 'ELQ-', programCode: '271' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const body = res.body as {
@@ -1444,7 +1433,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ programCode: '2715' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1455,7 +1444,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ programCode: '9999' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       expect((res.body as { data: unknown[] }).data).toEqual([]);
@@ -1465,7 +1454,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ name: 'maria', studentCode: `ELQ-2-` })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1476,7 +1465,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ name: 'fernanda', studentCode: 'ELQ-', programCode: '2710' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1487,7 +1476,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: 'ELQ-', programCode: '2715' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1498,7 +1487,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ name: 'ana', studentCode: 'ELQ-', programCode: '2715' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1509,7 +1498,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: 'ELQ-', limit: '2', page: '2' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const body = res.body as {
@@ -1524,7 +1513,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ student_code: elq1 })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(400);
 
       expect(res.body).toMatchObject({ statusCode: 400 });
@@ -1534,7 +1523,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ program_code: '2710' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(400);
 
       expect(res.body).toMatchObject({ statusCode: 400 });
@@ -1544,7 +1533,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ unknown: 'value' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(400);
 
       expect(res.body).toMatchObject({ statusCode: 400 });
@@ -1557,7 +1546,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query(query)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(400);
 
       expect(res.body).toMatchObject({ statusCode: 400 });
@@ -1570,14 +1559,14 @@ describe('Electors import (e2e)', () => {
     it('E-Q22: an invalid token is rejected with 401', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/electors')
-        .set('Authorization', 'Bearer not-a-real-token')
+        .set('Cookie', buildAuthCookie('not-a-real-token'))
         .expect(401);
     });
 
     it('E-Q23: an auditor can list electors', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
-        .set('Authorization', `Bearer ${auditorToken}`)
+        .set('Cookie', auditorToken)
         .expect(200);
 
       expect(Array.isArray((res.body as { data: unknown[] }).data)).toBe(true);
@@ -1587,7 +1576,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: elq1 })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<Record<string, unknown>> }).data;
@@ -1609,13 +1598,13 @@ describe('Electors import (e2e)', () => {
     it('E-Q25: empty and whitespace-only filters behave like no filters', async () => {
       const plain = await request(app.getHttpServer())
         .get('/api/v1/electors')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const blank = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ name: '   ', studentCode: '', programCode: '  ' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       expect((blank.body as { meta: { total: number } }).meta.total).toBe(
@@ -1627,7 +1616,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ limit: '100' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const codes = (res.body as { data: Array<{ studentCode: string }> }).data.map(
@@ -1650,7 +1639,7 @@ describe('Electors import (e2e)', () => {
       await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: 'ELQ-' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const countAfter = await prisma.elector.count();
@@ -1661,7 +1650,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: `ELQ-4-${suffix}` })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ status: string }> }).data;
@@ -1673,7 +1662,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ status: 'ACTIVE', studentCode: 'ELQ-' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const body = res.body as {
@@ -1692,7 +1681,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ status: 'INACTIVE', studentCode: 'ELQ-' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const body = res.body as {
@@ -1707,7 +1696,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ status: 'INACTIVE', name: 'Deactivated', studentCode: 'ELQ-' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const data = (res.body as { data: Array<{ studentCode: string }> }).data;
@@ -1718,7 +1707,7 @@ describe('Electors import (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ identification: '000033', studentCode: 'ELQ-' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const body = res.body as {
@@ -1733,13 +1722,13 @@ describe('Electors import (e2e)', () => {
       const unfiltered = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: 'ELQ-' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       const blank = await request(app.getHttpServer())
         .get('/api/v1/electors')
         .query({ studentCode: 'ELQ-', identification: '   ' })
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       expect((blank.body as { meta: { total: number } }).meta.total).toBe(
@@ -1753,7 +1742,7 @@ describe('Electors import (e2e)', () => {
         const res = await request(app.getHttpServer())
           .get('/api/v1/electors')
           .query({ status })
-          .set('Authorization', `Bearer ${adminToken}`)
+          .set('Cookie', adminToken)
           .expect(400);
 
         expect(res.body).toMatchObject({ statusCode: 400 });
@@ -1767,7 +1756,7 @@ describe('Electors import (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -1780,7 +1769,7 @@ describe('Electors import (e2e)', () => {
 
       // SW-1: operation metadata, tags and security
       expect(queryOperation.get!.tags).toContain('electors');
-      expect(queryOperation.get!.security).toEqual([{ bearer: [] }]);
+      expect(queryOperation.get!.security).toEqual([{ cookie: [] }]);
 
       // SW-2: query parameters are exactly the canonical set, without the legacy names or duplicates
       const queryParameters = (queryOperation.get!.parameters ?? []).filter(
@@ -1816,7 +1805,7 @@ describe('Electors import (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -1835,7 +1824,7 @@ describe('Electors import (e2e)', () => {
       const detail = idOperation.get;
       expect(detail).toBeDefined();
       expect(detail!.tags).toContain('electors');
-      expect(detail!.security).toEqual([{ bearer: [] }]);
+      expect(detail!.security).toEqual([{ cookie: [] }]);
       expect(detail!.parameters?.some((p) => p.name === 'id' && p.in === 'path')).toBe(true);
       for (const status of ['200', '400', '401', '403', '404']) {
         expect(detail!.responses[status]).toBeDefined();
@@ -1849,7 +1838,7 @@ describe('Electors import (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -1863,7 +1852,7 @@ describe('Electors import (e2e)', () => {
       const update = (document.paths[idPathKey!] as { put?: SwaggerOperationShape }).put;
       expect(update).toBeDefined();
       expect(update!.tags).toContain('electors');
-      expect(update!.security).toEqual([{ bearer: [] }]);
+      expect(update!.security).toEqual([{ cookie: [] }]);
       expect(update!.parameters?.some((p) => p.name === 'id' && p.in === 'path')).toBe(true);
       const requestSchemaRef = update!.requestBody?.content?.['application/json']?.schema?.$ref;
       expect(requestSchemaRef).toMatch(/UpdateElectorDto/);
@@ -1879,7 +1868,7 @@ describe('Electors import (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -1889,7 +1878,7 @@ describe('Electors import (e2e)', () => {
         const operation = (document.paths[pathKey!] as { patch?: SwaggerOperationShape }).patch;
         expect(operation).toBeDefined();
         expect(operation!.tags).toContain('electors');
-        expect(operation!.security).toEqual([{ bearer: [] }]);
+        expect(operation!.security).toEqual([{ cookie: [] }]);
         for (const status of ['200', '400', '401', '403', '404']) {
           expect(operation!.responses[status]).toBeDefined();
         }

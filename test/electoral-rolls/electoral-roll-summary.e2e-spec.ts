@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import * as jwt from 'jsonwebtoken';
 import { envs } from '../../src/config';
@@ -15,6 +16,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -33,11 +35,6 @@ class FakeEmailService implements AsyncEmailServicePort {
   }
 }
 
-interface TokensResponseBody {
-  accessToken: string;
-  expiresIn: number;
-}
-
 interface LoginResponseBody {
   mfaRequired: boolean;
   sessionId: string;
@@ -53,7 +50,7 @@ interface SummaryResponse {
 interface SwaggerOperationShape {
   tags?: string[];
   parameters?: Array<{ name: string; in: string; required: boolean }>;
-  security?: Array<{ bearer: string[] }>;
+  security?: Array<{ cookie: string[] }>;
   responses: Record<string, { content: Record<string, { schema: { $ref?: string } }> }>;
 }
 
@@ -93,7 +90,7 @@ describe('Electoral roll summary (e2e)', () => {
       .post('/api/v1/auth/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const completeElectorLogin = async (email: string, password: string): Promise<string> => {
@@ -107,12 +104,12 @@ describe('Electoral roll summary (e2e)', () => {
       .post('/api/v1/auth/electors/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const getSummary = (electionId: string, token?: string) => {
     const req = request(app.getHttpServer()).get(`/api/v1/electoral-rolls/${electionId}`);
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (token) req.set('Cookie', token);
     return req;
   };
 
@@ -163,6 +160,7 @@ describe('Electoral roll summary (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -324,7 +322,7 @@ describe('Electoral roll summary (e2e)', () => {
         { expiresIn: -60 },
       );
 
-      const res = await getSummary(electionId, expired).expect(401);
+      const res = await getSummary(electionId, buildAuthCookie(expired)).expect(401);
 
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
@@ -337,7 +335,7 @@ describe('Electoral roll summary (e2e)', () => {
         { expiresIn: envs.jwtExpiresIn },
       );
 
-      const res = await getSummary(electionId, unauthorized).expect(403);
+      const res = await getSummary(electionId, buildAuthCookie(unauthorized)).expect(403);
 
       expect(res.body).toMatchObject({ statusCode: 403 });
     });
@@ -347,7 +345,7 @@ describe('Electoral roll summary (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .get(`/api/v1/electoral-rolls/${electionId}`)
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .set('x-role', 'ADMINISTRATOR')
         .expect(403);
 
@@ -529,7 +527,7 @@ describe('Electoral roll summary (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -558,8 +556,8 @@ describe('Electoral roll summary (e2e)', () => {
       );
 
       // SW4: authentication is documented at the operation level.
-      expect(operation.security).toEqual([{ bearer: [] }]);
-      expect(document.components?.securitySchemes?.bearer).toBeDefined();
+      expect(operation.security).toEqual([{ cookie: [] }]);
+      expect(document.components?.securitySchemes?.cookie).toBeDefined();
 
       // SW5: the successful response schema matches the runtime response.
       const success = operation.responses['200'];

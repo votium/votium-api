@@ -2,8 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { envs } from '../../src/config';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import {
@@ -13,6 +15,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -31,14 +34,10 @@ class FakeEmailService implements AsyncEmailServicePort {
   }
 }
 
-interface TokensResponseBody {
-  accessToken: string;
-}
-
 interface SwaggerOperationShape {
   tags?: string[];
   parameters?: Array<{ name: string; in: string; required: boolean }>;
-  security?: Array<{ bearer: string[] }>;
+  security?: Array<{ cookie: string[] }>;
   responses: Record<string, { content?: Record<string, { schema: { $ref?: string } }> }>;
 }
 
@@ -79,12 +78,12 @@ describe('Manual election start (e2e)', () => {
       .post('/api/v1/auth/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const startRequest = (id: string, body: Record<string, unknown> | undefined, token?: string) => {
     const req = request(app.getHttpServer()).post(`/api/v1/elections/${id}/start`);
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (token) req.set('Cookie', token);
     return body !== undefined ? req.send(body) : req.send();
   };
 
@@ -174,6 +173,7 @@ describe('Manual election start (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -485,7 +485,7 @@ describe('Manual election start (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -510,8 +510,8 @@ describe('Manual election start (e2e)', () => {
       );
 
       // Authentication is documented at the operation level.
-      expect(operation.security).toEqual([{ bearer: [] }]);
-      expect(document.components?.securitySchemes?.bearer).toBeDefined();
+      expect(operation.security).toEqual([{ cookie: [] }]);
+      expect(document.components?.securitySchemes?.cookie).toBeDefined();
 
       // The successful response schema is the ElectionResponseDto component.
       const success = operation.responses['200'];

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import * as jwt from 'jsonwebtoken';
 import { AppModule } from '../../src/app.module';
@@ -15,6 +16,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import { envs } from '../../src/config';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -35,10 +37,6 @@ class FakeEmailService implements AsyncEmailServicePort {
 
 interface LoginResponseBody {
   sessionId: string;
-}
-
-interface VerifyResponseBody {
-  accessToken: string;
 }
 
 interface ErrorBody {
@@ -81,7 +79,7 @@ describe('GET /auth/me (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as VerifyResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const completeElectorLogin = async (email: string, password: string): Promise<string> => {
@@ -98,12 +96,12 @@ describe('GET /auth/me (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as VerifyResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
-  const meGet = (token?: string, extra: Record<string, string> = {}) => {
+  const meGet = (cookie?: string, extra: Record<string, string> = {}) => {
     const req = request(app.getHttpServer()).get('/api/v1/auth/me');
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (cookie) req.set('Cookie', cookie);
     Object.entries(extra).forEach(([k, v]) => {
       req.set(k, v);
     });
@@ -119,6 +117,7 @@ describe('GET /auth/me (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -250,7 +249,7 @@ describe('GET /auth/me (e2e)', () => {
         envs.jwtSecret,
         { expiresIn: envs.jwtExpiresIn },
       );
-      const res = await meGet(unauthorized).expect(403);
+      const res = await meGet(buildAuthCookie(unauthorized)).expect(403);
       expect((res.body as ErrorBody).statusCode).toBe(403);
     });
 
@@ -259,8 +258,17 @@ describe('GET /auth/me (e2e)', () => {
       expect((res.body as ErrorBody).statusCode).toBe(401);
     });
 
+    it('M5b: a Bearer header is ignored when no cookie is present (cookie-only)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${adminToken.split('=')[1]}`)
+        .expect(401);
+      expect((res.body as ErrorBody).statusCode).toBe(401);
+    });
+
     it('M6: an invalid JWT is rejected with 401', async () => {
-      const res = await meGet(`${adminToken.slice(0, -2)}xx`).expect(401);
+      const tampered = buildAuthCookie(`${adminToken.split('=')[1].slice(0, -2)}xx`);
+      const res = await meGet(tampered).expect(401);
       expect((res.body as ErrorBody).statusCode).toBe(401);
     });
 
@@ -270,7 +278,7 @@ describe('GET /auth/me (e2e)', () => {
         envs.jwtSecret,
         { expiresIn: -60 },
       );
-      const res = await meGet(expired).expect(401);
+      const res = await meGet(buildAuthCookie(expired)).expect(401);
       expect((res.body as ErrorBody).statusCode).toBe(401);
     });
 
@@ -304,7 +312,7 @@ describe('GET /auth/me (e2e)', () => {
         envs.jwtSecret,
         { expiresIn: envs.jwtExpiresIn },
       );
-      const res = await meGet(orphan).expect(404);
+      const res = await meGet(buildAuthCookie(orphan)).expect(404);
       expect((res.body as ErrorBody).statusCode).toBe(404);
     });
 
@@ -314,6 +322,7 @@ describe('GET /auth/me (e2e)', () => {
       expect(bodyStr).not.toContain('password');
       expect(bodyStr).not.toContain(envs.jwtSecret);
       expect(bodyStr).not.toContain(adminToken);
+      expect(bodyStr).not.toContain(adminToken.split('=')[1]);
       expect(Object.keys(res.body as MeResponse)).toEqual(['user']);
       expect(Object.keys((res.body as MeResponse).user).sort()).toEqual([
         'email',
@@ -328,7 +337,7 @@ describe('GET /auth/me (e2e)', () => {
     it('R1: the legacy `/users/me` route is removed (404)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/users/me')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
       expect((res.body as ErrorBody).statusCode).toBe(404);
     });
@@ -336,7 +345,7 @@ describe('GET /auth/me (e2e)', () => {
     it('R2: `GET /users/:id` still resolves a concrete user by id', async () => {
       const res = await request(app.getHttpServer())
         .get(`/api/v1/users/${adminUser.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
       expect((res.body as { id: string }).id).toBe(adminUser.id);
     });
@@ -344,7 +353,7 @@ describe('GET /auth/me (e2e)', () => {
     it('R3: an ELECTOR token still cannot list users', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/users')
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .expect(403);
     });
   });

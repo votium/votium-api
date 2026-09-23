@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import * as jwt from 'jsonwebtoken';
 import { envs } from '../../src/config';
@@ -15,6 +16,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -31,10 +33,6 @@ class FakeEmailService implements AsyncEmailServicePort {
   last(): { to: string; code: string } {
     return this.sent[this.sent.length - 1];
   }
-}
-
-interface TokensResponseBody {
-  accessToken: string;
 }
 
 interface LoginResponseBody {
@@ -58,7 +56,7 @@ interface ElectorResponseBody {
 interface SwaggerOperationShape {
   tags?: string[];
   parameters?: Array<{ name: string; in: string; required: boolean }>;
-  security?: Array<{ bearer: string[] }>;
+  security?: Array<{ cookie: string[] }>;
   requestBody?: {
     required?: boolean;
     content: Record<string, { schema: { $ref?: string } }>;
@@ -103,7 +101,7 @@ describe('Electoral roll modification (e2e)', () => {
       .post('/api/v1/auth/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const completeElectorLogin = async (email: string, password: string): Promise<string> => {
@@ -117,7 +115,7 @@ describe('Electoral roll modification (e2e)', () => {
       .post('/api/v1/auth/electors/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const craftToken = (
@@ -134,7 +132,7 @@ describe('Electoral roll modification (e2e)', () => {
     const req = request(app.getHttpServer()).patch(
       `/api/v1/electoral-rolls/${electionId}/electors/${electorId}`,
     );
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (token) req.set('Cookie', token);
     return req.send(body ?? {});
   };
 
@@ -142,7 +140,7 @@ describe('Electoral roll modification (e2e)', () => {
     const req = request(app.getHttpServer()).delete(
       `/api/v1/electoral-rolls/${electionId}/electors/${electorId}`,
     );
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (token) req.set('Cookie', token);
     return req.send();
   };
 
@@ -219,6 +217,7 @@ describe('Electoral roll modification (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -402,7 +401,7 @@ describe('Electoral roll modification (e2e)', () => {
         electionId,
         electorIds[updCode],
         { firstName: 'Maria' },
-        unauthorized,
+        buildAuthCookie(unauthorized),
       ).expect(403);
 
       expect(res.body).toMatchObject({ statusCode: 403 });
@@ -441,7 +440,7 @@ describe('Electoral roll modification (e2e)', () => {
         electionId,
         electorIds[updCode],
         { firstName: 'Maria' },
-        expired,
+        buildAuthCookie(expired),
       ).expect(401);
 
       expect(res.body).toMatchObject({ statusCode: 401 });
@@ -453,7 +452,7 @@ describe('Electoral roll modification (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .patch(`/api/v1/electoral-rolls/${electionId}/electors/${electorIds[updCode]}`)
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .set('x-role', 'ADMINISTRATOR')
         .send({ firstName: 'Maria' })
         .expect(403);
@@ -930,7 +929,7 @@ describe('Electoral roll modification (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -961,9 +960,9 @@ describe('Electoral roll modification (e2e)', () => {
       }
 
       // US4: authentication is documented at the operation level.
-      expect(pathItem.patch!.security).toEqual([{ bearer: [] }]);
-      expect(pathItem.delete!.security).toEqual([{ bearer: [] }]);
-      expect(document.components?.securitySchemes?.bearer).toBeDefined();
+      expect(pathItem.patch!.security).toEqual([{ cookie: [] }]);
+      expect(pathItem.delete!.security).toEqual([{ cookie: [] }]);
+      expect(document.components?.securitySchemes?.cookie).toBeDefined();
 
       // US5: the PATCH request body references the update DTO.
       expect(pathItem.patch!.requestBody).toBeDefined();

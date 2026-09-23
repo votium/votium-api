@@ -49,6 +49,7 @@ import { ElectorGuard } from './presentation/guards/elector.guard';
 import { BallotAccessGuard } from './presentation/guards/ballot-access.guard';
 import { AuthController } from './presentation/controllers/auth.controller';
 import { ElectorAuthController } from './presentation/controllers/elector-auth.controller';
+import { AuthCookieService } from './presentation/services/auth-cookie.service';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { ElectorAuthController } from './presentation/controllers/elector-auth.c
     RolesGuard,
     ElectorGuard,
     BallotAccessGuard,
+    AuthCookieService,
     PrismaMfaChallengeRepository,
     { provide: MFA_CHALLENGE_REPOSITORY, useClass: PrismaMfaChallengeRepository },
     { provide: ELECTOR_MFA_CHALLENGE_REPOSITORY, useClass: PrismaElectorMfaChallengeRepository },
@@ -155,6 +157,7 @@ import { ElectorAuthController } from './presentation/controllers/elector-auth.c
     RolesGuard,
     ElectorGuard,
     BallotAccessGuard,
+    AuthCookieService,
     { provide: TOKEN_SERVICE_PORT, useClass: JwtTokenService },
     { provide: OTP_GENERATOR_PORT, useClass: CryptoOtpGeneratorService },
     { provide: EMAIL_SERVICE_PORT, useClass: NodemailerEmailService },

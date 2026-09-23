@@ -8,6 +8,7 @@ import {
   Module,
 } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import * as jwt from 'jsonwebtoken';
 import { AppModule } from '../../src/app.module';
@@ -24,6 +25,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import { envs } from '../../src/config';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 
 /**
  * Test-only protected route. It is declared inside this e2e spec (never in src/)
@@ -69,10 +71,6 @@ interface LoginResponseBody {
   message: string;
 }
 
-interface VerifyResponseBody {
-  accessToken: string;
-}
-
 interface ErrorBody {
   statusCode: number;
   error: string;
@@ -110,7 +108,7 @@ describe('ElectorGuard (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as VerifyResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const completeElectorLogin = async (): Promise<string> => {
@@ -127,12 +125,12 @@ describe('ElectorGuard (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as VerifyResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
-  const probeGet = (token?: string, extraHeaders: Record<string, string> = {}) => {
+  const probeGet = (cookie?: string, extraHeaders: Record<string, string> = {}) => {
     const req = request(app.getHttpServer()).get('/api/v1/guard-probe/elector');
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (cookie) req.set('Cookie', cookie);
     Object.entries(extraHeaders).forEach(([k, v]) => {
       req.set(k, v);
     });
@@ -148,6 +146,7 @@ describe('ElectorGuard (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -236,7 +235,7 @@ describe('ElectorGuard (e2e)', () => {
         envs.jwtSecret,
         { expiresIn: envs.jwtExpiresIn },
       );
-      const res = await probeGet(noActorToken).expect(403);
+      const res = await probeGet(buildAuthCookie(noActorToken)).expect(403);
       expect(res.body).toMatchObject({ statusCode: 403 });
     });
 
@@ -246,7 +245,7 @@ describe('ElectorGuard (e2e)', () => {
     });
 
     it('E5: rejects a tampered token with 401', async () => {
-      const tampered = `${electorToken.slice(0, -2)}xx`;
+      const tampered = buildAuthCookie(`${electorToken.split('=')[1].slice(0, -2)}xx`);
       const res = await probeGet(tampered).expect(401);
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
@@ -257,7 +256,7 @@ describe('ElectorGuard (e2e)', () => {
         envs.jwtSecret,
         { expiresIn: -60 }, // already expired
       );
-      const res = await probeGet(expired).expect(401);
+      const res = await probeGet(buildAuthCookie(expired)).expect(401);
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
 
@@ -270,7 +269,8 @@ describe('ElectorGuard (e2e)', () => {
     });
 
     it('E8: never returns 500 or leaks token contents for rejected requests', async () => {
-      const cases = [userToken, `${electorToken.slice(0, -2)}xx`];
+      const tampered = buildAuthCookie(`${electorToken.split('=')[1].slice(0, -2)}xx`);
+      const cases = [userToken, tampered];
       for (const token of cases) {
         const res = await probeGet(token);
         const body = res.body as ErrorBody;
@@ -285,10 +285,7 @@ describe('ElectorGuard (e2e)', () => {
 
   describe('regression: existing role-protected endpoints unchanged', () => {
     it('E9: ADMIN user can list users (200)', async () => {
-      await request(app.getHttpServer())
-        .get('/api/v1/users')
-        .set('Authorization', `Bearer ${userToken}`)
-        .expect(200);
+      await request(app.getHttpServer()).get('/api/v1/users').set('Cookie', userToken).expect(200);
     });
 
     it('E10: an ELECTOR token is not treated as an ADMIN on /users (403)', async () => {
@@ -296,7 +293,7 @@ describe('ElectorGuard (e2e)', () => {
       // RolesGuard reads the missing role and throws ForbiddenException -> 403.
       const res = await request(app.getHttpServer())
         .get('/api/v1/users')
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .expect(403);
       expect(res.body).toMatchObject({ statusCode: 403 });
     });
@@ -304,7 +301,7 @@ describe('ElectorGuard (e2e)', () => {
     it('E11: /electors (GET) still enforces role rules (elector token, no role -> 403)', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/v1/electors')
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .expect(403);
       expect(res.body).toMatchObject({ statusCode: 403 });
     });

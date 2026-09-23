@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as jwt from 'jsonwebtoken';
@@ -16,6 +17,7 @@ import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.v
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
 import { envs } from '../../src/config';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -36,10 +38,6 @@ class FakeEmailService implements AsyncEmailServicePort {
 
 interface LoginResponseBody {
   sessionId: string;
-}
-
-interface TokensResponseBody {
-  accessToken: string;
 }
 
 interface BallotBody {
@@ -98,7 +96,7 @@ describe('Election ballot retrieval (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const completeElectorLogin = async (email: string, pwd: string): Promise<string> => {
@@ -115,12 +113,12 @@ describe('Election ballot retrieval (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const getBallot = (electionId: string, token?: string) => {
     const req = request(app.getHttpServer()).get(`/api/v1/elections/${electionId}/ballot`);
-    if (token) req.set('Authorization', `Bearer ${token}`);
+    if (token) req.set('Cookie', token);
     return req;
   };
 
@@ -183,6 +181,7 @@ describe('Election ballot retrieval (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -498,8 +497,8 @@ describe('Election ballot retrieval (e2e)', () => {
         { expiresIn: envs.jwtExpiresIn },
       );
 
-      await getBallot(electionId, supervisor).expect(403);
-      await getBallot(electionId, noRole).expect(403);
+      await getBallot(electionId, buildAuthCookie(supervisor)).expect(403);
+      await getBallot(electionId, buildAuthCookie(noRole)).expect(403);
     });
 
     it('E2E-B13: the ELECTOR actor-type check is case-sensitive', async () => {
@@ -513,7 +512,7 @@ describe('Election ballot retrieval (e2e)', () => {
         { expiresIn: envs.jwtExpiresIn },
       );
 
-      await getBallot(electionId, bad).expect(403);
+      await getBallot(electionId, buildAuthCookie(bad)).expect(403);
     });
 
     it('E2E-B14: a nonexistent election is rejected with 404', async () => {
@@ -652,19 +651,19 @@ describe('Election ballot retrieval (e2e)', () => {
     it('E2E-R1: an ELECTOR token is still rejected on /elections with 403', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/elections')
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .expect(403);
     });
 
     it('E2E-R2: an ELECTOR token is still rejected on /users and a USER token on /auth/electors/me', async () => {
       await request(app.getHttpServer())
         .get('/api/v1/users')
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .expect(403);
 
       await request(app.getHttpServer())
         .get('/api/v1/auth/electors/me')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(403);
     });
 
@@ -675,17 +674,17 @@ describe('Election ballot retrieval (e2e)', () => {
 
       await request(app.getHttpServer())
         .get(`/api/v1/elections/${electionId}/candidacies`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(200);
 
       await request(app.getHttpServer())
         .get(`/api/v1/elections/${electionId}/candidacies`)
-        .set('Authorization', `Bearer ${electorToken}`)
+        .set('Cookie', electorToken)
         .expect(403);
 
       await request(app.getHttpServer())
         .get('/api/v1/elections/00000000-0000-0000-0000-000000000000/candidacies')
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(404);
     });
   });
@@ -696,7 +695,7 @@ describe('Election ballot retrieval (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -728,8 +727,8 @@ describe('Election ballot retrieval (e2e)', () => {
       expect(paramNames).toEqual(['path:electionId']);
 
       // SW5: authentication is documented at the operation level.
-      expect(operation.security).toEqual([{ bearer: [] }]);
-      expect(document.components?.securitySchemes?.bearer).toBeDefined();
+      expect(operation.security).toEqual([{ cookie: [] }]);
+      expect(document.components?.securitySchemes?.cookie).toBeDefined();
 
       // SW6: the successful response schema matches the runtime response.
       const success = operation.responses?.['200'];

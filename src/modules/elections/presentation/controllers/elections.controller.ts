@@ -13,7 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiOperation, ApiTags, ApiResponse, ApiParam, ApiCookieAuth } from '@nestjs/swagger';
 import { Request } from 'express';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
@@ -41,7 +41,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @ApiTags('elections')
-@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller('elections')
 export class ElectionsController {
   constructor(

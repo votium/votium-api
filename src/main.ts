@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import { envs } from './config';
 import { GlobalExceptionFilter } from './shared/exceptions/filters/global-exception.filter';
 
@@ -11,6 +12,15 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api/v1');
+
+  app.use(cookieParser());
+
+  // Credentials (cookies) require an explicit origin allow-list; wildcard is
+  // deliberately not used with `credentials: true`.
+  app.enableCors({
+    origin: envs.corsOrigins,
+    credentials: true,
+  });
 
   app.useGlobalFilters(new GlobalExceptionFilter());
 
@@ -26,7 +36,7 @@ async function bootstrap() {
     .setTitle('Votium API')
     .setDescription('Electronic voting system API')
     .setVersion('1.0')
-    .addBearerAuth()
+    .addCookieAuth(envs.authCookieName)
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document, { useGlobalPrefix: true });

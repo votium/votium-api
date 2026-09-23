@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiCookieAuth } from '@nestjs/swagger';
 import { CreateUserDto } from '../../application/dtos/create-user.dto';
 import { CreateUserUseCase } from '../../application/use-cases/create-user.use-case';
 import { UserPresenter } from '../presenters/user.presenter';
@@ -27,7 +27,7 @@ type AuthenticatedRequest = Request & {
 };
 
 @ApiTags('Users')
-@ApiBearerAuth()
+@ApiCookieAuth()
 @Controller('users')
 export class UsersController {
   constructor(

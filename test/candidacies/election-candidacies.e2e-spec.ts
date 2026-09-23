@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from '../../src/app.module';
+import { envs } from '../../src/config';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import {
@@ -14,6 +16,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
+import { extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -34,10 +37,6 @@ class FakeEmailService implements AsyncEmailServicePort {
 
 interface LoginResponseBody {
   sessionId: string;
-}
-
-interface TokensResponseBody {
-  accessToken: string;
 }
 
 interface CandidacyQueryBody {
@@ -89,14 +88,14 @@ describe('Election candidacies query (e2e)', () => {
       .send({ sessionId, code })
       .expect(201);
 
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const getCandidacies = (electionId: string, query: Record<string, unknown>, token: string) =>
     request(app.getHttpServer())
       .get(`/api/v1/elections/${electionId}/candidacies`)
       .query(query)
-      .set('Authorization', `Bearer ${token}`);
+      .set('Cookie', token);
 
   async function seedElection(status: ElectionStatus, name?: string): Promise<string> {
     const row = await prisma.election.create({
@@ -155,6 +154,7 @@ describe('Election candidacies query (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -507,7 +507,7 @@ describe('Election candidacies query (e2e)', () => {
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
         .setVersion('1.0')
-        .addBearerAuth()
+        .addCookieAuth(envs.authCookieName)
         .build();
       const document = SwaggerModule.createDocument(app, config);
 
@@ -551,8 +551,8 @@ describe('Election candidacies query (e2e)', () => {
       );
 
       // SW5: authentication is documented at the operation level.
-      expect(operation.security).toEqual([{ bearer: [] }]);
-      expect(document.components?.securitySchemes?.bearer).toBeDefined();
+      expect(operation.security).toEqual([{ cookie: [] }]);
+      expect(document.components?.securitySchemes?.cookie).toBeDefined();
 
       // SW6: the successful response schema matches the runtime response.
       const success = operation.responses?.['200'];

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/shared/database/prisma.service';
@@ -12,6 +13,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
+import { extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -28,10 +30,6 @@ class FakeEmailService implements AsyncEmailServicePort {
   last(): { to: string; code: string } {
     return this.sent[this.sent.length - 1];
   }
-}
-
-interface TokensResponseBody {
-  accessToken: string;
 }
 
 interface BulkRegisterResponse {
@@ -88,7 +86,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       .post('/api/v1/auth/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const bulkRegister = (
@@ -99,7 +97,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
   ) =>
     request(app.getHttpServer())
       .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
-      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', token)
       .attach('file', buffer, { filename, contentType: 'text/csv' });
 
   const seedElection = async (status: SeedStatus): Promise<string> => {
@@ -156,6 +154,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -294,12 +293,11 @@ describe('Electoral roll bulk registration (e2e)', () => {
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), 'not-a-token').expect(401);
     });
 
-    it('EA5: a request without the Authorization header is rejected with 401', async () => {
+    it('EA5: a request without the authentication cookie is rejected with 401', async () => {
       const electionId = await seedElection('CREATED');
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
-        .set('Authorization', 'Bearer')
         .attach('file', toCsv(row(codeA, '2710')), { filename: 'padron.csv' })
         .expect(401);
 
@@ -313,7 +311,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Cookie', adminToken)
         .expect(400);
 
       expect(res.body).toMatchObject({ statusCode: 400 });

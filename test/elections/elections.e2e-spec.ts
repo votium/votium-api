@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/shared/database/prisma.service';
@@ -13,6 +14,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
+import { extractAuthCookie } from '../auth/auth-cookie.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -29,10 +31,6 @@ class FakeEmailService implements AsyncEmailServicePort {
   last(): { to: string; code: string } {
     return this.sent[this.sent.length - 1];
   }
-}
-
-interface TokensResponseBody {
-  accessToken: string;
 }
 
 describe('Elections creation (e2e)', () => {
@@ -70,14 +68,11 @@ describe('Elections creation (e2e)', () => {
       .post('/api/v1/auth/mfa/verify')
       .send({ sessionId, code })
       .expect(201);
-    return (verifyRes.body as TokensResponseBody).accessToken;
+    return extractAuthCookie(verifyRes);
   };
 
   const createElection = (payload: Record<string, unknown>, token: string) =>
-    request(app.getHttpServer())
-      .post('/api/v1/elections')
-      .set('Authorization', `Bearer ${token}`)
-      .send(payload);
+    request(app.getHttpServer()).post('/api/v1/elections').set('Cookie', token).send(payload);
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -88,6 +83,7 @@ describe('Elections creation (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalPipes(
@@ -339,7 +335,7 @@ describe('Elections creation (e2e)', () => {
     const patchElection = (id: string, payload: Record<string, unknown>, token: string) =>
       request(app.getHttpServer())
         .patch(`/api/v1/elections/${id}`)
-        .set('Authorization', `Bearer ${token}`)
+        .set('Cookie', token)
         .send(payload);
 
     const createElectionAndGetId = async (name: string, token: string): Promise<string> => {
@@ -442,9 +438,7 @@ describe('Elections creation (e2e)', () => {
 
   describe('DELETE /elections/:id', () => {
     const deleteElection = (id: string, token: string) =>
-      request(app.getHttpServer())
-        .delete(`/api/v1/elections/${id}`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).delete(`/api/v1/elections/${id}`).set('Cookie', token);
 
     const createElectionAndGetId = async (name: string): Promise<string> => {
       const res = await createElection(validElection(name), adminToken).expect(201);
@@ -597,9 +591,7 @@ describe('Elections creation (e2e)', () => {
     }
 
     const getElections = (token: string, query = '') =>
-      request(app.getHttpServer())
-        .get(`/api/v1/elections${query}`)
-        .set('Authorization', `Bearer ${token}`);
+      request(app.getHttpServer()).get(`/api/v1/elections${query}`).set('Cookie', token);
 
     it('Q1: an authenticated ADMIN can query elections and receives the response contract', async () => {
       await seedElection(`Q1-ACTIVE-${suffix}`);

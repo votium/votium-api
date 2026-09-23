@@ -1,6 +1,16 @@
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { LoginElectorUseCase } from '../../application/use-cases/login-elector.use-case';
 import { VerifyElectorMfaUseCase } from '../../application/use-cases/verify-elector-mfa.use-case';
 import { ResendElectorMfaUseCase } from '../../application/use-cases/resend-elector-mfa.use-case';
@@ -15,6 +25,7 @@ import { MeElectorResponseDto } from '../../application/dtos/me-elector-response
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { ElectorGuard } from '../guards/elector.guard';
 import { AuthPresenter } from '../presenters/auth.presenter';
+import { AuthCookieService } from '../services/auth-cookie.service';
 
 type ElectorAuthenticatedRequest = Request & {
   user: {
@@ -32,6 +43,7 @@ export class ElectorAuthController {
     private readonly verifyElectorMfa: VerifyElectorMfaUseCase,
     private readonly resendElectorMfa: ResendElectorMfaUseCase,
     private readonly getMeElector: GetMeElectorUseCase,
+    private readonly cookies: AuthCookieService,
   ) {}
 
   @Post('login')
@@ -56,14 +68,15 @@ export class ElectorAuthController {
   @ApiOperation({ summary: 'Verify the six-digit OTP and complete elector authentication' })
   @ApiResponse({
     status: 201,
-    description: 'Authentication completed. JWT access token issued.',
+    description: 'Authentication completed. The JWT is set as an HttpOnly cookie.',
     type: ElectorAuthResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid request data or verification code.' })
   @ApiResponse({ status: 401, description: 'Invalid or expired session.' })
-  async verifyMfa(@Body() dto: VerifyElectorMfaDto) {
+  async verifyMfa(@Body() dto: VerifyElectorMfaDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.verifyElectorMfa.execute(dto);
-    return new ElectorAuthResponseDto(result);
+    this.cookies.setAccessToken(res, result.accessToken, result.expiresIn);
+    return new ElectorAuthResponseDto({ expiresIn: result.expiresIn });
   }
 
   @Post('mfa/resend')
@@ -83,7 +96,7 @@ export class ElectorAuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard, ElectorGuard)
-  @ApiBearerAuth()
+  @ApiCookieAuth()
   @ApiOperation({
     summary: 'Get currently authenticated elector',
     description: 'Returns the authenticated voter/elector resolved from the JWT.',
