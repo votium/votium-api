@@ -24,6 +24,7 @@ describe('GetElectoralRollSummaryUseCase', () => {
     findAll: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),
+    findStatusHistory: jest.fn(),
     update: jest.fn(),
     updateStatus: jest.fn(),
     hasCandidates: jest.fn(),

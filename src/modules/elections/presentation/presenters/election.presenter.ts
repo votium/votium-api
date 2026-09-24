@@ -1,4 +1,10 @@
+import { CandidacyPresenter } from 'src/modules/candidacies/presentation/presenters/candidacy.presenter';
+import { ElectionDetailResult } from '../../application/use-cases/get-election-detail.use-case';
 import { ElectionEntity } from '../../domain/entities/election.entity';
+import {
+  ElectionDetailResponseDto,
+  ElectionStatusHistoryEntryResponseDto,
+} from '../dtos/election-detail-response.dto';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
 
 export class ElectionPresenter {
@@ -19,6 +25,23 @@ export class ElectionPresenter {
 
   static toList(entities: ElectionEntity[]): ElectionResponseDto[] {
     return entities.map((entity) => ElectionPresenter.toResponse(entity));
+  }
+
+  static toDetail(result: ElectionDetailResult): ElectionDetailResponseDto {
+    return new ElectionDetailResponseDto({
+      ...ElectionPresenter.toResponse(result.election), // base fields (dates already formatted per project convention)
+      statusHistory: result.statusHistory.map(
+        (entry) =>
+          new ElectionStatusHistoryEntryResponseDto({
+            status: entry.status,
+            timestamp: entry.timestamp.toISOString(),
+          }),
+      ),
+      candidacies: result.candidacies.map((candidacy) =>
+        CandidacyPresenter.toCandidacyWithCandidate(candidacy),
+      ),
+      registeredVoters: result.registeredVoters,
+    });
   }
 }
 

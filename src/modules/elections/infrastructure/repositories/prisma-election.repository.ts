@@ -8,6 +8,7 @@ import {
   type ElectionListParams,
   type ElectionListResult,
   type ElectionRepository,
+  type ElectionStatusHistoryEntry,
 } from '../../domain/repositories/election.repository.interface';
 import { PrismaElectionMapper } from '../mappers/prisma-election.mapper';
 
@@ -57,6 +58,19 @@ export class PrismaElectionRepository implements ElectionRepository {
   async findById(id: string): Promise<ElectionEntity | null> {
     const row = await this.prisma.election.findUnique({ where: { id } });
     return row ? PrismaElectionMapper.toDomain(row) : null;
+  }
+
+  async findStatusHistory(electionId: string): Promise<ElectionStatusHistoryEntry[]> {
+    const rows = await this.prisma.electionStatusHistory.findMany({
+      where: { election_id: electionId },
+      orderBy: { changed_at: 'asc' },
+    });
+    // `new_status as ElectionStatus` mirrors the mapper's cast technique: the
+    // Prisma StatusElection enum is assignable to the domain literal union.
+    return rows.map((row) => ({
+      status: row.new_status,
+      timestamp: row.changed_at,
+    }));
   }
 
   async update(entity: ElectionEntity): Promise<ElectionEntity> {

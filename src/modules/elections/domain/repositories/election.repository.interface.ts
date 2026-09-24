@@ -27,6 +27,16 @@ export type ElectionListResult = {
   total: number;
 };
 
+// Read-model for one persisted election status transition. Only persisted rows
+// are returned; the initial CREATED state (recorded at creation, not in the
+// history table) is never fabricated.
+export interface ElectionStatusHistoryEntry {
+  // Resulting status of the transition (new_status).
+  status: ElectionStatus;
+  // Timestamp the transition was recorded (changed_at).
+  timestamp: Date;
+}
+
 export interface ElectionRepository {
   // Returns a paginated list of elections matching the optional filters, with a
   // count of the total matches (used for pagination metadata). Filters combine with
@@ -43,6 +53,11 @@ export interface ElectionRepository {
 
   // Returns the election with the given id, or null when it does not exist.
   findById(id: string): Promise<ElectionEntity | null>;
+
+  // Returns the persisted status transitions for the election, ordered
+  // chronologically from oldest to newest (changed_at asc). Empty when the
+  // election has no recorded transitions. Never fabricates entries.
+  findStatusHistory(electionId: string): Promise<ElectionStatusHistoryEntry[]>;
 
   // Updates ONLY the editable fields present on the entity. Returns the updated
   // election. Throws ElectionNotFoundError when the row no longer exists (P2025)

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { ElectionsModule } from 'src/modules/elections/elections.module';
 import { ElectorsModule } from 'src/modules/electors/electors.module';
@@ -34,7 +34,7 @@ import { ElectoralRollCsvFileParserService } from './infrastructure/services/ele
 import { ElectoralRollsController } from './presentation/controllers/electoral-rolls.controller';
 
 @Module({
-  imports: [IamModule, AuthModule, ElectionsModule, ElectorsModule],
+  imports: [IamModule, AuthModule, forwardRef(() => ElectionsModule), ElectorsModule],
   controllers: [ElectoralRollsController],
   providers: [
     { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
@@ -98,5 +98,6 @@ import { ElectoralRollsController } from './presentation/controllers/electoral-r
       inject: [ELECTION_REPOSITORY, ELECTOR_REPOSITORY, ELECTORAL_ROLL_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
+  exports: [ELECTORAL_ROLL_REPOSITORY],
 })
 export class ElectoralRollsModule {}
