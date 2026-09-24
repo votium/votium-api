@@ -30,7 +30,12 @@ import { CandidaciesController } from './presentation/controllers/candidacies.co
 import { ElectionCandidaciesController } from './presentation/controllers/election-candidacies.controller';
 
 @Module({
-  imports: [IamModule, AuthModule, ElectionsModule, forwardRef(() => CandidatesModule)],
+  imports: [
+    IamModule,
+    AuthModule,
+    forwardRef(() => ElectionsModule),
+    forwardRef(() => CandidatesModule),
+  ],
   controllers: [CandidaciesController, ElectionCandidaciesController, BallotController],
   providers: [
     { provide: CANDIDACY_REPOSITORY, useClass: PrismaCandidacyRepository },

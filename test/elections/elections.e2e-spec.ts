@@ -99,6 +99,7 @@ describe('Elections creation (e2e)', () => {
     emailService = app.get<FakeEmailService>(ASYNC_EMAIL_SERVICE_PORT);
 
     const hasher = new NodeCryptoPasswordHasherService();
+    const hash = (pwd: string) => hasher.hash(pwd);
     const adminRole = await prisma.role.upsert({
       where: { name: RoleName.ADMINISTRATOR.value },
       update: {},
@@ -126,7 +127,7 @@ describe('Elections creation (e2e)', () => {
         first_name: 'E2E',
         last_name: 'Admin',
         email: adminUser.email,
-        password_hash: await hasher.hash(adminUser.password),
+        password_hash: await hash(adminUser.password),
         role_id: adminRole.id,
         status: UserStatus.ACTIVE.value,
       },
@@ -136,7 +137,7 @@ describe('Elections creation (e2e)', () => {
         first_name: 'E2E',
         last_name: 'Auditor',
         email: auditorUser.email,
-        password_hash: await hasher.hash(auditorUser.password),
+        password_hash: await hash(auditorUser.password),
         role_id: auditorRole.id,
         status: UserStatus.ACTIVE.value,
       },
