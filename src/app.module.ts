@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { IamModule } from './modules/iam/iam.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -10,6 +11,7 @@ import { CandidaciesModule } from './modules/candidacies/candidacies.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     IamModule,
     AuthModule,
     ElectorsModule,

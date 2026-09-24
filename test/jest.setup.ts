@@ -15,3 +15,6 @@ process.env.AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME ?? 'access_token';
 process.env.AUTH_COOKIE_SECURE = process.env.AUTH_COOKIE_SECURE ?? 'true';
 process.env.AUTH_COOKIE_SAMESITE = process.env.AUTH_COOKIE_SAMESITE ?? 'lax';
 process.env.CORS_ORIGINS = process.env.CORS_ORIGINS ?? 'http://localhost:5173';
+// Keep the automatic-closure cron inert during unit/integration/e2e runs so it can
+// never mutate fixtures mid-test; the e2e drives closure explicitly via DI.
+process.env.ELECTION_AUTO_CLOSE_ENABLED = process.env.ELECTION_AUTO_CLOSE_ENABLED ?? 'false';

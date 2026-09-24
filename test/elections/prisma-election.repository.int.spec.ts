@@ -1,5 +1,8 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
-import { ElectionEntity } from '../../src/modules/elections/domain/entities/election.entity';
+import {
+  ElectionEntity,
+  type ElectionStatus,
+} from '../../src/modules/elections/domain/entities/election.entity';
 import { ElectionNameConflictError } from '../../src/modules/elections/domain/errors/election-name-conflict.error';
 import { ElectionNotFoundError } from '../../src/modules/elections/domain/errors/election-not-found.error';
 import { PrismaElectionRepository } from '../../src/modules/elections/infrastructure/repositories/prisma-election.repository';
@@ -790,6 +793,147 @@ describe('PrismaElectionRepository integration', () => {
       await expect(
         repository.delete('00000000-0000-0000-0000-000000000000'),
       ).rejects.toBeInstanceOf(ElectionNotFoundError);
+    });
+  });
+
+  describe('findExpiredActive', () => {
+    // Fixed reference instant so every boundary branch is deterministic:
+    // 2026-10-01T12:30:00Z. Reference window mirrors the entity fixtures (end 18:00Z).
+    const refNow = new Date(Date.UTC(2026, 9, 1, 12, 30, 0));
+    const refToday = new Date(Date.UTC(2026, 9, 1));
+    const refYesterday = new Date(Date.UTC(2026, 8, 30));
+    const refTomorrow = new Date(Date.UTC(2026, 9, 2));
+    const timeAt = (hh: number, mm = 0, ss = 0): Date => new Date(Date.UTC(1970, 0, 1, hh, mm, ss));
+
+    async function seedExpiredCandidate(
+      name: string,
+      over: Partial<{
+        startDate: Date;
+        startTime: Date;
+        endDate: Date;
+        endTime: Date;
+      }> = {},
+      status: ElectionStatus = 'ACTIVE',
+    ): Promise<ElectionEntity> {
+      usedNames.push(name);
+      const saved = await repository.create(
+        ElectionEntity.create({
+          name,
+          description: 'findExpiredActive integration test election.',
+          startDate: refYesterday,
+          startTime: timeAt(0, 0, 0),
+          endDate: refToday,
+          endTime: timeAt(18, 0, 0),
+          ...over,
+        }),
+      );
+      await prisma.election.update({
+        where: { id: saved.id as string },
+        data: { current_status: status },
+      });
+      return saved;
+    }
+
+    it('EXP-1: returns an ACTIVE election whose end_date is a previous day (downtime recovery)', async () => {
+      const saved = await seedExpiredCandidate(`EXP1-${suffix}`, { endDate: refYesterday });
+
+      const results = await repository.findExpiredActive(refNow);
+
+      expect(results.some((e) => e.id === saved.id)).toBe(true);
+    });
+
+    it('EXP-2: returns an ACTIVE election at the exact inclusive boundary (end_time == now time)', async () => {
+      const saved = await seedExpiredCandidate(`EXP2-${suffix}`, {
+        endDate: refToday,
+        endTime: timeAt(12, 30, 0),
+      });
+
+      const results = await repository.findExpiredActive(refNow);
+
+      expect(results.some((e) => e.id === saved.id)).toBe(true);
+    });
+
+    it('EXP-3: returns an ACTIVE election whose end_time is one second before now (same day)', async () => {
+      const saved = await seedExpiredCandidate(`EXP3-${suffix}`, {
+        endDate: refToday,
+        endTime: timeAt(12, 29, 59),
+      });
+
+      const results = await repository.findExpiredActive(refNow);
+
+      expect(results.some((e) => e.id === saved.id)).toBe(true);
+    });
+
+    it('EXP-4: does NOT return an ACTIVE election whose end_time is one second after now (same day)', async () => {
+      const saved = await seedExpiredCandidate(`EXP4-${suffix}`, {
+        endDate: refToday,
+        endTime: timeAt(12, 30, 1),
+      });
+
+      const results = await repository.findExpiredActive(refNow);
+
+      expect(results.some((e) => e.id === saved.id)).toBe(false);
+    });
+
+    it('EXP-5: does NOT return an ACTIVE election whose end_date is tomorrow', async () => {
+      const saved = await seedExpiredCandidate(`EXP5-${suffix}`, { endDate: refTomorrow });
+
+      const results = await repository.findExpiredActive(refNow);
+
+      expect(results.some((e) => e.id === saved.id)).toBe(false);
+    });
+
+    it.each(['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED'] as const)(
+      'EXP-6: does NOT return a %s election with a past end date (only ACTIVE is eligible)',
+      async (status) => {
+        const saved = await seedExpiredCandidate(
+          `EXP6-${status}-${suffix}`,
+          { endDate: refYesterday },
+          status,
+        );
+
+        const results = await repository.findExpiredActive(refNow);
+
+        expect(results.some((e) => e.id === saved.id)).toBe(false);
+      },
+    );
+
+    it('EXP-7: returns exactly the matching ACTIVE-ended elections as ElectionEntity instances', async () => {
+      const matchA = await seedExpiredCandidate(`EXP7-A-${suffix}`, { endDate: refYesterday });
+      const matchB = await seedExpiredCandidate(`EXP7-B-${suffix}`, {
+        endDate: refToday,
+        endTime: timeAt(12, 0, 0),
+      });
+      const notEnded = await seedExpiredCandidate(`EXP7-F-${suffix}`, { endDate: refTomorrow });
+      const endsAfterNow = await seedExpiredCandidate(`EXP7-N-${suffix}`, {
+        endDate: refToday,
+        endTime: timeAt(12, 31, 0),
+      });
+      const notActive = await seedExpiredCandidate(
+        `EXP7-P-${suffix}`,
+        { endDate: refYesterday },
+        'PENDING',
+      );
+
+      const results = await repository.findExpiredActive(refNow);
+      const returnedIds = results.map((e) => e.id);
+
+      expect(returnedIds.sort()).toEqual([matchA.id, matchB.id].sort());
+      expect(returnedIds).not.toContain(notEnded.id);
+      expect(returnedIds).not.toContain(endsAfterNow.id);
+      expect(returnedIds).not.toContain(notActive.id);
+      for (const election of results) {
+        expect(election).toBeInstanceOf(ElectionEntity);
+        expect(election.currentStatus).toBe('ACTIVE');
+        expect(election.id).toBeTruthy();
+      }
+    });
+
+    it('EXP-8: returns an empty array when no matching rows exist (not null, no throw)', async () => {
+      const results = await repository.findExpiredActive(refNow);
+
+      expect(results).toEqual([]);
+      expect(Array.isArray(results)).toBe(true);
     });
   });
 });

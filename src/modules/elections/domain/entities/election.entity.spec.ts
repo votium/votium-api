@@ -360,6 +360,38 @@ describe('ElectionEntity', () => {
     });
   });
 
+  describe('markAsClosed', () => {
+    function makeElection(currentStatus: string): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: currentStatus as ElectionEntity['currentStatus'],
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+      });
+    }
+
+    it('MAC-1: transitions an ACTIVE election to CLOSED', () => {
+      const e = makeElection('ACTIVE');
+      e.markAsClosed();
+      expect(e.currentStatus).toBe('CLOSED');
+    });
+
+    it.each(['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED'] as const)(
+      'MAC-2: throws ElectionStatusTransitionError on %s and leaves it unchanged',
+      (status) => {
+        const e = makeElection(status);
+        expect(() => e.markAsClosed()).toThrow(ElectionStatusTransitionError);
+        expect(e.currentStatus).toBe(status);
+      },
+    );
+  });
+
   describe('isWithinSchedule', () => {
     // Window: 2026-10-01 08:00:00Z .. 2026-10-01 18:00:00Z.
     function makeElection(
@@ -425,6 +457,56 @@ describe('ElectionEntity', () => {
         endTime: new Date(Date.UTC(1970, 0, 1, 2, 0, 0)),
       });
       expect(e.isWithinSchedule(new Date(Date.UTC(2026, 10, 1, 2, 0, 0)))).toBe(true);
+    });
+  });
+
+  describe('hasReachedEnd', () => {
+    // End instant: 2026-10-01 18:00:00Z unless overridden.
+    function makeElection(
+      over: Partial<Parameters<typeof ElectionEntity.restore>[0]> = {},
+    ): ElectionEntity {
+      return ElectionEntity.restore({
+        id: 'election-1',
+        name: 'n',
+        description: 'd',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+        startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+        endDate: new Date(Date.UTC(2026, 9, 1)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        currentStatus: 'ACTIVE',
+        blankVoteEnabled: false,
+        createdAt: new Date('2026-08-19T15:00:00.000Z'),
+        ...over,
+      });
+    }
+
+    it('HRE-1: returns false one second before the end instant', () => {
+      expect(makeElection().hasReachedEnd(new Date(Date.UTC(2026, 9, 1, 17, 59, 59)))).toBe(false);
+    });
+
+    it('HRE-2: returns true exactly at the end instant (inclusive >= boundary)', () => {
+      expect(makeElection().hasReachedEnd(new Date(Date.UTC(2026, 9, 1, 18, 0, 0)))).toBe(true);
+    });
+
+    it('HRE-3: returns true after the end instant (delayed scheduler execution)', () => {
+      expect(makeElection().hasReachedEnd(new Date(Date.UTC(2026, 9, 1, 18, 0, 5)))).toBe(true);
+    });
+
+    it('HRE-4: returns false earlier the same day (date and time combined, not date-only)', () => {
+      expect(makeElection().hasReachedEnd(new Date(Date.UTC(2026, 9, 1, 7, 0, 0)))).toBe(false);
+    });
+
+    it('HRE-5: returns false when the end date is still in the future', () => {
+      const e = makeElection({ endDate: new Date(Date.UTC(2026, 9, 2)) });
+      expect(e.hasReachedEnd(new Date(Date.UTC(2026, 9, 1, 23, 0, 0)))).toBe(false);
+    });
+
+    it('HRE-6: returns true when the end fell on a previous day (downtime across midnight)', () => {
+      const e = makeElection({
+        endDate: new Date(Date.UTC(2026, 8, 30)),
+        endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+      });
+      expect(e.hasReachedEnd(new Date(Date.UTC(2026, 9, 1, 0, 0, 30)))).toBe(true);
     });
   });
 

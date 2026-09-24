@@ -22,6 +22,7 @@ function makeElectionRepo(election: ElectionEntity | null): ElectionRepository {
     hasCandidates: jest.fn(),
     hasVotes: jest.fn(),
     hasElectoralRoll: jest.fn(),
+    findExpiredActive: jest.fn(),
     delete: jest.fn(),
     updateStatus: jest.fn().mockResolvedValue(election),
   };

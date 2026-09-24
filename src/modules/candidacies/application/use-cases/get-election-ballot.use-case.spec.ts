@@ -55,6 +55,7 @@ describe('GetElectionBallotUseCase', () => {
     updateStatus: jest.fn(),
     hasCandidates: jest.fn(),
     hasVotes: jest.fn(),
+    findExpiredActive: jest.fn(),
     delete: jest.fn(),
   };
 

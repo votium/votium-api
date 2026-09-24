@@ -54,11 +54,25 @@ export interface ElectionRepository {
   // single transaction. Returns the updated election, or null when the id does not
   // exist (P2025). This is the dedicated lifecycle-transition path (e.g. CREATED→PENDING);
   // the regular update() never touches current_status.
+  //
+  // When `expectedCurrentStatus` is provided the transition is GUARDED: the election
+  // is only updated if it is STILL in that status (conditional update), making the
+  // call idempotent and safe under concurrent callers — losers get count 0 and return
+  // null without writing a duplicate history row. Used by automatic closure
+  // (ACTIVE → CLOSED). `requestingUserId` may be null for system (automatic)
+  // transitions, which persist a history row with user_id NULL.
   updateStatus(
     id: string,
     status: ElectionStatus,
-    requestingUserId: string,
+    requestingUserId: string | null,
+    expectedCurrentStatus?: ElectionStatus,
   ): Promise<ElectionEntity | null>;
+
+  // Elections currently ACTIVE whose configured end instant (end_date + end_time) is
+  // <= `now` (UTC). Used by the automatic closure process. The SQL filter mirrors the
+  // `notEnded` half of buildActiveFilter (inverted) in the Prisma repository — the two
+  // must stay in sync.
+  findExpiredActive(now?: Date): Promise<ElectionEntity[]>;
 
   // Whether any candidate/candidacy is associated with the election. Count-based
   // existence check; does not load the collection into memory.

@@ -109,13 +109,13 @@ model Election {
 model ElectionStatusHistory {
   id          String         @id @default(uuid())
   election_id String
-  user_id     String
+  user_id     String? // NULL = system/automatic transition (no human actor)
   old_status  StatusElection
   new_status  StatusElection
   changed_at  DateTime       @default(now())
 
   election Election @relation(fields: [election_id], references: [id])
-  user     User     @relation(fields: [user_id], references: [id])
+  user     User?    @relation(fields: [user_id], references: [id])
 
   @@map("election_status_history")
 }
