@@ -19,6 +19,7 @@ function makeElectionRepo(election: ElectionEntity | null): ElectionRepository {
     findAll: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    findStatusHistory: jest.fn(),
     hasCandidates: jest.fn(),
     hasVotes: jest.fn(),
     hasElectoralRoll: jest.fn(),

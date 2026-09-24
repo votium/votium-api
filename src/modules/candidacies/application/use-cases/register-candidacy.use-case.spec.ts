@@ -31,6 +31,7 @@ function makeElectionRepo(election: ElectionEntity | null): ElectionRepository {
     findAll: jest.fn(),
     create: jest.fn(),
     findById: jest.fn().mockResolvedValue(election),
+    findStatusHistory: jest.fn(),
     update: jest.fn(),
     updateStatus: jest.fn(),
     hasCandidates: jest.fn(),

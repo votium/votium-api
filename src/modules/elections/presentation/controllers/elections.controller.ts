@@ -23,11 +23,13 @@ import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { CreateElectionDto } from '../../application/dtos/create-election.dto';
 import { UpdateElectionDto } from '../../application/dtos/update-election.dto';
 import { CreateElectionUseCase } from '../../application/use-cases/create-election.use-case';
+import { GetElectionDetailUseCase } from '../../application/use-cases/get-election-detail.use-case';
 import { GetElectionsUseCase } from '../../application/use-cases/get-elections.use-case';
 import { UpdateElectionUseCase } from '../../application/use-cases/update-election.use-case';
 import { DeleteElectionUseCase } from '../../application/use-cases/delete-election.use-case';
 import { StartElectionUseCase } from '../../application/use-cases/start-election.use-case';
 import { ElectionPresenter } from '../presenters/election.presenter';
+import { ElectionDetailResponseDto } from '../dtos/election-detail-response.dto';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
 import { ElectionsListResponseDto } from '../dtos/elections-list-response.dto';
 import { ListElectionsQueryDto } from '../dtos/list-elections-query.dto';
@@ -46,6 +48,7 @@ type AuthenticatedRequest = Request & {
 export class ElectionsController {
   constructor(
     private readonly getElections: GetElectionsUseCase,
+    private readonly getElectionDetail: GetElectionDetailUseCase,
     private readonly createElection: CreateElectionUseCase,
     private readonly updateElection: UpdateElectionUseCase,
     private readonly deleteElection: DeleteElectionUseCase,
@@ -83,6 +86,32 @@ export class ElectionsController {
 
     const data = ElectionPresenter.toList(elections);
     return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiOperation({
+    summary: 'Get election detail',
+    description:
+      'Returns the full detail of a single election: basic information, current status, ' +
+      'persisted status history, associated candidates (INACTIVE candidates are excluded) ' +
+      'and the total number of electors enabled to participate. Read-only. Requires ' +
+      'ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election detail retrieved successfully.',
+    type: ElectionDetailResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  async findById(@Param('id', ParseUUIDPipe) id: string) {
+    const detail = await this.getElectionDetail.execute(id);
+    return ElectionPresenter.toDetail(detail);
   }
 
   @Post()

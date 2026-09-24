@@ -792,4 +792,137 @@ describe('PrismaElectionRepository integration', () => {
       ).rejects.toBeInstanceOf(ElectionNotFoundError);
     });
   });
+
+  describe('findStatusHistory', () => {
+    const usedUserIds: string[] = [];
+
+    afterEach(async () => {
+      // History rows are removed first (restrictive FK), then their users; the
+      // outer suite removes the elections afterwards.
+      if (usedUserIds.length > 0) {
+        await prisma.electionStatusHistory.deleteMany({
+          where: { user_id: { in: usedUserIds } },
+        });
+        await prisma.user.deleteMany({ where: { id: { in: usedUserIds } } });
+        usedUserIds.length = 0;
+      }
+    });
+
+    async function seedUser(): Promise<string> {
+      const role = await prisma.role.upsert({
+        where: { name: 'ADMINISTRATOR' },
+        update: {},
+        create: { name: 'ADMINISTRATOR' },
+      });
+      const user = await prisma.user.create({
+        data: {
+          first_name: 'History',
+          last_name: 'Reader',
+          email: `history-reader-${suffix}-${Math.random()}@example.com`,
+          password_hash: 'pbkdf2$placeholder',
+          role_id: role.id,
+          status: 'ACTIVE',
+        },
+      });
+      usedUserIds.push(user.id);
+      return user.id;
+    }
+
+    async function seedHistory(
+      electionId: string,
+      userId: string,
+      newStatus: string,
+      changedAt: Date,
+    ): Promise<void> {
+      await prisma.electionStatusHistory.create({
+        data: {
+          election_id: electionId,
+          user_id: userId,
+          old_status: 'CREATED',
+          new_status: newStatus,
+          changed_at: changedAt,
+        },
+      });
+    }
+
+    it('IR-01: returns an empty list for an election with no recorded transitions', async () => {
+      const name = `FH-EMPTY-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+
+      const history = await repository.findStatusHistory(saved.id as string);
+      expect(history).toEqual([]);
+    });
+
+    it('IR-02: returns transitions recorded via updateStatus ordered from oldest to newest', async () => {
+      const name = `FH-ROUNDTRIP-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const userId = await seedUser();
+
+      await repository.updateStatus(saved.id as string, 'PENDING', userId);
+      await repository.updateStatus(saved.id as string, 'ACTIVE', userId);
+
+      const history = await repository.findStatusHistory(saved.id as string);
+      expect(history).toHaveLength(2);
+      expect(history[0].status).toBe('PENDING');
+      expect(history[0].timestamp).toBeInstanceOf(Date);
+      expect(history[1].status).toBe('ACTIVE');
+      expect(history[1].timestamp.getTime()).toBeGreaterThanOrEqual(history[0].timestamp.getTime());
+    });
+
+    it('IR-03: orders directly seeded rows by changed_at ascending, exposing new_status as status', async () => {
+      const name = `FH-ORDER-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      const userId = await seedUser();
+
+      // Deliberately out of chronological order: the repository must sort them.
+      await seedHistory(saved.id as string, userId, 'ACTIVE', new Date('2026-08-21T10:00:00.000Z'));
+      await seedHistory(
+        saved.id as string,
+        userId,
+        'PENDING',
+        new Date('2026-08-20T10:00:00.000Z'),
+      );
+
+      const history = await repository.findStatusHistory(saved.id as string);
+      expect(history.map((entry) => entry.status)).toEqual(['PENDING', 'ACTIVE']);
+      expect(history.map((entry) => entry.timestamp)).toEqual([
+        new Date('2026-08-20T10:00:00.000Z'),
+        new Date('2026-08-21T10:00:00.000Z'),
+      ]);
+    });
+
+    it('IR-04: is scoped to the requested election and never returns another election history', async () => {
+      const nameA = `FH-SCOPE-A-${suffix}`;
+      const nameB = `FH-SCOPE-B-${suffix}`;
+      usedNames.push(nameA, nameB);
+      const electionA = await repository.create(buildEntity(nameA));
+      const electionB = await repository.create(buildEntity(nameB));
+      const userId = await seedUser();
+
+      await seedHistory(
+        electionA.id as string,
+        userId,
+        'PENDING',
+        new Date('2026-08-20T10:00:00.000Z'),
+      );
+      await seedHistory(
+        electionB.id as string,
+        userId,
+        'ACTIVE',
+        new Date('2026-08-21T10:00:00.000Z'),
+      );
+
+      const historyA = await repository.findStatusHistory(electionA.id as string);
+      expect(historyA.map((entry) => entry.status)).toEqual(['PENDING']);
+      expect(historyA[0].timestamp).toEqual(new Date('2026-08-20T10:00:00.000Z'));
+    });
+
+    it('IR-05: returns an empty list without throwing for a nonexistent election id', async () => {
+      const history = await repository.findStatusHistory('00000000-0000-0000-0000-000000000000');
+      expect(history).toEqual([]);
+    });
+  });
 });
