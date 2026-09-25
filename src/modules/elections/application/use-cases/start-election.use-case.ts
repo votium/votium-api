@@ -24,8 +24,9 @@ export class StartElectionUseCase {
     const now = input.now ?? new Date();
 
     // The ACTIVE transition is persisted into ElectionStatusHistory with the
-    // acting user (NOT NULL FK). An empty requestingUserId could never produce a
-    // valid history row, so reject it before touching the persistence layer.
+    // acting user. Manual transitions still require a non-empty actor (system
+    // transitions use a nullable user_id); an empty requestingUserId could never
+    // produce a valid history row, so reject it before touching the persistence layer.
     if (!requestingUserId) throw new ElectionStartRequiresUserError();
 
     const election = await this.elections.findById(electionId);

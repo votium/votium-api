@@ -21,11 +21,13 @@ import { GetElectionsUseCase } from './application/use-cases/get-elections.use-c
 import { UpdateElectionUseCase } from './application/use-cases/update-election.use-case';
 import { DeleteElectionUseCase } from './application/use-cases/delete-election.use-case';
 import { StartElectionUseCase } from './application/use-cases/start-election.use-case';
+import { CloseExpiredElectionsUseCase } from './application/use-cases/close-expired-elections.use-case';
 import {
   ELECTION_REPOSITORY,
   type ElectionRepository,
 } from './domain/repositories/election.repository.interface';
 import { PrismaElectionRepository } from './infrastructure/repositories/prisma-election.repository';
+import { ElectionClosureSchedulerService } from './infrastructure/services/election-closure-scheduler.service';
 import { ElectionsController } from './presentation/controllers/elections.controller';
 
 @Module({
@@ -76,7 +78,18 @@ import { ElectionsController } from './presentation/controllers/elections.contro
         new StartElectionUseCase(elections, audit),
       inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
     },
+    {
+      provide: CloseExpiredElectionsUseCase,
+      useFactory: (elections: ElectionRepository) => new CloseExpiredElectionsUseCase(elections),
+      inject: [ELECTION_REPOSITORY],
+    },
+    {
+      provide: ElectionClosureSchedulerService,
+      useFactory: (useCase: CloseExpiredElectionsUseCase) =>
+        new ElectionClosureSchedulerService(useCase),
+      inject: [CloseExpiredElectionsUseCase],
+    },
   ],
-  exports: [ELECTION_REPOSITORY],
+  exports: [ELECTION_REPOSITORY, CloseExpiredElectionsUseCase],
 })
 export class ElectionsModule {}

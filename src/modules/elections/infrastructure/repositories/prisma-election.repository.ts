@@ -90,10 +90,34 @@ export class PrismaElectionRepository implements ElectionRepository {
   async updateStatus(
     id: string,
     status: ElectionStatus,
-    requestingUserId: string,
+    requestingUserId: string | null,
+    expectedCurrentStatus?: ElectionStatus,
   ): Promise<ElectionEntity | null> {
     try {
       const row = await this.prisma.$transaction(async (tx) => {
+        // Guarded branch: only transition if the election is STILL in the expected
+        // status (conditional updateMany). Used by automatic closure
+        // (ACTIVE -> CLOSED) for idempotency under concurrency — only one concurrent
+        // caller wins; losers get count 0 and create no duplicate history row.
+        if (expectedCurrentStatus !== undefined) {
+          const res = await tx.election.updateMany({
+            where: { id, current_status: expectedCurrentStatus },
+            data: { current_status: status },
+          });
+          if (res.count === 0) return null; // already transitioned / not in expected status
+
+          await tx.electionStatusHistory.create({
+            data: {
+              election_id: id,
+              user_id: requestingUserId, // null for system transitions
+              old_status: expectedCurrentStatus,
+              new_status: status,
+            },
+          });
+          return tx.election.findUnique({ where: { id } });
+        }
+
+        // Unguarded path (manual transitions): read → update → history.
         const current = await tx.election.findUnique({ where: { id } });
         if (!current) {
           return null;
@@ -125,6 +149,24 @@ export class PrismaElectionRepository implements ElectionRepository {
       if (isRecordNotFoundError(error)) return null;
       throw error;
     }
+  }
+
+  async findExpiredActive(now: Date = new Date()): Promise<ElectionEntity[]> {
+    // Mirrors the SQL shape of buildActiveFilter's `notEnded` half (inverted) —
+    // end instant <= now. Only ACTIVE elections are eligible for automatic closure.
+    const today = currentElectionDate(now);
+    const nowTime = currentElectionTime(now);
+    const rows = await this.prisma.election.findMany({
+      where: {
+        current_status: 'ACTIVE',
+        OR: [
+          { end_date: { lt: today } },
+          { AND: [{ end_date: today }, { end_time: { lte: nowTime } }] },
+        ],
+      },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows.map((row) => PrismaElectionMapper.toDomain(row));
   }
 
   async hasCandidates(electionId: string): Promise<boolean> {

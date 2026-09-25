@@ -32,6 +32,7 @@ describe('GetElectionsUseCase', () => {
     hasCandidates: jest.fn(),
     hasVotes: jest.fn(),
     hasElectoralRoll: jest.fn(),
+    findExpiredActive: jest.fn(),
     updateStatus: jest.fn(),
     delete: jest.fn(),
   };

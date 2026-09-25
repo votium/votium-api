@@ -39,6 +39,7 @@ describe('StartElectionUseCase', () => {
     hasCandidates: jest.fn(),
     hasVotes: jest.fn(),
     hasElectoralRoll: jest.fn(),
+    findExpiredActive: jest.fn(),
     delete: jest.fn(),
   };
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
@@ -203,8 +204,8 @@ describe('StartElectionUseCase', () => {
       }),
     ).rejects.toBeInstanceOf(ElectionStartRequiresUserError);
 
-    // Fails before any repository/audit call: ElectionStatusHistory.user_id is a
-    // NOT NULL FK, so an empty actor could never produce a valid history row.
+    // Fails before any repository/audit call: manual transitions still require a
+    // non-empty actor, so an empty actor could never produce a valid history row.
     expect(elections.findById.mock.calls).toHaveLength(0);
     expect(elections.updateStatus.mock.calls).toHaveLength(0);
     expect(audit.log.mock.calls).toHaveLength(0);

@@ -178,4 +178,95 @@ describe('PrismaElectionRepository integration - updateStatus', () => {
     expect(history[1].old_status).toBe('PENDING');
     expect(history[1].new_status).toBe('PUBLISHED');
   });
+
+  async function seedActiveElection(name: string): Promise<ElectionEntity> {
+    const saved = await seedElection(name);
+    await prisma.election.update({
+      where: { id: saved.id as string },
+      data: { current_status: 'ACTIVE' },
+    });
+    return saved;
+  }
+
+  it('IES7: guarded transition with system actor writes CLOSED and one history row with user_id null', async () => {
+    const saved = await seedActiveElection(`IES7-${suffix}`);
+    const id = saved.id as string;
+
+    const updated = await repository.updateStatus(id, 'CLOSED', null, 'ACTIVE');
+
+    expect(updated).not.toBeNull();
+    expect(updated!.currentStatus).toBe('CLOSED');
+    const row = await prisma.election.findUnique({ where: { id } });
+    expect(row!.current_status).toBe('CLOSED');
+
+    const history = await prisma.electionStatusHistory.findMany({ where: { election_id: id } });
+    expect(history).toHaveLength(1);
+    expect(history[0].old_status).toBe('ACTIVE');
+    expect(history[0].new_status).toBe('CLOSED');
+    expect(history[0].user_id).toBeNull();
+    expect(history[0].changed_at).toBeInstanceOf(Date);
+  });
+
+  it('IES8: repeating the guarded call returns null with no duplicate transition or history', async () => {
+    const saved = await seedActiveElection(`IES8-${suffix}`);
+    const id = saved.id as string;
+    await repository.updateStatus(id, 'CLOSED', null, 'ACTIVE');
+
+    const second = await repository.updateStatus(id, 'CLOSED', null, 'ACTIVE');
+
+    expect(second).toBeNull();
+    const row = await prisma.election.findUnique({ where: { id } });
+    expect(row!.current_status).toBe('CLOSED');
+    const history = await prisma.electionStatusHistory.findMany({ where: { election_id: id } });
+    expect(history).toHaveLength(1);
+  });
+
+  it('IES9: guarded transition from a non-expected status returns null and writes no history', async () => {
+    const saved = await seedElection(`IES9-${suffix}`);
+    const id = saved.id as string;
+    await prisma.election.update({ where: { id }, data: { current_status: 'PENDING' } });
+
+    const updated = await repository.updateStatus(id, 'CLOSED', null, 'ACTIVE');
+
+    expect(updated).toBeNull();
+    const row = await prisma.election.findUnique({ where: { id } });
+    expect(row!.current_status).toBe('PENDING');
+    const history = await prisma.electionStatusHistory.findMany({ where: { election_id: id } });
+    expect(history).toHaveLength(0);
+  });
+
+  it('IES10: guarded transition on a nonexistent id returns null and writes no history', async () => {
+    const id = '00000000-0000-0000-0000-000000000000';
+
+    const updated = await repository.updateStatus(id, 'CLOSED', null, 'ACTIVE');
+
+    expect(updated).toBeNull();
+    const history = await prisma.electionStatusHistory.findMany({ where: { election_id: id } });
+    expect(history).toHaveLength(0);
+  });
+
+  it('IES11: concurrent guarded transitions — exactly one wins and only one history row exists', async () => {
+    const saved = await seedActiveElection(`IES11-${suffix}`);
+    const id = saved.id as string;
+
+    const [first, second] = await Promise.all([
+      repository.updateStatus(id, 'CLOSED', null, 'ACTIVE'),
+      repository.updateStatus(id, 'CLOSED', null, 'ACTIVE'),
+    ]);
+
+    const outcomes = [first, second];
+    const winners = outcomes.filter((r) => r !== null);
+    const losers = outcomes.filter((r) => r === null);
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect(winners[0].currentStatus).toBe('CLOSED');
+
+    const row = await prisma.election.findUnique({ where: { id } });
+    expect(row!.current_status).toBe('CLOSED');
+    const history = await prisma.electionStatusHistory.findMany({ where: { election_id: id } });
+    expect(history).toHaveLength(1);
+    expect(history[0].old_status).toBe('ACTIVE');
+    expect(history[0].new_status).toBe('CLOSED');
+    expect(history[0].user_id).toBeNull();
+  });
 });

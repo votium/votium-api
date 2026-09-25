@@ -17,6 +17,7 @@ interface EnvVars {
   AUTH_COOKIE_SAMESITE: 'strict' | 'lax' | 'none';
   AUTH_COOKIE_DOMAIN?: string;
   CORS_ORIGINS: string;
+  ELECTION_AUTO_CLOSE_ENABLED: boolean;
 }
 
 const envsSchema = joi
@@ -36,6 +37,7 @@ const envsSchema = joi
     AUTH_COOKIE_SAMESITE: joi.string().valid('strict', 'lax', 'none').default('lax'),
     AUTH_COOKIE_DOMAIN: joi.string().optional(),
     CORS_ORIGINS: joi.string().default('http://localhost:5173'),
+    ELECTION_AUTO_CLOSE_ENABLED: joi.boolean().default(true),
   })
   .unknown(true);
 
@@ -77,4 +79,5 @@ export const envs = {
   corsOrigins: envsVars.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
+  electionAutoCloseEnabled: envsVars.ELECTION_AUTO_CLOSE_ENABLED,
 };

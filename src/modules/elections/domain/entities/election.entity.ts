@@ -88,6 +88,14 @@ export class ElectionEntity {
     );
   }
 
+  // Whether the configured end instant (end_date + end_time) has been reached by
+  // `now`. Inclusive boundary (now == endInstant counts as reached), matching
+  // isWithinSchedule's upper bound and the repository's `notEnded` filter (its
+  // inversion). Single decision point for the automatic-closure eligibility rule.
+  hasReachedEnd(now: Date): boolean {
+    return ElectionEntity.toInstant(this.endDate, this.endTime) <= now.getTime();
+  }
+
   static create(input: CreateElectionInput): ElectionEntity {
     return new ElectionEntity(
       null,
@@ -175,6 +183,18 @@ export class ElectionEntity {
   markAsActive(): void {
     if (this._currentStatus === 'PENDING') {
       this._currentStatus = 'ACTIVE';
+      return;
+    }
+    throw new ElectionStatusTransitionError();
+  }
+
+  // Transitions the election to CLOSED (the state reached once an ACTIVE election's
+  // configured end date/time has been reached — manually or automatically). Refuses
+  // any other status: only ACTIVE may close, and an already-closed election must
+  // never be silently re-closed.
+  markAsClosed(): void {
+    if (this._currentStatus === 'ACTIVE') {
+      this._currentStatus = 'CLOSED';
       return;
     }
     throw new ElectionStatusTransitionError();
