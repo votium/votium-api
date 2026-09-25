@@ -1,0 +1,80 @@
+import { Module, forwardRef } from '@nestjs/common';
+import { AuthModule } from 'src/modules/auth/auth.module';
+import { IamModule } from 'src/modules/iam/iam.module';
+import {
+  PASSWORD_HASHER_PORT,
+  type PasswordHasherPort,
+} from 'src/modules/iam/application/ports/password-hasher.port';
+import {
+  AUDIT_LOG_PORT,
+  type AuditLogPort,
+} from 'src/modules/iam/application/ports/audit-log.port';
+import { ActivateElectorUseCase } from './application/use-cases/activate-elector.use-case';
+import { DeactivateElectorUseCase } from './application/use-cases/deactivate-elector.use-case';
+import { DeleteElectorUseCase } from './application/use-cases/delete-elector.use-case';
+import { GetElectorUseCase } from './application/use-cases/get-elector.use-case';
+import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
+import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
+import { UpdateElectorUseCase } from './application/use-cases/update-elector.use-case';
+import { CSV_PARSER_PORT, type CsvParserPort } from './application/ports/csv-parser.port';
+import {
+  ELECTOR_REPOSITORY,
+  type ElectorRepository,
+} from './domain/repositories/elector.repository.interface';
+import { CsvFileParserService } from './infrastructure/services/csv-file-parser.service';
+import { PrismaElectorRepository } from './infrastructure/repositories/prisma-elector.repository';
+import { ElectorsController } from './presentation/controllers/electors.controller';
+
+@Module({
+  imports: [forwardRef(() => IamModule), forwardRef(() => AuthModule)],
+  controllers: [ElectorsController],
+  providers: [
+    { provide: ELECTOR_REPOSITORY, useClass: PrismaElectorRepository },
+    { provide: CSV_PARSER_PORT, useClass: CsvFileParserService },
+    {
+      provide: ImportElectoralRegistryUseCase,
+      useFactory: (
+        parser: CsvParserPort,
+        electors: ElectorRepository,
+        hasher: PasswordHasherPort,
+      ) => new ImportElectoralRegistryUseCase(parser, electors, hasher),
+      inject: [CSV_PARSER_PORT, ELECTOR_REPOSITORY, PASSWORD_HASHER_PORT],
+    },
+    {
+      provide: DeactivateElectorUseCase,
+      useFactory: (electors: ElectorRepository, audit: AuditLogPort) =>
+        new DeactivateElectorUseCase(electors, audit),
+      inject: [ELECTOR_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: DeleteElectorUseCase,
+      useFactory: (electors: ElectorRepository, audit: AuditLogPort) =>
+        new DeleteElectorUseCase(electors, audit),
+      inject: [ELECTOR_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: ActivateElectorUseCase,
+      useFactory: (electors: ElectorRepository, audit: AuditLogPort) =>
+        new ActivateElectorUseCase(electors, audit),
+      inject: [ELECTOR_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: SearchElectorsUseCase,
+      useFactory: (electors: ElectorRepository) => new SearchElectorsUseCase(electors),
+      inject: [ELECTOR_REPOSITORY],
+    },
+    {
+      provide: GetElectorUseCase,
+      useFactory: (electors: ElectorRepository) => new GetElectorUseCase(electors),
+      inject: [ELECTOR_REPOSITORY],
+    },
+    {
+      provide: UpdateElectorUseCase,
+      useFactory: (electors: ElectorRepository, audit: AuditLogPort) =>
+        new UpdateElectorUseCase(electors, audit),
+      inject: [ELECTOR_REPOSITORY, AUDIT_LOG_PORT],
+    },
+  ],
+  exports: [ELECTOR_REPOSITORY],
+})
+export class ElectorsModule {}

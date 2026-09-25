@@ -1,11 +1,17 @@
 export const TOKEN_SERVICE_PORT = 'TokenServicePort';
 
-export interface TokenServicePort {
-  signAccessToken(payload: { sub: string; email: string; role: string }): Promise<string>;
+export type ActorType = 'USER' | 'ELECTOR';
 
-  verifyAccessToken(token: string): Promise<{
-    sub: string;
-    email: string;
-    role: string;
-  }>;
+export interface TokenPayload {
+  sub: string;
+  email: string;
+  actorType: ActorType;
+  /** Present only for USER tokens. Absent for ELECTOR tokens. */
+  role?: string;
+}
+
+export interface TokenServicePort {
+  signAccessToken(payload: TokenPayload): Promise<string>;
+
+  verifyAccessToken(token: string): Promise<TokenPayload>;
 }

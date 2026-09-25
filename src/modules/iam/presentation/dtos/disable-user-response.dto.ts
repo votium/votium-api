@@ -1,5 +1,8 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 export class DisableUserResponseDto {
-  message: string;
+  @ApiProperty({ example: 'User disabled successfully' })
+  message!: string;
 
   constructor(message: string) {
     this.message = message;

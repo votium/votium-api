@@ -1,26 +1,85 @@
-import { InvalidCredentialsException } from '../../domain/exceptions/invalid-credentials.exception';
-import type { IamGateway } from '../ports/iam.gateway.port';
-import type { TokenServicePort } from '../ports/token-service.port';
+import { randomUUID } from 'node:crypto';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException } from 'src/shared/exceptions/base/forbidden.exception';
+import { UnauthorizedException } from 'src/shared/exceptions/base/unauthorized.exception';
+import {
+  USER_REPOSITORY,
+  type UserRepository,
+} from 'src/modules/iam/domain/repositories/user.repository.interface';
+import {
+  PASSWORD_HASHER_PORT,
+  type PasswordHasherPort,
+} from 'src/modules/iam/application/ports/password-hasher.port';
+import {
+  AUDIT_LOG_PORT,
+  type AuditLogPort,
+} from 'src/modules/iam/application/ports/audit-log.port';
+import { UserStatus } from 'src/modules/iam/domain/value-objects/user-status.vo';
+import {
+  MFA_CHALLENGE_REPOSITORY,
+  type MfaChallengeRepository,
+} from 'src/modules/auth/domain/repositories/mfa-challenge.repository.interface';
+import { OTP_TTL_MS, RESEND_COOLDOWN_MS } from 'src/shared/constants/mfa.constants';
+import {
+  ASYNC_EMAIL_SERVICE_PORT,
+  type AsyncEmailServicePort,
+} from '../ports/async-email-service.port';
+import { MFA_HASHER_PORT, type MfaHasherPort } from '../ports/mfa-hasher.port';
+import { OTP_GENERATOR_PORT, type OtpGeneratorPort } from '../ports/otp-generator.port';
 
+@Injectable()
 export class LoginUseCase {
+  private readonly logger = new Logger(LoginUseCase.name);
+
   constructor(
-    private readonly iam: IamGateway,
-    private readonly tokens: TokenServicePort,
+    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
+    @Inject(PASSWORD_HASHER_PORT) private readonly hasher: PasswordHasherPort,
+    @Inject(MFA_CHALLENGE_REPOSITORY) private readonly challenges: MfaChallengeRepository,
+    @Inject(OTP_GENERATOR_PORT) private readonly otpGenerator: OtpGeneratorPort,
+    @Inject(MFA_HASHER_PORT) private readonly mfaHasher: MfaHasherPort,
+    @Inject(ASYNC_EMAIL_SERVICE_PORT) private readonly emailService: AsyncEmailServicePort,
+    @Inject(AUDIT_LOG_PORT) private readonly audit: AuditLogPort,
   ) {}
 
   async execute(input: { email: string; password: string }) {
-    const user = await this.iam.validateCredentials(input.email, input.password);
-    if (!user) throw new InvalidCredentialsException();
+    const user = await this.users.findByEmail(input.email);
+    if (!user) throw new UnauthorizedException('Invalid credentials.');
 
-    const accessToken = await this.tokens.signAccessToken({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
+    if (user.status === UserStatus.DISABLED) {
+      throw new ForbiddenException('User account is disabled.');
+    }
+
+    const passwordOk = await this.hasher.verify(input.password, user.passwordHash);
+    if (!passwordOk) throw new UnauthorizedException('Invalid credentials.');
+
+    const sessionId = randomUUID();
+    const otp = this.otpGenerator.generate();
+    const otpHash = await this.mfaHasher.hash(otp);
+    const now = new Date();
+
+    await this.challenges.invalidateByUserId(user.id);
+
+    await this.challenges.create({
+      userId: user.id,
+      sessionId,
+      otpHash,
+      expiresAt: new Date(now.getTime() + OTP_TTL_MS),
+      resendAt: new Date(now.getTime() + RESEND_COOLDOWN_MS),
     });
 
+    try {
+      await this.emailService.queueVerificationCode(user.email, otp);
+    } catch (error) {
+      this.logger.error('Failed to queue MFA verification email', error);
+    }
+
+    await this.audit.log('MFA_OTP_SENT', user.id, { sessionId });
+
     return {
-      accessToken,
-      user: { id: user.id, email: user.email, role: user.role },
+      mfaRequired: true,
+      sessionId,
+      expiresIn: OTP_TTL_MS / 1000,
+      message: 'A verification code has been sent to your registered email.',
     };
   }
 }
