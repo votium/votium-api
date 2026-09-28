@@ -22,7 +22,7 @@ describe('SearchCandidatesQueryDto', () => {
       lastName: 'Garcia',
       name: 'Juan',
       programCode: '1234',
-      studentCode: 'CAND-1234',
+      studentCode: '202012345',
       identificationNumber: 'ID-12345678',
       status: 'ACTIVE',
     });
@@ -41,11 +41,47 @@ describe('SearchCandidatesQueryDto', () => {
     expect(errors[0].property).toBe('status');
   });
 
-  it.each(['123', '12345', 'abcd'])('DTO-Q-05: rejects programCode = %s', (programCode) => {
+  it.each(['1', '12', '123', '1234'])('DTO-170-03: accepts programCode = %s', (programCode) => {
+    expect(validate({ programCode })).toHaveLength(0);
+  });
+
+  it.each(['12345', 'abcd', ''])('DTO-170-04: rejects programCode = %s', (programCode) => {
     const errors = validate({ programCode });
 
     expect(errors).toHaveLength(1);
     expect(errors[0].property).toBe('programCode');
+  });
+
+  it.each(['1', '12', '12345', '123456789'])(
+    'DTO-170-01: accepts studentCode = %s (1 to 9 digits)',
+    (studentCode) => {
+      expect(validate({ studentCode })).toHaveLength(0);
+    },
+  );
+
+  it.each(['1234567890', 'abcd', ''])('DTO-170-02: rejects studentCode = %s', (studentCode) => {
+    const errors = validate({ studentCode });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].property).toBe('studentCode');
+  });
+
+  it('DTO-170-05: studentCode validation message reflects the maximum of 9 digits', () => {
+    const errors = validate({ studentCode: '1234567890' });
+
+    expect(errors).toHaveLength(1);
+    expect(JSON.stringify(errors[0].constraints)).toContain(
+      'Student code must contain between 1 and 9 digits.',
+    );
+  });
+
+  it('DTO-170-06: programCode validation message reflects the maximum of 4 digits', () => {
+    const errors = validate({ programCode: '12345' });
+
+    expect(errors).toHaveLength(1);
+    expect(JSON.stringify(errors[0].constraints)).toContain(
+      'Program code must contain between 1 and 4 digits.',
+    );
   });
 
   it.each([

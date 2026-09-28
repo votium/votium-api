@@ -888,7 +888,7 @@ describe('PrismaCandidateRepository integration', () => {
       ).toEqual([candidateB.studentCode]);
     });
 
-    it('filters programCode with an exact match', async () => {
+    it('INT-170-01: program code full match still works through contains', async () => {
       const exact = await search({ programCode: '1234' });
       expect(
         exact.candidates
@@ -896,15 +896,84 @@ describe('PrismaCandidateRepository integration', () => {
           .map((row) => row.studentCode)
           .sort(),
       ).toEqual([candidateA.studentCode, candidateC.studentCode, inactiveRow.studentCode].sort());
-
-      const partial = await search({ programCode: '123' });
-      expect(partial.candidates).toEqual([]);
-      expect(partial.total).toBe(0);
     });
 
-    it('filters studentCode with an exact match', async () => {
+    it('INT-170-02: program code prefix partial match (not exact equality)', async () => {
+      const partial = await search({ programCode: '123' });
+      expect(
+        partial.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode, inactiveRow.studentCode].sort());
+      expect(partial.total).toBeGreaterThanOrEqual(3);
+    });
+
+    it('INT-170-03: program code middle-substring partial match', async () => {
+      const rows = await search({ programCode: '71' });
+      expect(
+        rows.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode),
+      ).toEqual([candidateB.studentCode]);
+    });
+
+    it('INT-170-04: program code tail partial match', async () => {
+      const rows = await search({ programCode: '999' });
+      expect(
+        rows.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode),
+      ).toEqual([candidateD.studentCode]);
+    });
+
+    it('INT-170-05: student code full match still works through contains', async () => {
       const rows = await search({ studentCode: candidateB.studentCode });
       expect(rows.candidates.map((row) => row.studentCode)).toEqual([candidateB.studentCode]);
+    });
+
+    it('INT-170-06: student code prefix partial match (not exact equality)', async () => {
+      const rows = await search({ studentCode: 'SRCH-B-' });
+      expect(rows.candidates.map((row) => row.studentCode)).toEqual([candidateB.studentCode]);
+    });
+
+    it('INT-170-07: student code middle-substring partial match (not exact equality)', async () => {
+      const rows = await search({ studentCode: '-C-' });
+      expect(rows.candidates.map((row) => row.studentCode)).toEqual([candidateC.studentCode]);
+    });
+
+    it('INT-170-08: partial code filters combine with another filter using AND', async () => {
+      const byNameAndPartialPlan = await search({ firstName: 'Juan', programCode: '12' });
+      expect(
+        byNameAndPartialPlan.candidates
+          .filter((row) => searchCodes.includes(row.studentCode))
+          .map((row) => row.studentCode)
+          .sort(),
+      ).toEqual([candidateA.studentCode, candidateC.studentCode].sort());
+
+      const allThree = await search({
+        firstName: 'Juan',
+        programCode: '1234',
+        studentCode: candidateA.studentCode,
+      });
+      expect(allThree.candidates.map((row) => row.studentCode)).toEqual([candidateA.studentCode]);
+    });
+
+    it('INT-170-09: pagination and total reflect the partial filtered set', async () => {
+      const page1 = await search({ programCode: '123' }, 1, 1);
+      expect(page1.candidates).toHaveLength(1);
+      expect(page1.total).toBeGreaterThanOrEqual(3);
+
+      const page2 = await search({ programCode: '123' }, 2, 1);
+      expect(page2.candidates).toHaveLength(1);
+      expect(page2.total).toBe(page1.total);
+    });
+
+    it('INT-170-10: partial student filter preserves INACTIVE inclusion', async () => {
+      const rows = await search({ studentCode: 'SRCH-IN-' });
+      expect(rows.candidates.map((row) => row.studentCode)).toEqual([inactiveRow.studentCode]);
+      expect(rows.candidates[0].status).toBe(CandidateEntity.INACTIVE_STATUS);
+      expect(rows.total).toBe(1);
     });
 
     it('filters identificationNumber with an exact match', async () => {
