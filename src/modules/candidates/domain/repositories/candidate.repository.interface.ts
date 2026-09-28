@@ -49,7 +49,8 @@ export interface CandidateRepository {
   // Returns a page of candidates matching the optional filters plus the total
   // number of matches (unpaginated). Filters combine with AND. firstName/lastName
   // match case-insensitively and partially; `name` matches either firstName or
-  // lastName (partial, case-insensitive); code fields and `status` match exactly.
+  // lastName (partial, case-insensitive); programCode and studentCode match
+  // partially (contains); identificationNumber and `status` match exactly.
   // Empty or whitespace-only values are ignored. Logically deleted candidates
   // (`deleted_at != null`) are always EXCLUDED; candidates of every status are
   // included by default and `status` narrows the result to a single status.

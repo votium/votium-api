@@ -69,7 +69,13 @@ interface CandidatePayload {
 
 interface SwaggerOperationShape {
   tags?: string[];
-  parameters?: Array<{ name: string; in: string; required: boolean }>;
+  parameters?: Array<{
+    name: string;
+    in: string;
+    required?: boolean;
+    description?: string;
+    schema?: { type: string; example?: unknown; maxLength?: number; pattern?: string };
+  }>;
   security?: Array<{ cookie: string[] }>;
   requestBody?: {
     required?: boolean;
@@ -590,44 +596,85 @@ describe('Candidates registration (e2e)', () => {
       request(app.getHttpServer()).get(`/api/v1/candidates${qs}`).set('Cookie', token);
 
     // Names/codes intentionally unique so they cannot collide with candidates created by the
-    // POST tests (which persist until the top-level afterAll cleanup).
+    // POST tests (which persist until the top-level afterAll cleanup). Student codes are
+    // 9-digit numeric strings because the search DTO validates studentCode as 1-9 digits.
     const querySeed = [
       {
         firstName: 'Bruno',
         lastName: 'Fernandez',
         programCode: '5001',
-        studentCode: `Q1-${suffix}`,
+        studentCode: '202012301',
         identificationNumber: `QI1-${suffix}`,
       },
       {
         firstName: 'Clara',
         lastName: 'Molina',
         programCode: '5002',
-        studentCode: `Q2-${suffix}`,
+        studentCode: '202012302',
         identificationNumber: `QI2-${suffix}`,
       },
       {
         firstName: 'Bruno',
         lastName: 'Rojas',
         programCode: '5001',
-        studentCode: `Q3-${suffix}`,
+        studentCode: '202012303',
         identificationNumber: `QI3-${suffix}`,
       },
       {
         firstName: 'Diana',
         lastName: 'Torres',
         programCode: '5003',
-        studentCode: `Q4-${suffix}`,
+        studentCode: '202012304',
         identificationNumber: `QI4-${suffix}`,
       },
     ];
 
+    // TS-170 partial-search seeds. Student/program codes mirror the spec examples so the
+    // partial-match cases are deterministic: each student code contains '123' (but none equals
+    // it) and each program code contains the queried partial sequences.
+    const ts170Seeds = [
+      {
+        firstName: 'TS',
+        lastName: 'One',
+        programCode: '1234',
+        studentCode: '202012345',
+        identificationNumber: `TS170-1-${suffix}`,
+      },
+      {
+        firstName: 'TS',
+        lastName: 'Two',
+        programCode: '9123',
+        studentCode: '912345678',
+        identificationNumber: `TS170-2-${suffix}`,
+      },
+      {
+        firstName: 'TS',
+        lastName: 'Three',
+        programCode: '1239',
+        studentCode: '123999999',
+        identificationNumber: `TS170-3-${suffix}`,
+      },
+    ];
+
     const pgCodes: string[] = [];
-    let inactiveStudentCode = '';
     const q10pCodes: string[] = [];
 
     beforeAll(async () => {
       for (const seed of querySeed) {
+        await prisma.candidate.create({
+          data: {
+            first_name: seed.firstName,
+            last_name: seed.lastName,
+            student_code: seed.studentCode,
+            program_code: seed.programCode,
+            identification_number: seed.identificationNumber,
+            status: 'ACTIVE',
+          },
+        });
+        usedStudentCodes.push(seed.studentCode);
+      }
+
+      for (const seed of ts170Seeds) {
         await prisma.candidate.create({
           data: {
             first_name: seed.firstName,
@@ -670,7 +717,6 @@ describe('Candidates registration (e2e)', () => {
           status: 'INACTIVE',
         },
       });
-      inactiveStudentCode = inactive.student_code;
       usedStudentCodes.push(inactive.student_code);
 
       // 2 ACTIVE + 1 INACTIVE rows sharing a common prefix (status + pagination).
@@ -718,48 +764,49 @@ describe('Candidates registration (e2e)', () => {
       const res = await queryCandidates('?firstName=bruno').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
-      expect(codes.sort()).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
+      expect(codes.sort()).toEqual(['202012301', '202012303'].sort());
     });
 
     it('E3: filters by lastName with a partial, case-insensitive match', async () => {
       const res = await queryCandidates('?lastName=torres').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
-      expect(codes).toEqual([`Q4-${suffix}`]);
+      expect(codes).toEqual(['202012304']);
     });
 
     it('E4: filters by programCode', async () => {
       const res = await queryCandidates('?programCode=5001').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
-      expect(codes.sort()).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
+      expect(codes.sort()).toEqual(['202012301', '202012303'].sort());
     });
 
     it('E5: filters by studentCode', async () => {
-      const res = await queryCandidates(`?studentCode=${`Q2-${suffix}`}`).expect(200);
+      const res = await queryCandidates('?studentCode=202012302').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
-      expect(codes).toEqual([`Q2-${suffix}`]);
+      expect(codes).toEqual(['202012302']);
     });
 
     it('E6: filters by identificationNumber', async () => {
       const res = await queryCandidates(`?identificationNumber=${`QI4-${suffix}`}`).expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
-      expect(codes).toEqual([`Q4-${suffix}`]);
+      expect(codes).toEqual(['202012304']);
     });
 
     it('E7: combines multiple filters with AND semantics', async () => {
       const res = await queryCandidates(
-        `?firstName=Bruno&programCode=5001&studentCode=${`Q1-${suffix}`}`,
+        '?firstName=Bruno&programCode=5001&studentCode=202012301',
       ).expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
-      expect(codes).toEqual([`Q1-${suffix}`]);
+      expect(codes).toEqual(['202012301']);
     });
 
     it('E8: returns an empty collection when nothing matches (not an error)', async () => {
-      const res = await queryCandidates('?studentCode=does-not-exist').expect(200);
+      // 999999999 is a valid 9-digit studentCode that matches no seeded candidate.
+      const res = await queryCandidates('?studentCode=999999999').expect(200);
       expect(res.body).toMatchObject({ data: [], meta: { total: 0 } });
     });
 
@@ -791,8 +838,8 @@ describe('Candidates registration (e2e)', () => {
       expect(codes).toEqual(expect.arrayContaining(querySeed.map((s) => s.studentCode)));
     });
 
-    it('E13: rejects an invalid programCode format with 400', async () => {
-      const res = await queryCandidates('?programCode=271').expect(400);
+    it('E13: rejects a programCode exceeding the maximum of 4 digits with 400', async () => {
+      const res = await queryCandidates('?programCode=12345').expect(400);
 
       const body = res.body as {
         statusCode: number;
@@ -802,7 +849,7 @@ describe('Candidates registration (e2e)', () => {
       };
       expect(body.statusCode).toBe(400);
       expect(body.message).toEqual(
-        expect.arrayContaining(['Program code must contain exactly four digits.']),
+        expect.arrayContaining(['Program code must contain between 1 and 4 digits.']),
       );
       expect(typeof body.timestamp).toBe('string');
       expect(typeof body.path).toBe('string');
@@ -849,12 +896,180 @@ describe('Candidates registration (e2e)', () => {
 
       await queryCandidates('?limit=10&page=1').expect(200);
       await queryCandidates('?firstName=bruno').expect(200);
-      await queryCandidates('?studentCode=does-not-exist').expect(200);
+      await queryCandidates('?studentCode=999999999').expect(200);
 
       const after = await prisma.candidate.count({
         where: { student_code: { in: usedStudentCodes } },
       });
       expect(after).toBe(before);
+    });
+
+    // ---- TS-170: relaxed max-digit validation + partial matching ----
+
+    const ts170Codes = ts170Seeds.map((s) => s.studentCode);
+
+    it('E-170-01: accepts a one-digit studentCode and applies a partial match', async () => {
+      const res = await queryCandidates('?studentCode=1').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }>; meta: { total: number } };
+      const codes = body.data.map((c) => c.studentCode);
+
+      // Every TS-170 seed and every 9-digit query seed contains digit '1'.
+      expect(codes).toEqual(expect.arrayContaining(ts170Codes));
+      expect(body.meta.total).toBeGreaterThanOrEqual(7);
+    });
+
+    it('E-170-02: accepts a studentCode with fewer than 9 digits', async () => {
+      const res = await queryCandidates('?studentCode=12345').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+
+      // 202012345 ends with '12345' and 912345678 contains it.
+      expect(codes).toEqual(expect.arrayContaining(['202012345', '912345678']));
+    });
+
+    it('E-170-03: accepts a studentCode with exactly 9 digits', async () => {
+      const res = await queryCandidates('?studentCode=123456789').expect(200);
+      const body = res.body as { data: unknown[] };
+      expect(Array.isArray(body.data)).toBe(true);
+    });
+
+    it('E-170-04: rejects a studentCode exceeding 9 digits with 400', async () => {
+      const res = await queryCandidates('?studentCode=1234567890').expect(400);
+      const body = res.body as {
+        statusCode: number;
+        message: string | string[];
+        timestamp: string;
+        path: string;
+      };
+      expect(body.statusCode).toBe(400);
+      expect(body.message).toEqual(
+        expect.arrayContaining(['Student code must contain between 1 and 9 digits.']),
+      );
+      expect(typeof body.timestamp).toBe('string');
+      expect(typeof body.path).toBe('string');
+    });
+
+    it('E-170-05: accepts a programCode with fewer than 4 digits and applies a partial match', async () => {
+      const res = await queryCandidates('?programCode=12').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }>; meta: { total: number } };
+      const codes = body.data.map((c) => c.studentCode);
+
+      // Every TS-170 program code (1234, 9123, 1239) contains '12'.
+      expect(codes).toEqual(expect.arrayContaining(ts170Codes));
+      expect(body.meta.total).toBeGreaterThanOrEqual(3);
+    });
+
+    it('E-170-06: accepts a programCode with exactly 4 digits', async () => {
+      const res = await queryCandidates('?programCode=1234').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+
+      // 202012345 has program code '1234'; the INACTIVE seed also uses '1234'.
+      expect(codes).toEqual(expect.arrayContaining(['202012345']));
+      expect(codes).not.toEqual(expect.arrayContaining(['912345678', '123999999']));
+    });
+
+    it('E-170-07: rejects a programCode exceeding 4 digits with 400', async () => {
+      const res = await queryCandidates('?programCode=12345').expect(400);
+      const body = res.body as {
+        statusCode: number;
+        message: string | string[];
+        timestamp: string;
+        path: string;
+      };
+      expect(body.statusCode).toBe(400);
+      expect(body.message).toEqual(
+        expect.arrayContaining(['Program code must contain between 1 and 4 digits.']),
+      );
+      expect(typeof body.timestamp).toBe('string');
+      expect(typeof body.path).toBe('string');
+    });
+
+    it('E-170-08: studentCode partial match is not an exact equality', async () => {
+      const res = await queryCandidates('?studentCode=123').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }>; meta: { total: number } };
+      const codes = body.data.map((c) => c.studentCode);
+
+      // None of these stored codes equals '123', so their presence proves contains filtering.
+      expect(codes).toEqual(expect.arrayContaining(ts170Codes));
+      expect(body.meta.total).toBeGreaterThanOrEqual(3);
+    });
+
+    it('E-170-09: a full studentCode still matches through the partial filter', async () => {
+      const res = await queryCandidates('?studentCode=202012345').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+      expect(codes).toEqual(expect.arrayContaining(['202012345']));
+      expect(codes).not.toContain('912345678');
+    });
+
+    it('E-170-09b: programCode partial match is not an exact equality', async () => {
+      const res = await queryCandidates('?programCode=123').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }>; meta: { total: number } };
+      const codes = body.data.map((c) => c.studentCode);
+
+      // Stored program codes (1234, 9123, 1239) contain but never equal '123'.
+      expect(codes).toEqual(expect.arrayContaining(ts170Codes));
+      expect(body.meta.total).toBeGreaterThanOrEqual(3);
+    });
+
+    it('E-170-10: combined studentCode and programCode partial filters apply with AND', async () => {
+      const res = await queryCandidates('?studentCode=123&programCode=12').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }>; meta: { total: number } };
+      const codes = body.data.map((c) => c.studentCode);
+
+      // All three TS-170 seeds satisfy both; query seeds (program 5001-5003) do not contain '12'.
+      expect(codes).toEqual(expect.arrayContaining(ts170Codes));
+      expect(codes).not.toEqual(expect.arrayContaining(querySeed.map((s) => s.studentCode)));
+      expect(body.meta.total).toBeGreaterThanOrEqual(3);
+    });
+
+    it('E-170-10b: combined partial filters narrow down to a single candidate', async () => {
+      const res = await queryCandidates('?studentCode=202&programCode=12').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }> };
+      const codes = body.data.map((c) => c.studentCode);
+
+      // Only 202012345 contains '202' among candidates whose program code contains '12'.
+      expect(codes).toEqual(expect.arrayContaining(['202012345']));
+      expect(codes).not.toEqual(expect.arrayContaining(querySeed.map((s) => s.studentCode)));
+      expect(codes).not.toContain('912345678');
+      expect(codes).not.toContain('123999999');
+    });
+
+    it('E-170-12: existing filters and status compose with the partial filters', async () => {
+      const res = await queryCandidates('?programCode=5001&status=ACTIVE').expect(200);
+      const body = res.body as { data: Array<{ studentCode: string }>; meta: { total: number } };
+      const codes = body.data.map((c) => c.studentCode);
+
+      expect(codes).toEqual(expect.arrayContaining(['202012301', '202012303']));
+      expect(body.meta.total).toBeGreaterThanOrEqual(2);
+    });
+
+    it('E-170-13: pagination and total reflect the partial filtered set', async () => {
+      const page1 = await queryCandidates('?programCode=12&limit=1&page=1').expect(200);
+      const page2 = await queryCandidates('?programCode=12&limit=1&page=2').expect(200);
+
+      const body1 = page1.body as {
+        data: Array<{ studentCode: string }>;
+        meta: { total: number };
+      };
+      const body2 = page2.body as {
+        data: Array<{ studentCode: string }>;
+        meta: { total: number };
+      };
+
+      expect(body1.data).toHaveLength(1);
+      expect(body2.data).toHaveLength(1);
+      expect(body2.meta.total).toBe(body1.meta.total);
+      // TS-170 seeds + INACTIVE seed ('1234') all contain '12'.
+      expect(body1.meta.total).toBeGreaterThanOrEqual(4);
+      // Distinct single-row slices on different pages.
+      expect(body1.data[0].studentCode).not.toBe(body2.data[0].studentCode);
+    });
+
+    it('E-170-15: an empty studentCode value is rejected with 400', async () => {
+      const res = await queryCandidates('?studentCode=').expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
     });
 
     it('Q1: the default response exposes the paginated envelope', async () => {
@@ -934,7 +1149,7 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('Q6: includes INACTIVE candidates by default', async () => {
-      const res = await queryCandidates(`?studentCode=${inactiveStudentCode}`).expect(200);
+      const res = await queryCandidates(`?identificationNumber=${`IDINAC-${suffix}`}`).expect(200);
       const body = res.body as { data: Array<{ status: string }>; meta: { total: number } };
       expect(body.data).toHaveLength(1);
       expect(body.data[0].status).toBe('INACTIVE');
@@ -943,7 +1158,7 @@ describe('Candidates registration (e2e)', () => {
 
     it('Q7: status=INACTIVE returns only INACTIVE candidates and counts them in total', async () => {
       const res = await queryCandidates(
-        `?studentCode=${inactiveStudentCode}&status=INACTIVE`,
+        `?identificationNumber=${`IDINAC-${suffix}`}&status=INACTIVE`,
       ).expect(200);
       const body = res.body as {
         data: Array<{ status: string }>;
@@ -955,18 +1170,20 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('Q8: status=ACTIVE excludes the INACTIVE candidate', async () => {
-      const res = await queryCandidates(`?studentCode=${inactiveStudentCode}&status=ACTIVE`).expect(
-        200,
-      );
+      const res = await queryCandidates(
+        `?identificationNumber=${`IDINAC-${suffix}`}&status=ACTIVE`,
+      ).expect(200);
       const body = res.body as { data: unknown[]; meta: { total: number } };
       expect(body.data).toEqual([]);
       expect(body.meta.total).toBe(0);
     });
 
     it('Q9: rejects status values outside the domain with 400', async () => {
-      await queryCandidates(`?studentCode=${inactiveStudentCode}&status=DELETED`).expect(400);
-      await queryCandidates(`?studentCode=${inactiveStudentCode}&status=foo`).expect(400);
-      await queryCandidates(`?studentCode=${inactiveStudentCode}&status=`).expect(400);
+      await queryCandidates(`?identificationNumber=${`IDINAC-${suffix}`}&status=DELETED`).expect(
+        400,
+      );
+      await queryCandidates(`?identificationNumber=${`IDINAC-${suffix}`}&status=foo`).expect(400);
+      await queryCandidates(`?identificationNumber=${`IDINAC-${suffix}`}&status=`).expect(400);
     });
 
     it('Q10: status combined with pagination keeps total consistent', async () => {
@@ -1001,26 +1218,26 @@ describe('Candidates registration (e2e)', () => {
       const res = await queryCandidates('?name=bruno').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode).sort();
-      expect(codes).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
+      expect(codes).toEqual(['202012301', '202012303'].sort());
     });
 
     it('Q12: the name filter matches a partial last name', async () => {
       const res = await queryCandidates('?name=molina').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode);
-      expect(codes).toEqual([`Q2-${suffix}`]);
+      expect(codes).toEqual(['202012302']);
     });
 
     it('Q13: the name filter is partial and case-insensitive', async () => {
       const byShort = await queryCandidates('?name=br').expect(200);
       const shortBody = byShort.body as { data: Array<{ studentCode: string }> };
       expect(shortBody.data.map((c) => c.studentCode).sort()).toEqual(
-        [`Q1-${suffix}`, `Q3-${suffix}`].sort(),
+        ['202012301', '202012303'].sort(),
       );
 
       const byUpper = await queryCandidates('?name=FERN').expect(200);
       const upperBody = byUpper.body as { data: Array<{ studentCode: string }> };
-      expect(upperBody.data.map((c) => c.studentCode)).toEqual([`Q1-${suffix}`]);
+      expect(upperBody.data.map((c) => c.studentCode)).toEqual(['202012301']);
     });
 
     it('Q14: whitespace-only name is ignored', async () => {
@@ -1038,7 +1255,7 @@ describe('Candidates registration (e2e)', () => {
       const res = await queryCandidates('?name=bruno&programCode=5001').expect(200);
       const body = res.body as { data: Array<{ studentCode: string }> };
       const codes = body.data.map((c) => c.studentCode).sort();
-      expect(codes).toEqual([`Q1-${suffix}`, `Q3-${suffix}`].sort());
+      expect(codes).toEqual(['202012301', '202012303'].sort());
     });
 
     it('Q16: the paginated/name/status flow remains read-only', async () => {
@@ -1047,7 +1264,9 @@ describe('Candidates registration (e2e)', () => {
       });
 
       await queryCandidates(`?name=PG-${suffix}&limit=1&page=2`).expect(200);
-      await queryCandidates(`?studentCode=${inactiveStudentCode}&status=INACTIVE`).expect(200);
+      await queryCandidates(`?identificationNumber=${`IDINAC-${suffix}`}&status=INACTIVE`).expect(
+        200,
+      );
       await queryCandidates('?name=bruno&limit=10&page=1').expect(200);
 
       const after = await prisma.candidate.count({
@@ -1207,13 +1426,21 @@ describe('Candidates registration (e2e)', () => {
         .patch(`/api/v1/candidates/${id}/deactivate`)
         .set('Cookie', token);
 
-    const registerCandidate = async (): Promise<{ id: string; studentCode: string }> => {
+    const registerCandidate = async (): Promise<{
+      id: string;
+      studentCode: string;
+      identificationNumber: string;
+    }> => {
       const payload = validCandidate();
       payload.studentCode = `DEL-${suffix}-${usedStudentCodes.length}`;
       payload.identificationNumber = `IDDEL-${suffix}-${usedStudentCodes.length}`;
       const res = await register(payload, adminToken).expect(201);
       usedStudentCodes.push(payload.studentCode);
-      return { id: (res.body as { id: string }).id, studentCode: payload.studentCode };
+      return {
+        id: (res.body as { id: string }).id,
+        studentCode: payload.studentCode,
+        identificationNumber: payload.identificationNumber,
+      };
     };
 
     it('E1: an authenticated administrator deactivates a candidate with 204 and no body', async () => {
@@ -1249,12 +1476,12 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E3: a deactivated candidate is returned by default with INACTIVE status', async () => {
-      const { id, studentCode } = await registerCandidate();
+      const { id, identificationNumber } = await registerCandidate();
 
       await deactivateCandidate(id).expect(204);
 
       const byDefault = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}`)
+        .get(`/api/v1/candidates?identificationNumber=${identificationNumber}`)
         .set('Cookie', adminToken)
         .expect(200);
       const defaultBody = byDefault.body as {
@@ -1264,7 +1491,7 @@ describe('Candidates registration (e2e)', () => {
       expect(defaultBody.data[0].status).toBe('INACTIVE');
 
       const activeOnly = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}&status=ACTIVE`)
+        .get(`/api/v1/candidates?identificationNumber=${identificationNumber}&status=ACTIVE`)
         .set('Cookie', adminToken)
         .expect(200);
       expect((activeOnly.body as { data: unknown[] }).data).toEqual([]);
@@ -1720,7 +1947,11 @@ describe('Candidates registration (e2e)', () => {
       request(app.getHttpServer()).patch(`/api/v1/candidates/${id}/activate`).set('Cookie', token);
 
     let reactCounter = 0;
-    const registerInactive = async (): Promise<{ id: string; studentCode: string }> => {
+    const registerInactive = async (): Promise<{
+      id: string;
+      studentCode: string;
+      identificationNumber: string;
+    }> => {
       reactCounter += 1;
       const code = `REACT-${suffix}-${reactCounter}`;
       const idn = `IDREACT-${suffix}-${reactCounter}`;
@@ -1731,7 +1962,7 @@ describe('Candidates registration (e2e)', () => {
       usedStudentCodes.push(code);
       const id = (res.body as { id: string }).id;
       await prisma.candidate.update({ where: { id }, data: { status: 'INACTIVE' } });
-      return { id, studentCode: code };
+      return { id, studentCode: code, identificationNumber: idn };
     };
 
     it('E1: ADMIN reactivates an INACTIVE candidate -> 200 with ACTIVE status', async () => {
@@ -1816,10 +2047,10 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('E9: flips from INACTIVE to ACTIVE in the default list after reactivation', async () => {
-      const { id, studentCode } = await registerInactive();
+      const { id, identificationNumber } = await registerInactive();
 
       const before = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}`)
+        .get(`/api/v1/candidates?identificationNumber=${identificationNumber}`)
         .set('Cookie', adminToken)
         .expect(200);
       const beforeBody = before.body as { data: Array<{ id: string; status: string }> };
@@ -1830,7 +2061,7 @@ describe('Candidates registration (e2e)', () => {
       await reactivate(id).expect(200);
 
       const visible = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}`)
+        .get(`/api/v1/candidates?identificationNumber=${identificationNumber}`)
         .set('Cookie', adminToken)
         .expect(200);
       const visibleBody = visible.body as { data: Array<{ id: string; status: string }> };
@@ -1892,7 +2123,11 @@ describe('Candidates registration (e2e)', () => {
       request(app.getHttpServer()).delete(`/api/v1/candidates/${id}`).set('Cookie', token);
 
     let deleteCounter = 0;
-    const registerActive = async (): Promise<{ id: string; studentCode: string }> => {
+    const registerActive = async (): Promise<{
+      id: string;
+      studentCode: string;
+      identificationNumber: string;
+    }> => {
       deleteCounter += 1;
       const code = `SDEL-${suffix}-${deleteCounter}`;
       const idn = `IDSDEL-${suffix}-${deleteCounter}`;
@@ -1901,7 +2136,11 @@ describe('Candidates registration (e2e)', () => {
       payload.identificationNumber = idn;
       const res = await register(payload, adminToken).expect(201);
       usedStudentCodes.push(code);
-      return { id: (res.body as { id: string }).id, studentCode: code };
+      return {
+        id: (res.body as { id: string }).id,
+        studentCode: code,
+        identificationNumber: idn,
+      };
     };
 
     it('CD-1: an authenticated administrator deletes a candidate with 204 and no body', async () => {
@@ -1930,11 +2169,11 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('CD-3: a deleted candidate is excluded from candidate query results', async () => {
-      const { id, studentCode } = await registerActive();
+      const { id, identificationNumber } = await registerActive();
       await deleteCandidate(id).expect(204);
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}`)
+        .get(`/api/v1/candidates?identificationNumber=${identificationNumber}`)
         .set('Cookie', adminToken)
         .expect(200);
 
@@ -1942,11 +2181,11 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('CD-4: a deleted candidate stays excluded even when filtering by status', async () => {
-      const { id, studentCode } = await registerActive();
+      const { id, identificationNumber } = await registerActive();
       await deleteCandidate(id).expect(204);
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}&status=ACTIVE`)
+        .get(`/api/v1/candidates?identificationNumber=${identificationNumber}&status=ACTIVE`)
         .set('Cookie', adminToken)
         .expect(200);
 
@@ -2022,11 +2261,11 @@ describe('Candidates registration (e2e)', () => {
     });
 
     it('CD-12: an INACTIVE non-deleted candidate is not affected', async () => {
-      const { id, studentCode } = await registerActive();
+      const { id, identificationNumber } = await registerActive();
       await prisma.candidate.update({ where: { id }, data: { status: 'INACTIVE' } });
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/candidates?studentCode=${studentCode}&status=INACTIVE`)
+        .get(`/api/v1/candidates?identificationNumber=${identificationNumber}&status=INACTIVE`)
         .set('Cookie', adminToken)
         .expect(200);
 
@@ -2224,6 +2463,35 @@ describe('Candidates registration (e2e)', () => {
       expect(queryNames).not.toContain('studyPlanCode');
       expect(queryNames).not.toContain('includeInactive');
       expect(new Set(queryNames).size).toBe(queryNames.length);
+
+      // -- SW-170-01: studentCode documents the relaxed 9-digit validation -- //
+      const studentCodeParameter = queryParameters.find(
+        (parameter) => parameter.name === 'studentCode',
+      );
+      expect(studentCodeParameter).toBeDefined();
+      expect(studentCodeParameter!.schema).toMatchObject({
+        type: 'string',
+        maxLength: 9,
+        pattern: '^\\d{1,9}$',
+      });
+
+      // -- SW-170-02: programCode documents the relaxed 4-digit validation -- //
+      const programCodeParameter = queryParameters.find(
+        (parameter) => parameter.name === 'programCode',
+      );
+      expect(programCodeParameter).toBeDefined();
+      expect(programCodeParameter!.schema).toMatchObject({
+        type: 'string',
+        maxLength: 4,
+        pattern: '^\\d{1,4}$',
+      });
+
+      for (const description of [
+        studentCodeParameter?.description,
+        programCodeParameter?.description,
+      ]) {
+        expect(description ?? '').not.toContain('Exact match');
+      }
 
       for (const status of ['200', '400', '401', '403']) {
         expect(queryOperation.get!.responses[status]).toBeDefined();

@@ -15,8 +15,8 @@ type PrismaCandidateWhere = {
   status?: CandidateStatus;
   first_name?: { contains: string; mode: 'insensitive' };
   last_name?: { contains: string; mode: 'insensitive' };
-  program_code?: string;
-  student_code?: string;
+  program_code?: string | { contains: string };
+  student_code?: string | { contains: string };
   identification_number?: string;
   OR?: Array<{
     first_name?: { contains: string; mode: 'insensitive' };
@@ -116,8 +116,8 @@ export class PrismaCandidateRepository implements CandidateRepository {
             ],
           }
         : {}),
-      ...(programCode ? { program_code: programCode } : {}),
-      ...(studentCode ? { student_code: studentCode } : {}),
+      ...(programCode ? { program_code: { contains: programCode } } : {}),
+      ...(studentCode ? { student_code: { contains: studentCode } } : {}),
       ...(identificationNumber ? { identification_number: identificationNumber } : {}),
     };
 

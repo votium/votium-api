@@ -38,18 +38,27 @@ export class SearchCandidatesQueryDto {
   name?: string;
 
   @ApiProperty({
-    example: '1234',
+    example: '12',
+    maxLength: 4,
     required: false,
-    description: 'Program code. Exactly four digits.',
+    pattern: '^\\d{1,4}$',
+    description: 'Program code. Contains between 1 and 4 digits; partial match.',
   })
   @IsOptional()
   @IsString()
-  @Matches(/^\d{4}$/, { message: 'Program code must contain exactly four digits.' })
+  @Matches(/^\d{1,4}$/, { message: 'Program code must contain between 1 and 4 digits.' })
   programCode?: string;
 
-  @ApiProperty({ example: 'CAND-1234', required: false })
+  @ApiProperty({
+    example: '202012345',
+    maxLength: 9,
+    required: false,
+    pattern: '^\\d{1,9}$',
+    description: 'Student code. Contains between 1 and 9 digits; partial match.',
+  })
   @IsOptional()
   @IsString()
+  @Matches(/^\d{1,9}$/, { message: 'Student code must contain between 1 and 9 digits.' })
   studentCode?: string;
 
   @ApiProperty({ example: 'ID-12345678', required: false })

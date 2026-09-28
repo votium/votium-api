@@ -102,14 +102,14 @@ export class CandidatesController {
   @ApiQuery({
     name: 'programCode',
     required: false,
-    example: '1234',
-    description: 'Program code. Exact match of four digits.',
+    description: 'Program code. Partial match of 1 to 4 digits.',
+    schema: { type: 'string', maxLength: 4, example: '12', pattern: '^\\d{1,4}$' },
   })
   @ApiQuery({
     name: 'studentCode',
     required: false,
-    example: 'CAND-1234',
-    description: 'Student code. Exact match.',
+    description: 'Student code. Partial match of 1 to 9 digits.',
+    schema: { type: 'string', maxLength: 9, example: '202012345', pattern: '^\\d{1,9}$' },
   })
   @ApiQuery({
     name: 'identificationNumber',
