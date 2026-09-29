@@ -44,13 +44,13 @@ export class GetElectionBallotUseCase {
       throw new ElectionNoValidCandidatesError(params.electionId);
     }
 
-    // The blank-vote option is always available on the ballot (product decision).
-    // The pass-through of blank_vote_enabled to "active" happens at presentation
-    // level only; the endpoint is read-only and never writes to the database.
+    // The blank-vote option availability mirrors the election's blank_vote_enabled
+    // flag (single source of truth shared with the vote-registration endpoint). The
+    // endpoint is read-only and never writes to the database.
     return {
       electionId: params.electionId,
       electionName: election.name,
-      blankVote: { id: BLANK_VOTE_OPTION_ID, enabled: true },
+      blankVote: { id: BLANK_VOTE_OPTION_ID, enabled: election.blankVoteEnabled },
       candidacies,
     };
   }

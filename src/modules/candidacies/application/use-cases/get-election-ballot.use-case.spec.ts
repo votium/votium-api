@@ -107,14 +107,14 @@ describe('GetElectionBallotUseCase', () => {
     expect(result.blankVote).toEqual({ id: 'blank', enabled: true });
   });
 
-  it('EB-U-03: exposes the blank-vote option as available even when blank voting is disabled (display override)', async () => {
+  it('EB-U-03: exposes the blank-vote option as disabled when blank voting is disabled', async () => {
     elections.findById.mockResolvedValue(buildElection({ blankVoteEnabled: false }));
 
     const result = await new GetElectionBallotUseCase(elections, candidacies).execute({
       electionId: 'election-1',
     });
 
-    expect(result.blankVote).toEqual({ id: 'blank', enabled: true });
+    expect(result.blankVote).toEqual({ id: 'blank', enabled: false });
     expect(result.candidacies).toHaveLength(1);
   });
 
@@ -221,7 +221,7 @@ describe('GetElectionBallotUseCase', () => {
   });
 
   it.each([true, false])(
-    'EB-U-12: exposes the blank-vote option with the stable id and enabled true for blank voting %s',
+    'EB-U-12: exposes the blank-vote option with the stable id and enabled mirroring blank voting %s',
     async (blankVoteEnabled) => {
       elections.findById.mockResolvedValue(buildElection({ blankVoteEnabled }));
 
@@ -229,7 +229,7 @@ describe('GetElectionBallotUseCase', () => {
         electionId: 'election-1',
       });
 
-      expect(result.blankVote).toEqual({ id: 'blank', enabled: true });
+      expect(result.blankVote).toEqual({ id: 'blank', enabled: blankVoteEnabled });
     },
   );
 });

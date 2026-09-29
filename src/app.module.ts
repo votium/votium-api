@@ -8,6 +8,7 @@ import { CandidatesModule } from './modules/candidates/candidates.module';
 import { ElectionsModule } from './modules/elections/elections.module';
 import { ElectoralRollsModule } from './modules/electoral-rolls/electoral-rolls.module';
 import { CandidaciesModule } from './modules/candidacies/candidacies.module';
+import { VotingModule } from './modules/voting/voting.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { CandidaciesModule } from './modules/candidacies/candidacies.module';
     ElectionsModule,
     ElectoralRollsModule,
     CandidaciesModule,
+    VotingModule,
   ],
   controllers: [AppController],
   providers: [],

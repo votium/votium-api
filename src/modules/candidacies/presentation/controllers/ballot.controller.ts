@@ -18,9 +18,10 @@ export class BallotController {
     description:
       'Returns the electoral ballot for the election: the election identity, the valid ' +
       'candidates registered for the election (election-specific numbers preserved, ordered ' +
-      'by position number), and the blank-vote option (always available and selectable). ' +
-      'INACTIVE candidates are never returned. Read-only: no records are created or ' +
-      'modified. Requires ADMINISTRATOR, AUDITOR, or VOTER (elector) access.',
+      'by position number), and the blank-vote option (available only when blank voting is ' +
+      'enabled for the election). INACTIVE candidates are never returned. Read-only: no ' +
+      'records are created or modified. Requires ADMINISTRATOR, AUDITOR, or VOTER ' +
+      '(elector) access.',
   })
   @ApiParam({ name: 'electionId', description: 'UUID of the target election.', example: 'uuid' })
   @ApiResponse({

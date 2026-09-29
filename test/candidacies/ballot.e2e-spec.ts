@@ -451,7 +451,7 @@ describe('Election ballot retrieval (e2e)', () => {
       expect(body.candidacies).toHaveLength(1);
     });
 
-    it('E2E-B10: blank voting disabled still exposes the blank-vote option as available (read-only display override)', async () => {
+    it('E2E-B10: blank voting disabled exposes the blank-vote option as unavailable', async () => {
       const electionId = await seedElection({ blankVoteEnabled: false });
       const candidateId = await seedCandidate();
       await seedCandidacy(electionId, candidateId, 1);
@@ -463,10 +463,10 @@ describe('Election ballot retrieval (e2e)', () => {
       const res = await getBallot(electionId, adminToken).expect(200);
       const body = res.body as BallotBody;
 
-      expect(body.blankVote).toEqual({ id: 'blank', enabled: true });
+      expect(body.blankVote).toEqual({ id: 'blank', enabled: false });
       expect(body.candidacies).toHaveLength(1);
 
-      // The override is presentation-only: the stored configuration is never modified.
+      // The stored configuration is never modified.
       const afterElection = await prisma.election.findUnique({ where: { id: electionId } });
       expect(afterElection).toEqual(beforeElection);
       expect(afterElection?.blank_vote_enabled).toBe(false);
