@@ -7,6 +7,9 @@ export type PrismaElectoralRollRow = {
   has_voted: boolean;
   vote_attempts: number;
   last_vote_attempt: Date | null;
+  last_vote_candidacy_id: string | null;
+  last_vote_idempotency_key: string | null;
+  last_vote_registered_at: Date | null;
   created_at: Date;
 };
 
@@ -19,6 +22,9 @@ export class PrismaElectoralRollMapper {
       hasVoted: row.has_voted,
       voteAttempts: row.vote_attempts,
       lastVoteAttempt: row.last_vote_attempt,
+      lastVoteCandidacyId: row.last_vote_candidacy_id,
+      lastVoteIdempotencyKey: row.last_vote_idempotency_key,
+      lastVoteRegisteredAt: row.last_vote_registered_at,
       createdAt: row.created_at,
     });
   }
