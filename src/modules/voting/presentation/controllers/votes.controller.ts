@@ -49,8 +49,9 @@ export class VotesController {
       'Registers the vote of the authenticated elector for an ACTIVE election. The vote is ' +
       'recorded anonymously. Provide a candidacy UUID belonging to the election, or "blank" ' +
       'for a blank vote (accepted only when blank voting is enabled for the election). ' +
-      'Safe to retry: reuse the same Idempotency-Key header on retries to receive the ' +
-      'already-registered result instead of a duplicate-vote error.',
+      'The election must be ACTIVE and the current date/time within its configured start/end ' +
+      'voting window. Safe to retry: reuse the same Idempotency-Key header on retries to ' +
+      'receive the already-registered result instead of a duplicate-vote error.',
   })
   @ApiParam({ name: 'electionId', description: 'UUID of the target election.' })
   @ApiHeader({
@@ -81,6 +82,10 @@ export class VotesController {
     description:
       'Election is not active, blank voting is disabled, the vote is already registered, ' +
       'or the idempotency key was reused for a different vote.',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'Election is outside its configured voting schedule.',
   })
   @UseGuards(JwtAuthGuard, ElectorGuard)
   async vote(

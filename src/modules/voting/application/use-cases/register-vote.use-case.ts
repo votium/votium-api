@@ -1,6 +1,7 @@
 import { CandidacyNotFoundError } from 'src/modules/candidacies/domain/errors/candidacy-not-found.error';
 import type { CandidacyRepository } from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
 import { ElectionNotFoundError } from 'src/modules/elections/domain/errors/election-not-found.error';
+import { ElectionNotWithinScheduleError } from 'src/modules/elections/domain/errors/election-not-within-schedule.error';
 import type { ElectionRepository } from 'src/modules/elections/domain/repositories/election.repository.interface';
 import { ElectoralRollNotFoundError } from 'src/modules/electoral-rolls/domain/errors/electoral-roll-not-found.error';
 import type { ElectoralRollEntity } from 'src/modules/electoral-rolls/domain/entities/electoral-roll.entity';
@@ -58,6 +59,14 @@ export class RegisterVoteUseCase {
 
     if (election.currentStatus !== 'ACTIVE') {
       throw new ElectionNotActiveError(input.electionId);
+    }
+
+    // Schedule validation: a vote may only be registered while the current date/time
+    // is inside the election's configured voting interval. Runs after the state check
+    // (so a non-ACTIVE election still surfaces as 409) and reuses the entity's single
+    // decision point for the schedule-eligibility rule.
+    if (!election.isWithinSchedule(now)) {
+      throw new ElectionNotWithinScheduleError();
     }
 
     if (input.candidacyId === BLANK_VOTE_OPTION_ID) {

@@ -116,17 +116,37 @@ describe('Elector vote registration (e2e)', () => {
       where: { election_id_candidacy_id: { election_id: electionId, candidacy_id: candidacyId } },
     });
 
+  // These two helpers mirror `ElectionEntity.toInstant` (which reads the calendar day from
+  // the date's UTC components and the time-of-day from the time's UTC components). A seeded
+  // window is only correct if the date/time columns decompose the instant the same way.
+  // UTC midnight of the calendar day (column @db.Date()).
+  const toDateColumn = (d: Date) =>
+    new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+
+  // Epoch-style time-of-day (column @db.Time()).
+  const toTimeColumn = (d: Date) =>
+    new Date(Date.UTC(1970, 0, 1, d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds()));
+
   async function seedElection(
-    overrides: { status?: ElectionStatus; blankVoteEnabled?: boolean } = {},
+    overrides: {
+      status?: ElectionStatus;
+      blankVoteEnabled?: boolean;
+      window?: { start: Date; end: Date };
+    } = {},
   ): Promise<string> {
+    const now = new Date();
+    // Relative window by default so the happy path is always inside the voting schedule.
+    const start = overrides.window?.start ?? new Date(now.getTime() - 60 * 60 * 1000);
+    const end = overrides.window?.end ?? new Date(now.getTime() + 60 * 60 * 1000);
+
     const row = await prisma.election.create({
       data: {
         name: `E2E-VOTE-${suffix}-${Math.random()}`,
         description: 'E2E vote seed.',
-        start_date: new Date(Date.UTC(2026, 9, 1)),
-        start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
-        end_date: new Date(Date.UTC(2026, 9, 1)),
-        end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        start_date: toDateColumn(start),
+        start_time: toTimeColumn(start),
+        end_date: toDateColumn(end),
+        end_time: toTimeColumn(end),
         current_status: overrides.status ?? 'ACTIVE',
         blank_vote_enabled: overrides.blankVoteEnabled ?? false,
       },
@@ -353,6 +373,38 @@ describe('Elector vote registration (e2e)', () => {
       const res = await postVote(electionId, { candidacyId: 'any' }, electorToken).expect(409);
 
       expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_ACTIVE' });
+    });
+
+    it('VE-15: rejects a vote when the voting window is in the past with 422', async () => {
+      const start = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2h ago
+      const end = new Date(Date.now() - 60 * 60 * 1000); // 1h ago
+      const electionId = await seedElection({ window: { start, end } });
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      const res = await postVote(electionId, { candidacyId }, electorToken).expect(422);
+
+      expect(res.body).toMatchObject({ statusCode: 422, error: 'ELECTION_NOT_WITHIN_SCHEDULE' });
+
+      const roll = await findRoll(electionId, elector1.id);
+      expect(roll?.has_voted).toBe(false);
+      const tally = await findTally(electionId, candidacyId);
+      expect(tally).toBeNull();
+    });
+
+    it('VE-16: rejects a vote when the voting window is in the future with 422', async () => {
+      const start = new Date(Date.now() + 60 * 60 * 1000); // 1h from now
+      const end = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2h from now
+      const electionId = await seedElection({ window: { start, end } });
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      const res = await postVote(electionId, { candidacyId }, electorToken).expect(422);
+
+      expect(res.body).toMatchObject({ statusCode: 422, error: 'ELECTION_NOT_WITHIN_SCHEDULE' });
+
+      const roll = await findRoll(electionId, elector1.id);
+      expect(roll?.has_voted).toBe(false);
     });
 
     it('VE-09: rejects an elector not in the electoral roll with 404', async () => {
