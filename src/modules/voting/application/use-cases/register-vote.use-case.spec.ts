@@ -5,6 +5,7 @@ import type {
 } from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
 import { ElectionEntity } from 'src/modules/elections/domain/entities/election.entity';
 import { ElectionNotFoundError } from 'src/modules/elections/domain/errors/election-not-found.error';
+import { ElectionNotWithinScheduleError } from 'src/modules/elections/domain/errors/election-not-within-schedule.error';
 import type { ElectionRepository } from 'src/modules/elections/domain/repositories/election.repository.interface';
 import { ElectoralRollEntity } from 'src/modules/electoral-rolls/domain/entities/electoral-roll.entity';
 import { ElectoralRollNotFoundError } from 'src/modules/electoral-rolls/domain/errors/electoral-roll-not-found.error';
@@ -18,20 +19,42 @@ import { RegisterVoteUseCase, type RegisterVoteInput } from './register-vote.use
 
 const NOT_ACTIVE_STATUSES = ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED'] as const;
 
+// Narrow single-day window: 2026-10-01 08:00Z .. 18:00Z (schedule boundary tests).
+const NARROW_WINDOW = {
+  startDate: new Date(Date.UTC(2026, 9, 1)),
+  startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+  endDate: new Date(Date.UTC(2026, 9, 1)),
+  endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+};
+
+// Multi-day (overnight) window: 2026-09-30 22:00Z .. 2026-10-01 02:00Z.
+const OVERNIGHT_WINDOW = {
+  startDate: new Date(Date.UTC(2026, 9, 30)),
+  startTime: new Date(Date.UTC(1970, 0, 1, 22, 0, 0)),
+  endDate: new Date(Date.UTC(2026, 10, 1)),
+  endTime: new Date(Date.UTC(1970, 0, 1, 2, 0, 0)),
+};
+
 function buildElection(
   overrides: Partial<{
     currentStatus: ElectionEntity['currentStatus'];
     blankVoteEnabled: boolean;
+    startDate: Date;
+    startTime: Date;
+    endDate: Date;
+    endTime: Date;
   }> = {},
 ): ElectionEntity {
   return ElectionEntity.restore({
     id: 'election-1',
     name: 'Student Council Election 2026',
     description: 'Election for the 2026 student council.',
-    startDate: new Date(Date.UTC(2026, 9, 1)),
-    startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
-    endDate: new Date(Date.UTC(2026, 9, 1)),
-    endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+    // Default to a deliberately wide window so tests not concerned with the schedule
+    // always run inside it. Schedule-specific tests override these fields explicitly.
+    startDate: overrides.startDate ?? new Date(Date.UTC(2000, 0, 1)),
+    startTime: overrides.startTime ?? new Date(Date.UTC(1970, 0, 1, 0, 0, 0)),
+    endDate: overrides.endDate ?? new Date(Date.UTC(2100, 0, 1)),
+    endTime: overrides.endTime ?? new Date(Date.UTC(1970, 0, 1, 0, 0, 0)),
     currentStatus: overrides.currentStatus ?? 'ACTIVE',
     blankVoteEnabled: overrides.blankVoteEnabled ?? false,
     createdAt: new Date('2026-08-19T15:00:00.000Z'),
@@ -212,6 +235,114 @@ describe('RegisterVoteUseCase', () => {
         expect(votes.recordVote.mock.calls).toHaveLength(0);
       },
     );
+  });
+
+  describe('election schedule', () => {
+    // Narrow window (2026-10-01 08:00Z .. 18:00Z) so the boundary assertions below are
+    // meaningful (the default buildElection window is intentionally wide).
+    beforeEach(() => {
+      elections.findById.mockResolvedValue(buildElection({ ...NARROW_WINDOW }));
+    });
+
+    it('RV-21: rejects a vote before the configured start instant', async () => {
+      const now = new Date(Date.UTC(2026, 9, 1, 7, 59, 59));
+
+      await expect(buildUseCase().execute(buildInput({ now }))).rejects.toBeInstanceOf(
+        ElectionNotWithinScheduleError,
+      );
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-22: allows a vote exactly at the start instant (inclusive)', async () => {
+      const now = new Date(Date.UTC(2026, 9, 1, 8, 0, 0));
+
+      const result = await buildUseCase().execute(buildInput({ now }));
+
+      expect(result).toMatchObject({ electionId: 'election-1', candidacyId: 'candidacy-1' });
+      expect(votes.recordVote.mock.calls).toHaveLength(1);
+    });
+
+    it('RV-23: allows a vote strictly inside the voting window', async () => {
+      const now = new Date(Date.UTC(2026, 9, 1, 12, 0, 0));
+
+      const result = await buildUseCase().execute(buildInput({ now }));
+
+      expect(result).toMatchObject({ electionId: 'election-1', candidacyId: 'candidacy-1' });
+      expect(votes.recordVote.mock.calls).toHaveLength(1);
+    });
+
+    it('RV-24: allows a vote exactly at the end instant (inclusive)', async () => {
+      const now = new Date(Date.UTC(2026, 9, 1, 18, 0, 0));
+
+      const result = await buildUseCase().execute(buildInput({ now }));
+
+      expect(result).toMatchObject({ electionId: 'election-1', candidacyId: 'candidacy-1' });
+      expect(votes.recordVote.mock.calls).toHaveLength(1);
+    });
+
+    it('RV-25: rejects a vote after the configured end instant', async () => {
+      const now = new Date(Date.UTC(2026, 9, 1, 18, 0, 1));
+
+      await expect(buildUseCase().execute(buildInput({ now }))).rejects.toBeInstanceOf(
+        ElectionNotWithinScheduleError,
+      );
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-26: allows a vote inside a multi-day (overnight) voting window', async () => {
+      elections.findById.mockResolvedValue(buildElection({ ...OVERNIGHT_WINDOW }));
+      const inside = new Date(Date.UTC(2026, 10, 1, 0, 30, 0));
+
+      const result = await buildUseCase().execute(buildInput({ now: inside }));
+
+      expect(result).toMatchObject({ electionId: 'election-1', candidacyId: 'candidacy-1' });
+      expect(votes.recordVote.mock.calls).toHaveLength(1);
+    });
+
+    it('RV-27: rejects a multi-day window outside its boundaries', async () => {
+      elections.findById.mockResolvedValue(buildElection({ ...OVERNIGHT_WINDOW }));
+
+      const beforeStart = new Date(Date.UTC(2026, 9, 30, 21, 59, 59));
+      await expect(buildUseCase().execute(buildInput({ now: beforeStart }))).rejects.toBeInstanceOf(
+        ElectionNotWithinScheduleError,
+      );
+
+      const afterEnd = new Date(Date.UTC(2026, 10, 1, 2, 0, 1));
+      await expect(buildUseCase().execute(buildInput({ now: afterEnd }))).rejects.toBeInstanceOf(
+        ElectionNotWithinScheduleError,
+      );
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-28: state check runs before the schedule check', async () => {
+      elections.findById.mockResolvedValue(buildElection({ currentStatus: 'CLOSED' }));
+      const inWindow = new Date(Date.UTC(2026, 9, 1, 12, 0, 0));
+
+      await expect(buildUseCase().execute(buildInput({ now: inWindow }))).rejects.toBeInstanceOf(
+        ElectionNotActiveError,
+      );
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-29: schedule check runs before blank-vote validation', async () => {
+      // Out-of-window with blank voting disabled: the schedule error surfaces first.
+      const now = new Date(Date.UTC(2026, 9, 1, 7, 59, 59));
+
+      await expect(
+        buildUseCase().execute(buildInput({ candidacyId: 'blank', now })),
+      ).rejects.toBeInstanceOf(ElectionNotWithinScheduleError);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-30: schedule check runs before candidacy validation', async () => {
+      // Out-of-window with an unknown candidacy: the schedule error surfaces first.
+      const now = new Date(Date.UTC(2026, 9, 1, 18, 0, 1));
+
+      await expect(
+        buildUseCase().execute(buildInput({ candidacyId: 'candidacy-unknown', now })),
+      ).rejects.toBeInstanceOf(ElectionNotWithinScheduleError);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
   });
 
   describe('electoral-roll membership', () => {
