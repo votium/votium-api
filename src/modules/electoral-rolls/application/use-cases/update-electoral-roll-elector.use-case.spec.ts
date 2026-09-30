@@ -51,6 +51,9 @@ function buildRoll(electorId: string): ElectoralRollEntity {
     hasVoted: false,
     voteAttempts: 0,
     lastVoteAttempt: null,
+    lastVoteCandidacyId: null,
+    lastVoteIdempotencyKey: null,
+    lastVoteRegisteredAt: null,
     createdAt: new Date('2026-08-20T10:00:00.000Z'),
   });
 }

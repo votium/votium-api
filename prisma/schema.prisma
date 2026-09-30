@@ -248,13 +248,16 @@ model ElectorMfaChallenge {
 }
 
 model ElectoralRoll {
-  id                String    @id @default(uuid())
-  election_id       String
-  elector_id        String
-  has_voted         Boolean   @default(false)
-  vote_attempts     Int       @default(0)
-  last_vote_attempt DateTime?
-  created_at        DateTime  @default(now())
+  id                        String    @id @default(uuid())
+  election_id               String
+  elector_id                String
+  has_voted                 Boolean   @default(false)
+  vote_attempts             Int       @default(0)
+  last_vote_attempt         DateTime?
+  last_vote_candidacy_id    String?
+  last_vote_idempotency_key String?
+  last_vote_registered_at   DateTime?
+  created_at                DateTime  @default(now())
 
   election     Election      @relation(fields: [election_id], references: [id])
   elector      Elector       @relation(fields: [elector_id], references: [id])

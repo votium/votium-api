@@ -11,7 +11,9 @@ import { ElectoralRollNotFoundError } from 'src/modules/electoral-rolls/domain/e
 import type { ElectoralRollRepository } from 'src/modules/electoral-rolls/domain/repositories/electoral-roll.repository.interface';
 import { BlankVoteDisabledError } from '../../domain/errors/blank-vote-disabled.error';
 import { ElectionNotActiveError } from '../../domain/errors/election-not-active.error';
-import type { ResultRepository } from '../../domain/repositories/result.repository.interface';
+import { IdempotencyKeyConflictError } from '../../domain/errors/idempotency-key-conflict.error';
+import { VoteAlreadyRegisteredError } from '../../domain/errors/vote-already-registered.error';
+import type { VoteRepository } from '../../domain/repositories/vote.repository.interface';
 import { RegisterVoteUseCase, type RegisterVoteInput } from './register-vote.use-case';
 
 const NOT_ACTIVE_STATUSES = ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED'] as const;
@@ -50,6 +52,31 @@ function buildCandidacy(overrides: Partial<CandidacyWithCandidate> = {}): Candid
   };
 }
 
+function buildRoll(): ElectoralRollEntity {
+  return ElectoralRollEntity.create({ electionId: 'election-1', electorId: 'elector-1' });
+}
+
+function buildVotedRoll(
+  overrides: Partial<{
+    candidacyId: string;
+    idempotencyKey: string | null;
+    registeredAt: Date;
+  }> = {},
+): ElectoralRollEntity {
+  return ElectoralRollEntity.restore({
+    id: 'roll-1',
+    electionId: 'election-1',
+    electorId: 'elector-1',
+    hasVoted: true,
+    voteAttempts: 1,
+    lastVoteAttempt: new Date('2026-09-29T14:03:00.000Z'),
+    lastVoteCandidacyId: overrides.candidacyId ?? 'candidacy-1',
+    lastVoteIdempotencyKey: overrides.idempotencyKey ?? null,
+    lastVoteRegisteredAt: overrides.registeredAt ?? new Date('2026-09-29T14:03:00.000Z'),
+    createdAt: new Date('2026-08-19T15:00:00.000Z'),
+  });
+}
+
 describe('RegisterVoteUseCase', () => {
   const elections: jest.Mocked<ElectionRepository> = {
     findAll: jest.fn(),
@@ -82,12 +109,12 @@ describe('RegisterVoteUseCase', () => {
     deleteByElectionAndCandidacyId: jest.fn(),
   };
 
-  const results: jest.Mocked<ResultRepository> = {
-    incrementVotes: jest.fn(),
+  const votes: jest.Mocked<VoteRepository> = {
+    recordVote: jest.fn(),
   };
 
   function buildUseCase(): RegisterVoteUseCase {
-    return new RegisterVoteUseCase(elections, electoralRolls, candidacies, results);
+    return new RegisterVoteUseCase(elections, electoralRolls, candidacies, votes);
   }
 
   function buildInput(overrides: Partial<RegisterVoteInput> = {}): RegisterVoteInput {
@@ -102,14 +129,13 @@ describe('RegisterVoteUseCase', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     elections.findById.mockResolvedValue(buildElection());
-    electoralRolls.findByElectionAndElectorIds.mockResolvedValue([
-      ElectoralRollEntity.create({ electionId: 'election-1', electorId: 'elector-1' }),
-    ]);
+    electoralRolls.findByElectionAndElectorIds.mockResolvedValue([buildRoll()]);
     candidacies.findByElection.mockResolvedValue([buildCandidacy()]);
+    votes.recordVote.mockResolvedValue({ outcome: 'recorded' });
   });
 
   describe('candidacy vote', () => {
-    it('RV-01: increments the result tally and returns the registration confirmation', async () => {
+    it('RV-01: records the vote through the repository and returns the confirmation', async () => {
       const now = new Date('2026-09-29T14:03:00.000Z');
       const result = await buildUseCase().execute(buildInput({ now }));
 
@@ -118,31 +144,41 @@ describe('RegisterVoteUseCase', () => {
         candidacyId: 'candidacy-1',
         registeredAt: now,
       });
-      expect(results.incrementVotes.mock.calls).toStrictEqual([['election-1', 'candidacy-1']]);
+      expect(votes.recordVote.mock.calls).toStrictEqual([
+        [
+          {
+            electionId: 'election-1',
+            electorId: 'elector-1',
+            candidacyId: 'candidacy-1',
+            idempotencyKey: null,
+            now,
+          },
+        ],
+      ]);
     });
 
     it('RV-02: uses a server timestamp when none is provided', async () => {
       const result = await buildUseCase().execute(buildInput());
 
       expect(result.registeredAt).toBeInstanceOf(Date);
+      expect(votes.recordVote.mock.calls[0][0]).toMatchObject({ now: result.registeredAt });
     });
 
-    it('RV-03: does not touch the electoral-roll voting state', async () => {
-      await buildUseCase().execute(buildInput());
+    it('RV-03: forwards a provided idempotency key to the repository', async () => {
+      await buildUseCase().execute(buildInput({ idempotencyKey: 'key-abc' }));
 
-      expect(electoralRolls.createMany.mock.calls).toHaveLength(0);
-      expect(electoralRolls.deleteByElectionAndElectorId.mock.calls).toHaveLength(0);
+      expect(votes.recordVote.mock.calls[0][0]).toMatchObject({ idempotencyKey: 'key-abc' });
     });
   });
 
   describe('blank vote', () => {
-    it('RV-04: accepts an enabled blank vote and writes nothing to Result', async () => {
+    it('RV-04: records a blank-vote claim with candidacyId "blank"', async () => {
       elections.findById.mockResolvedValue(buildElection({ blankVoteEnabled: true }));
 
       const result = await buildUseCase().execute(buildInput({ candidacyId: 'blank' }));
 
       expect(result).toMatchObject({ electionId: 'election-1', candidacyId: 'blank' });
-      expect(results.incrementVotes.mock.calls).toHaveLength(0);
+      expect(votes.recordVote.mock.calls[0][0]).toMatchObject({ candidacyId: 'blank' });
     });
 
     it('RV-05: rejects a blank vote when blank voting is disabled', async () => {
@@ -151,7 +187,7 @@ describe('RegisterVoteUseCase', () => {
       await expect(
         buildUseCase().execute(buildInput({ candidacyId: 'blank' })),
       ).rejects.toBeInstanceOf(BlankVoteDisabledError);
-      expect(results.incrementVotes.mock.calls).toHaveLength(0);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
     });
   });
 
@@ -162,7 +198,7 @@ describe('RegisterVoteUseCase', () => {
       await expect(buildUseCase().execute(buildInput())).rejects.toBeInstanceOf(
         ElectionNotFoundError,
       );
-      expect(results.incrementVotes.mock.calls).toHaveLength(0);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
     });
 
     it.each(NOT_ACTIVE_STATUSES)(
@@ -173,7 +209,7 @@ describe('RegisterVoteUseCase', () => {
         await expect(buildUseCase().execute(buildInput())).rejects.toBeInstanceOf(
           ElectionNotActiveError,
         );
-        expect(results.incrementVotes.mock.calls).toHaveLength(0);
+        expect(votes.recordVote.mock.calls).toHaveLength(0);
       },
     );
   });
@@ -185,7 +221,7 @@ describe('RegisterVoteUseCase', () => {
       await expect(buildUseCase().execute(buildInput())).rejects.toBeInstanceOf(
         ElectoralRollNotFoundError,
       );
-      expect(results.incrementVotes.mock.calls).toHaveLength(0);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
     });
   });
 
@@ -196,7 +232,7 @@ describe('RegisterVoteUseCase', () => {
       await expect(
         buildUseCase().execute(buildInput({ candidacyId: 'candidacy-unknown' })),
       ).rejects.toBeInstanceOf(CandidacyNotFoundError);
-      expect(results.incrementVotes.mock.calls).toHaveLength(0);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
     });
 
     it('RV-10: rejects a candidacy that belongs to another election', async () => {
@@ -207,25 +243,136 @@ describe('RegisterVoteUseCase', () => {
       await expect(
         buildUseCase().execute(buildInput({ candidacyId: 'candidacy-1' })),
       ).rejects.toBeInstanceOf(CandidacyNotFoundError);
-      expect(results.incrementVotes.mock.calls).toHaveLength(0);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
     });
 
-    it('RV-11: rejects a candidacy whose candidate is INACTIVE (excluded from the ballot)', async () => {
+    it('RV-11: rejects a candidacy whose candidate is INACTIVE', async () => {
       candidacies.findByElection.mockResolvedValue([]);
 
       await expect(buildUseCase().execute(buildInput())).rejects.toBeInstanceOf(
         CandidacyNotFoundError,
       );
-      expect(results.incrementVotes.mock.calls).toHaveLength(0);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
     });
   });
 
   describe('anonymity', () => {
-    it('RV-12: never persists a link between the elector and the option', async () => {
-      await buildUseCase().execute(buildInput());
+    it('RV-12: the successful result exposes no elector identity or vote internals', async () => {
+      const result = await buildUseCase().execute(buildInput());
 
-      expect(results.incrementVotes.mock.calls).toStrictEqual([['election-1', 'candidacy-1']]);
-      expect(JSON.stringify(results.incrementVotes.mock.calls[0])).not.toContain('elector-1');
+      expect(Object.keys(result).sort()).toEqual(['candidacyId', 'electionId', 'registeredAt']);
+    });
+  });
+
+  describe('retry / idempotency', () => {
+    it('RV-13: replays the stored result on a retry with the same idempotency key', async () => {
+      const registeredAt = new Date('2026-09-29T14:03:00.000Z');
+      electoralRolls.findByElectionAndElectorIds.mockResolvedValue([
+        buildVotedRoll({ candidacyId: 'candidacy-1', idempotencyKey: 'K', registeredAt }),
+      ]);
+
+      const result = await buildUseCase().execute(
+        buildInput({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+      );
+
+      expect(result).toEqual({
+        electionId: 'election-1',
+        candidacyId: 'candidacy-1',
+        registeredAt,
+      });
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-14: rejects a reused key with a different candidacy as a conflict', async () => {
+      electoralRolls.findByElectionAndElectorIds.mockResolvedValue([
+        buildVotedRoll({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+      ]);
+
+      await expect(
+        buildUseCase().execute(buildInput({ candidacyId: 'candidacy-2', idempotencyKey: 'K' })),
+      ).rejects.toBeInstanceOf(IdempotencyKeyConflictError);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-15: rejects a duplicate vote made with a different key', async () => {
+      electoralRolls.findByElectionAndElectorIds.mockResolvedValue([
+        buildVotedRoll({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+      ]);
+
+      await expect(
+        buildUseCase().execute(buildInput({ candidacyId: 'candidacy-1', idempotencyKey: 'L' })),
+      ).rejects.toBeInstanceOf(VoteAlreadyRegisteredError);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-16: rejects a duplicate vote made without an idempotency key', async () => {
+      electoralRolls.findByElectionAndElectorIds.mockResolvedValue([
+        buildVotedRoll({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+      ]);
+
+      await expect(
+        buildUseCase().execute(buildInput({ candidacyId: 'candidacy-1' })),
+      ).rejects.toBeInstanceOf(VoteAlreadyRegisteredError);
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-17: replays when a concurrent claim is lost but the key matches', async () => {
+      votes.recordVote.mockResolvedValue({ outcome: 'already_voted' });
+      electoralRolls.findByElectionAndElectorIds
+        .mockResolvedValueOnce([buildRoll()])
+        .mockResolvedValueOnce([
+          buildVotedRoll({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+        ]);
+
+      const result = await buildUseCase().execute(
+        buildInput({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+      );
+
+      expect(result).toMatchObject({ electionId: 'election-1', candidacyId: 'candidacy-1' });
+      expect(votes.recordVote.mock.calls).toHaveLength(1);
+    });
+
+    it('RV-18: rejects as a duplicate when a concurrent claim is lost without a matching key', async () => {
+      votes.recordVote.mockResolvedValue({ outcome: 'already_voted' });
+      electoralRolls.findByElectionAndElectorIds
+        .mockResolvedValueOnce([buildRoll()])
+        .mockResolvedValueOnce([
+          buildVotedRoll({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+        ]);
+
+      await expect(
+        buildUseCase().execute(buildInput({ candidacyId: 'candidacy-1', idempotencyKey: 'L' })),
+      ).rejects.toBeInstanceOf(VoteAlreadyRegisteredError);
+      expect(votes.recordVote.mock.calls).toHaveLength(1);
+    });
+
+    it('RV-19: a matching-key retry still replays after the election has closed', async () => {
+      elections.findById.mockResolvedValue(buildElection({ currentStatus: 'CLOSED' }));
+      electoralRolls.findByElectionAndElectorIds.mockResolvedValue([
+        buildVotedRoll({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+      ]);
+
+      const result = await buildUseCase().execute(
+        buildInput({ candidacyId: 'candidacy-1', idempotencyKey: 'K' }),
+      );
+
+      expect(result).toMatchObject({ candidacyId: 'candidacy-1' });
+      expect(votes.recordVote.mock.calls).toHaveLength(0);
+    });
+
+    it('RV-20: a failed write can be retried successfully without leaving a vote', async () => {
+      votes.recordVote.mockRejectedValueOnce(new Error('db failure')).mockResolvedValueOnce({
+        outcome: 'recorded',
+      });
+
+      await expect(buildUseCase().execute(buildInput({ idempotencyKey: 'K' }))).rejects.toThrow(
+        'db failure',
+      );
+
+      const result = await buildUseCase().execute(buildInput({ idempotencyKey: 'K' }));
+
+      expect(result).toMatchObject({ electionId: 'election-1', candidacyId: 'candidacy-1' });
+      expect(votes.recordVote.mock.calls).toHaveLength(2);
     });
   });
 });

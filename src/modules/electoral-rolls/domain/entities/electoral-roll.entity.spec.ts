@@ -14,6 +14,9 @@ describe('ElectoralRollEntity', () => {
       expect(entity.hasVoted).toBe(false);
       expect(entity.voteAttempts).toBe(0);
       expect(entity.lastVoteAttempt).toBeNull();
+      expect(entity.lastVoteCandidacyId).toBeNull();
+      expect(entity.lastVoteIdempotencyKey).toBeNull();
+      expect(entity.lastVoteRegisteredAt).toBeNull();
       expect(entity.createdAt).toBeNull();
     });
   });
@@ -30,6 +33,9 @@ describe('ElectoralRollEntity', () => {
         hasVoted: true,
         voteAttempts: 2,
         lastVoteAttempt: lastVote,
+        lastVoteCandidacyId: 'candidacy-uuid',
+        lastVoteIdempotencyKey: 'key-abc',
+        lastVoteRegisteredAt: lastVote,
         createdAt: now,
       });
 
@@ -39,6 +45,9 @@ describe('ElectoralRollEntity', () => {
       expect(entity.hasVoted).toBe(true);
       expect(entity.voteAttempts).toBe(2);
       expect(entity.lastVoteAttempt).toBe(lastVote);
+      expect(entity.lastVoteCandidacyId).toBe('candidacy-uuid');
+      expect(entity.lastVoteIdempotencyKey).toBe('key-abc');
+      expect(entity.lastVoteRegisteredAt).toBe(lastVote);
       expect(entity.createdAt).toBe(now);
     });
 
@@ -50,10 +59,16 @@ describe('ElectoralRollEntity', () => {
         hasVoted: false,
         voteAttempts: 0,
         lastVoteAttempt: null,
+        lastVoteCandidacyId: null,
+        lastVoteIdempotencyKey: null,
+        lastVoteRegisteredAt: null,
         createdAt: new Date(),
       });
 
       expect(entity.lastVoteAttempt).toBeNull();
+      expect(entity.lastVoteCandidacyId).toBeNull();
+      expect(entity.lastVoteIdempotencyKey).toBeNull();
+      expect(entity.lastVoteRegisteredAt).toBeNull();
     });
   });
 });

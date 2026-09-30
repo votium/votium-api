@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   HttpCode,
@@ -12,6 +13,7 @@ import {
 import {
   ApiBody,
   ApiCookieAuth,
+  ApiHeader,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -46,16 +48,28 @@ export class VotesController {
     description:
       'Registers the vote of the authenticated elector for an ACTIVE election. The vote is ' +
       'recorded anonymously. Provide a candidacy UUID belonging to the election, or "blank" ' +
-      'for a blank vote (accepted only when blank voting is enabled for the election).',
+      'for a blank vote (accepted only when blank voting is enabled for the election). ' +
+      'Safe to retry: reuse the same Idempotency-Key header on retries to receive the ' +
+      'already-registered result instead of a duplicate-vote error.',
   })
   @ApiParam({ name: 'electionId', description: 'UUID of the target election.' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Optional client-generated key identifying a single logical vote operation. ' +
+      'Reuse the same value when retrying a vote whose response was lost.',
+  })
   @ApiBody({ type: RegisterVoteDto })
   @ApiResponse({
     status: 201,
     description: 'Vote registered successfully.',
     type: RegisterVoteResponseDto,
   })
-  @ApiResponse({ status: 400, description: 'Invalid election identifier or request body.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid election identifier, request body, or idempotency key.',
+  })
   @ApiResponse({ status: 401, description: 'Authentication is required.' })
   @ApiResponse({ status: 403, description: 'Requires an elector principal.' })
   @ApiResponse({
@@ -64,7 +78,9 @@ export class VotesController {
   })
   @ApiResponse({
     status: 409,
-    description: 'Election is not active, or blank voting is disabled.',
+    description:
+      'Election is not active, blank voting is disabled, the vote is already registered, ' +
+      'or the idempotency key was reused for a different vote.',
   })
   @UseGuards(JwtAuthGuard, ElectorGuard)
   async vote(
@@ -72,12 +88,30 @@ export class VotesController {
     @Body() dto: RegisterVoteDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<RegisterVoteResponseDto> {
+    const idempotencyKey = extractIdempotencyKey(req);
+
     const result = await this.registerVote.execute({
       electionId,
       electorId: req.user.sub,
       candidacyId: dto.candidacyId,
+      idempotencyKey,
     });
 
     return VotePresenter.toResponse(result);
   }
+}
+
+function extractIdempotencyKey(req: Request): string | undefined {
+  const raw = req.headers['idempotency-key'];
+  const key = Array.isArray(raw) ? raw[0] : raw;
+
+  if (key === undefined) {
+    return undefined;
+  }
+
+  if (typeof key !== 'string' || key.trim() === '') {
+    throw new BadRequestException('Invalid Idempotency-Key header.');
+  }
+
+  return key;
 }

@@ -98,12 +98,23 @@ describe('Elector vote registration (e2e)', () => {
     return extractAuthCookie(verifyRes);
   };
 
-  const postVote = (electionId: string, body: unknown, token?: string) => {
+  const postVote = (electionId: string, body: unknown, token?: string, idempotencyKey?: string) => {
     const req = request(app.getHttpServer()).post(`/api/v1/elections/${electionId}/votes`);
     if (token) req.set('Cookie', token);
+    if (idempotencyKey !== undefined) req.set('Idempotency-Key', idempotencyKey);
     if (body !== undefined) req.send(body as object);
     return req;
   };
+
+  const findRoll = (electionId: string, electorId: string) =>
+    prisma.electoralRoll.findUnique({
+      where: { election_id_elector_id: { election_id: electionId, elector_id: electorId } },
+    });
+
+  const findTally = (electionId: string, candidacyId: string) =>
+    prisma.result.findUnique({
+      where: { election_id_candidacy_id: { election_id: electionId, candidacy_id: candidacyId } },
+    });
 
   async function seedElection(
     overrides: { status?: ElectionStatus; blankVoteEnabled?: boolean } = {},
@@ -437,6 +448,188 @@ describe('Elector vote registration (e2e)', () => {
         .get('/api/v1/users')
         .set('Cookie', elector2Token)
         .expect(403);
+    });
+  });
+
+  describe('POST /elections/:electionId/votes — retry/idempotency (e2e)', () => {
+    it('VE-RETRY-01: a first vote marks the roll as voted and records one tally', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+
+      const roll = await findRoll(electionId, elector1.id);
+      expect(roll?.has_voted).toBe(true);
+      expect(roll?.last_vote_candidacy_id).toBe(candidacyId);
+      expect(roll?.last_vote_idempotency_key).toBe('key-1');
+
+      const tally = await findTally(electionId, candidacyId);
+      expect(tally?.votes).toBe(1);
+    });
+
+    it('VE-RETRY-02: a sequential retry with the same key returns 201 without another tally', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      const first = await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+      const retry = await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+
+      expect(retry.body).toMatchObject({
+        electionId,
+        candidacyId,
+      });
+      expect((retry.body as VoteResponseBody).registeredAt).toBe(
+        (first.body as VoteResponseBody).registeredAt,
+      );
+
+      const tally = await findTally(electionId, candidacyId);
+      expect(tally?.votes).toBe(1);
+    });
+
+    it('VE-RETRY-03: multiple sequential retries resolve to a single vote', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      for (let i = 0; i < 4; i += 1) {
+        await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+      }
+
+      const tally = await findTally(electionId, candidacyId);
+      expect(tally?.votes).toBe(1);
+
+      const rollCount = await prisma.electoralRoll.count({ where: { election_id: electionId } });
+      expect(rollCount).toBe(1);
+    });
+
+    it('VE-RETRY-04: a lost-response retry with the same key does not double-count', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+      // Simulate the client not receiving the response and retrying identically.
+      const retry = await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+
+      expect(retry.body).toMatchObject({ electionId, candidacyId });
+      const tally = await findTally(electionId, candidacyId);
+      expect(tally?.votes).toBe(1);
+    });
+
+    it('VE-RETRY-05: a duplicate vote with a different key returns 409', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+      const res = await postVote(electionId, { candidacyId }, electorToken, 'key-2').expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'VOTE_ALREADY_REGISTERED' });
+    });
+
+    it('VE-RETRY-06: reusing a key with a different candidacy returns 409', async () => {
+      const electionId = await seedElection();
+      const candidacyA = await seedCandidacy(electionId);
+      const candidateB = await seedCandidate();
+      const candidacyB = await prisma.candiday.create({
+        data: { election_id: electionId, candidate_id: candidateB, position_number: 2 },
+      });
+      await seedRoll(electionId, elector1.id);
+
+      await postVote(electionId, { candidacyId: candidacyA }, electorToken, 'key-1').expect(201);
+      const res = await postVote(
+        electionId,
+        { candidacyId: candidacyB.id },
+        electorToken,
+        'key-1',
+      ).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'IDEMPOTENCY_KEY_CONFLICT' });
+    });
+
+    it('VE-RETRY-07: idempotency keys are isolated per elector', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+      await seedRoll(electionId, elector2.id);
+
+      await postVote(electionId, { candidacyId }, electorToken, 'key-shared').expect(201);
+      await postVote(electionId, { candidacyId }, elector2Token, 'key-shared').expect(201);
+
+      const tally = await findTally(electionId, candidacyId);
+      expect(tally?.votes).toBe(2);
+
+      const roll1 = await findRoll(electionId, elector1.id);
+      const roll2 = await findRoll(electionId, elector2.id);
+      expect(roll1?.has_voted).toBe(true);
+      expect(roll2?.has_voted).toBe(true);
+    });
+
+    it('VE-RETRY-08: retry state is isolated per election', async () => {
+      const electionA = await seedElection();
+      const electionB = await seedElection();
+      const candidacyA = await seedCandidacy(electionA);
+      const candidacyB = await seedCandidacy(electionB);
+      await seedRoll(electionA, elector1.id);
+      await seedRoll(electionB, elector1.id);
+
+      await postVote(electionA, { candidacyId: candidacyA }, electorToken, 'key-same').expect(201);
+      await postVote(electionB, { candidacyId: candidacyB }, electorToken, 'key-same').expect(201);
+
+      expect((await findTally(electionA, candidacyA))?.votes).toBe(1);
+      expect((await findTally(electionB, candidacyB))?.votes).toBe(1);
+
+      const replay = await postVote(
+        electionA,
+        { candidacyId: candidacyA },
+        electorToken,
+        'key-same',
+      ).expect(201);
+      expect(replay.body).toMatchObject({ electionId: electionA, candidacyId: candidacyA });
+    });
+
+    it('VE-RETRY-09: retries do not duplicate related records', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+      await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+      await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+
+      expect((await findTally(electionId, candidacyId))?.votes).toBe(1);
+      expect(await prisma.electoralRoll.count({ where: { election_id: electionId } })).toBe(1);
+      expect(await prisma.result.count({ where: { election_id: electionId } })).toBe(1);
+    });
+
+    it('VE-RETRY-10: a malformed Idempotency-Key header returns 400', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      await postVote(electionId, { candidacyId }, electorToken, '   ').expect(400);
+    });
+
+    it('VE-RETRY-11: a blank-vote retry is safe and creates no Result row', async () => {
+      const electionId = await seedElection({ blankVoteEnabled: true });
+      await seedRoll(electionId, elector1.id);
+
+      await postVote(electionId, { candidacyId: 'blank' }, electorToken, 'key-blank').expect(201);
+      const retry = await postVote(
+        electionId,
+        { candidacyId: 'blank' },
+        electorToken,
+        'key-blank',
+      ).expect(201);
+
+      expect(retry.body).toMatchObject({ electionId, candidacyId: 'blank' });
+
+      const roll = await findRoll(electionId, elector1.id);
+      expect(roll?.has_voted).toBe(true);
+      expect(roll?.last_vote_candidacy_id).toBe('blank');
+      expect(await prisma.result.count({ where: { election_id: electionId } })).toBe(0);
     });
   });
 });
