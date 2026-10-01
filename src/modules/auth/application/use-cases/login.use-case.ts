@@ -49,6 +49,10 @@ export class LoginUseCase {
       throw new ForbiddenException('User account is disabled.');
     }
 
+    if (user.isDeleted()) {
+      throw new ForbiddenException('User account is deleted.');
+    }
+
     const passwordOk = await this.hasher.verify(input.password, user.passwordHash);
     if (!passwordOk) throw new UnauthorizedException('Invalid credentials.');
 

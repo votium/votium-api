@@ -147,14 +147,6 @@ export class ElectorsController {
     return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
   }
 
-  @Get('me')
-  @HttpCode(HttpStatus.NOT_FOUND)
-  @ApiOperation({ summary: 'Legacy endpoint removed' })
-  @ApiResponse({ status: 404, description: 'Legacy endpoint removed.' })
-  legacyMeRemoved(): void {
-    // Legacy /electors/me endpoint removed; use /auth/electors/me instead
-  }
-
   @Get(':id')
   @ApiOperation({
     summary: 'Get elector detail by ID',

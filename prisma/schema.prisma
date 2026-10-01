@@ -40,6 +40,7 @@ model User {
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
   status        String   @default("ACTIVE")
+  deleted_at    DateTime?
 
   role          Role                    @relation(fields: [role_id], references: [id])
   auditLogs     AuditLog[]
