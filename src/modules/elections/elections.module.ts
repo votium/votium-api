@@ -21,6 +21,8 @@ import { GetElectionsUseCase } from './application/use-cases/get-elections.use-c
 import { UpdateElectionUseCase } from './application/use-cases/update-election.use-case';
 import { DeleteElectionUseCase } from './application/use-cases/delete-election.use-case';
 import { StartElectionUseCase } from './application/use-cases/start-election.use-case';
+import { FinalizeElectionUseCase } from './application/use-cases/finalize-election.use-case';
+import { PublishElectionUseCase } from './application/use-cases/publish-election.use-case';
 import { CloseExpiredElectionsUseCase } from './application/use-cases/close-expired-elections.use-case';
 import {
   ELECTION_REPOSITORY,
@@ -73,9 +75,21 @@ import { ElectionsController } from './presentation/controllers/elections.contro
       inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
     },
     {
+      provide: FinalizeElectionUseCase,
+      useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
+        new FinalizeElectionUseCase(elections, audit),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
       provide: StartElectionUseCase,
       useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
         new StartElectionUseCase(elections, audit),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: PublishElectionUseCase,
+      useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
+        new PublishElectionUseCase(elections, audit),
       inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
     },
     {

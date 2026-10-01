@@ -14,11 +14,11 @@ datasource db {
 }
 
 enum StatusElection {
-  CREATED
   PENDING
-  PUBLISHED
-  CLOSED
+  CREATED
   ACTIVE
+  CLOSED
+  PUBLISHED
 }
 
 model Role {
@@ -90,7 +90,7 @@ model Election {
   start_time         DateTime       @db.Time()
   end_date           DateTime       @db.Date()
   end_time           DateTime       @db.Time()
-  current_status     StatusElection @default(CREATED)
+  current_status     StatusElection @default(PENDING)
   blank_vote_enabled Boolean        @default(false)
   created_at         DateTime       @default(now())
 

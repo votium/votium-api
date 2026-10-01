@@ -1306,13 +1306,13 @@ describe('PrismaElectorRepository integration', () => {
             expect.objectContaining({
               electionId: election.id,
               electionName: `Election ${code}`,
-              electionStatus: 'CREATED',
+              electionStatus: 'PENDING',
               hasVoted: true,
             }),
             expect.objectContaining({
               electionId: election2.id,
               electionName: `Election Two ${code}`,
-              electionStatus: 'CREATED',
+              electionStatus: 'PENDING',
               hasVoted: false,
             }),
           ]),
@@ -1328,6 +1328,9 @@ describe('PrismaElectorRepository integration', () => {
     it('IE-P-02: returns an empty array for an elector with no rolls', async () => {
       const code = `NOPART-${suffix}`;
       const saved = await repository.create(buildEntity(code, `nopart-${suffix}@example.com`));
+      // Registered so afterEach removes it; otherwise every run leaks one elector and
+      // the table grows until order-sensitive queries elsewhere start truncating.
+      usedStudentCodes.push(code);
 
       const participation = await repository.findElectionParticipation(saved.id as string);
 

@@ -1,4 +1,4 @@
-import { ElectionEntity } from './election.entity';
+import { ELECTION_STATUSES, ELECTION_TRANSITIONS, ElectionEntity } from './election.entity';
 import { ElectionStatusTransitionError } from '../errors/election-status-transition.error';
 
 describe('ElectionEntity', () => {
@@ -12,10 +12,10 @@ describe('ElectionEntity', () => {
   };
 
   describe('create', () => {
-    it('creates an election with CREATED status by default', () => {
+    it('CE-00: creates an election with PENDING status by default', () => {
       const entity = ElectionEntity.create(baseInput);
       expect(entity.currentStatus).toBe(ElectionEntity.DEFAULT_STATUS);
-      expect(entity.currentStatus).toBe('CREATED');
+      expect(entity.currentStatus).toBe('PENDING');
     });
 
     it('defaults blankVoteEnabled to false', () => {
@@ -154,12 +154,12 @@ describe('ElectionEntity', () => {
       });
     }
 
-    it('is true for CREATED', () => {
-      expect(makeElection('CREATED').isEditable()).toBe(true);
+    it('PD-01: is true for PENDING', () => {
+      expect(makeElection('PENDING').isEditable()).toBe(true);
     });
 
-    it('is false for any non-CREATED status', () => {
-      for (const status of ['PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
+    it('PD-01: is false for any non-PENDING status', () => {
+      for (const status of ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
         expect(makeElection(status).isEditable()).toBe(false);
       }
     });
@@ -181,12 +181,12 @@ describe('ElectionEntity', () => {
       });
     }
 
-    it('is true for CREATED', () => {
-      expect(makeElection('CREATED').isDeletable()).toBe(true);
+    it('PD-02: is true for PENDING', () => {
+      expect(makeElection('PENDING').isDeletable()).toBe(true);
     });
 
-    it('is false for any non-CREATED status', () => {
-      for (const status of ['PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
+    it('PD-02: is false for any non-PENDING status', () => {
+      for (const status of ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
         expect(makeElection(status).isDeletable()).toBe(false);
       }
     });
@@ -208,23 +208,23 @@ describe('ElectionEntity', () => {
       });
     }
 
-    it('TS1: is true for CREATED', () => {
-      expect(makeElection('CREATED').isRollLoadable()).toBe(true);
-    });
-
-    it('TS2: is true for PENDING', () => {
+    it('PD-03: is true for PENDING', () => {
       expect(makeElection('PENDING').isRollLoadable()).toBe(true);
     });
 
-    it('TS3: is false for PUBLISHED', () => {
+    it('PD-03: is false for CREATED (roll sealed once finalized)', () => {
+      expect(makeElection('CREATED').isRollLoadable()).toBe(false);
+    });
+
+    it('PD-03: is false for PUBLISHED', () => {
       expect(makeElection('PUBLISHED').isRollLoadable()).toBe(false);
     });
 
-    it('TS4: is false for ACTIVE', () => {
+    it('PD-03: is false for ACTIVE', () => {
       expect(makeElection('ACTIVE').isRollLoadable()).toBe(false);
     });
 
-    it('TS5: is false for CLOSED', () => {
+    it('PD-03: is false for CLOSED', () => {
       expect(makeElection('CLOSED').isRollLoadable()).toBe(false);
     });
   });
@@ -245,28 +245,28 @@ describe('ElectionEntity', () => {
       });
     }
 
-    it('TM1: is true for PENDING', () => {
+    it('PD-04: is true for PENDING', () => {
       expect(makeElection('PENDING').isRollModifiable()).toBe(true);
     });
 
-    it('TM2: is false for CREATED', () => {
+    it('PD-04: is false for CREATED', () => {
       expect(makeElection('CREATED').isRollModifiable()).toBe(false);
     });
 
-    it('TM3: is false for PUBLISHED', () => {
+    it('PD-04: is false for PUBLISHED', () => {
       expect(makeElection('PUBLISHED').isRollModifiable()).toBe(false);
     });
 
-    it('TM4: is false for ACTIVE', () => {
+    it('PD-04: is false for ACTIVE', () => {
       expect(makeElection('ACTIVE').isRollModifiable()).toBe(false);
     });
 
-    it('TM5: is false for CLOSED', () => {
+    it('PD-04: is false for CLOSED', () => {
       expect(makeElection('CLOSED').isRollModifiable()).toBe(false);
     });
   });
 
-  describe('markAsPending', () => {
+  describe('state machine', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
@@ -282,38 +282,130 @@ describe('ElectionEntity', () => {
       });
     }
 
-    it('TS6: transitions CREATED to PENDING', () => {
-      const e = makeElection('CREATED');
-      e.markAsPending();
-      expect(e.currentStatus).toBe('PENDING');
+    const ALL_STATUSES = ELECTION_STATUSES;
+
+    describe('ELECTION_TRANSITIONS', () => {
+      it('declares exactly the forward lifecycle graph', () => {
+        expect(ELECTION_TRANSITIONS).toEqual({
+          PENDING: ['CREATED'],
+          CREATED: ['ACTIVE'],
+          ACTIVE: ['CLOSED'],
+          CLOSED: ['PUBLISHED'],
+          PUBLISHED: [],
+        });
+      });
+
+      it('has an entry for every known status and only known targets', () => {
+        expect(Object.keys(ELECTION_TRANSITIONS).sort()).toEqual([...ALL_STATUSES].sort());
+        for (const targets of Object.values(ELECTION_TRANSITIONS)) {
+          for (const target of targets) {
+            expect(ALL_STATUSES).toContain(target);
+          }
+        }
+      });
     });
 
-    it('TS7: is a no-op when already PENDING', () => {
-      const e = makeElection('PENDING');
-      e.markAsPending();
-      expect(e.currentStatus).toBe('PENDING');
+    describe('transitionTo - valid transitions', () => {
+      it('SM-01: transitions PENDING to CREATED', () => {
+        const e = makeElection('PENDING');
+        e.transitionTo('CREATED');
+        expect(e.currentStatus).toBe('CREATED');
+      });
+
+      it('SM-02: transitions CREATED to ACTIVE', () => {
+        const e = makeElection('CREATED');
+        e.transitionTo('ACTIVE');
+        expect(e.currentStatus).toBe('ACTIVE');
+      });
+
+      it('SM-03: transitions ACTIVE to CLOSED', () => {
+        const e = makeElection('ACTIVE');
+        e.transitionTo('CLOSED');
+        expect(e.currentStatus).toBe('CLOSED');
+      });
+
+      it('SM-04: transitions CLOSED to PUBLISHED', () => {
+        const e = makeElection('CLOSED');
+        e.transitionTo('PUBLISHED');
+        expect(e.currentStatus).toBe('PUBLISHED');
+      });
     });
 
-    it('TS8: throws ElectionStatusTransitionError on PUBLISHED', () => {
-      const e = makeElection('PUBLISHED');
-      expect(() => e.markAsPending()).toThrow(ElectionStatusTransitionError);
-      expect(e.currentStatus).toBe('PUBLISHED');
+    describe('transitionTo - invalid transitions leave the status unchanged', () => {
+      const invalidPairs: ReadonlyArray<readonly [string, string]> = [
+        ['PENDING', 'ACTIVE'],
+        ['PENDING', 'CLOSED'],
+        ['PENDING', 'PUBLISHED'],
+        ['CREATED', 'PENDING'],
+        ['CREATED', 'CLOSED'],
+        ['CREATED', 'PUBLISHED'],
+        ['ACTIVE', 'PENDING'],
+        ['ACTIVE', 'CREATED'],
+        ['ACTIVE', 'PUBLISHED'],
+        ['CLOSED', 'PENDING'],
+        ['CLOSED', 'CREATED'],
+        ['CLOSED', 'ACTIVE'],
+        ['PUBLISHED', 'PENDING'],
+        ['PUBLISHED', 'CREATED'],
+        ['PUBLISHED', 'ACTIVE'],
+        ['PUBLISHED', 'CLOSED'],
+        ['PUBLISHED', 'PUBLISHED'],
+      ];
+
+      it.each(invalidPairs)('SM: rejects %s -> %s', (from, to) => {
+        const e = makeElection(from);
+        expect(() => e.transitionTo(to as ElectionEntity['currentStatus'])).toThrow(
+          ElectionStatusTransitionError,
+        );
+        expect(e.currentStatus).toBe(from);
+      });
+
+      // Self-transitions are not enumerated by the spec; a forward-only graph rejects them.
+      const selfPairs = ALL_STATUSES.filter((s) => s !== 'PUBLISHED').map((s) => [s, s]);
+      it.each(selfPairs)('SM-15: rejects self-transition %s -> %s', (from, to) => {
+        const e = makeElection(from);
+        expect(() => e.transitionTo(to as ElectionEntity['currentStatus'])).toThrow(
+          ElectionStatusTransitionError,
+        );
+        expect(e.currentStatus).toBe(from);
+      });
     });
 
-    it('TS9: throws ElectionStatusTransitionError on ACTIVE', () => {
-      const e = makeElection('ACTIVE');
-      expect(() => e.markAsPending()).toThrow(ElectionStatusTransitionError);
-      expect(e.currentStatus).toBe('ACTIVE');
+    describe('canTransitionTo agrees with transitionTo', () => {
+      const pairs = ALL_STATUSES.flatMap((from) => ALL_STATUSES.map((to) => [from, to]));
+
+      it.each(pairs)('SM-20: %s -> %s', (from, to) => {
+        // Separate entities: the mutation check must not be observed by the predicate
+        // check, which would otherwise read the already-transitioned status.
+        let threw = false;
+        try {
+          makeElection(from).transitionTo(to);
+        } catch {
+          threw = true;
+        }
+        expect(makeElection(from).canTransitionTo(to)).toBe(!threw);
+      });
     });
 
-    it('TS10: throws ElectionStatusTransitionError on CLOSED', () => {
-      const e = makeElection('CLOSED');
-      expect(() => e.markAsPending()).toThrow(ElectionStatusTransitionError);
-      expect(e.currentStatus).toBe('CLOSED');
+    describe('terminality', () => {
+      it('TP-01: PUBLISHED cannot transition to anything, including itself', () => {
+        for (const target of ALL_STATUSES) {
+          expect(makeElection('PUBLISHED').canTransitionTo(target)).toBe(false);
+        }
+      });
+
+      it('TP-02: a published election refuses every further transition and stays PUBLISHED', () => {
+        const e = makeElection('CLOSED');
+        e.transitionTo('PUBLISHED');
+        for (const target of ALL_STATUSES) {
+          expect(() => e.transitionTo(target)).toThrow(ElectionStatusTransitionError);
+        }
+        expect(e.currentStatus).toBe('PUBLISHED');
+      });
     });
   });
 
-  describe('markAsActive', () => {
+  describe('canAcceptCandidacy', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
@@ -329,38 +421,15 @@ describe('ElectionEntity', () => {
       });
     }
 
-    it('MAA-1: transitions a PENDING election to ACTIVE', () => {
-      const e = makeElection('PENDING');
-      e.markAsActive();
-      expect(e.currentStatus).toBe('ACTIVE');
-    });
-
-    it('MAA-2: throws ElectionStatusTransitionError on CREATED and leaves it unchanged', () => {
-      const e = makeElection('CREATED');
-      expect(() => e.markAsActive()).toThrow(ElectionStatusTransitionError);
-      expect(e.currentStatus).toBe('CREATED');
-    });
-
-    it('MAA-3: throws ElectionStatusTransitionError on PUBLISHED and leaves it unchanged', () => {
-      const e = makeElection('PUBLISHED');
-      expect(() => e.markAsActive()).toThrow(ElectionStatusTransitionError);
-      expect(e.currentStatus).toBe('PUBLISHED');
-    });
-
-    it('MAA-4: throws ElectionStatusTransitionError on CLOSED and leaves it unchanged', () => {
-      const e = makeElection('CLOSED');
-      expect(() => e.markAsActive()).toThrow(ElectionStatusTransitionError);
-      expect(e.currentStatus).toBe('CLOSED');
-    });
-
-    it('MAA-5: throws ElectionStatusTransitionError on ACTIVE (no silent restarts)', () => {
-      const e = makeElection('ACTIVE');
-      expect(() => e.markAsActive()).toThrow(ElectionStatusTransitionError);
-      expect(e.currentStatus).toBe('ACTIVE');
+    it('PD-05: is true only for PENDING', () => {
+      expect(makeElection('PENDING').canAcceptCandidacy()).toBe(true);
+      for (const status of ['CREATED', 'ACTIVE', 'CLOSED', 'PUBLISHED']) {
+        expect(makeElection(status).canAcceptCandidacy()).toBe(false);
+      }
     });
   });
 
-  describe('markAsClosed', () => {
+  describe('canAcceptVotes', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
@@ -376,20 +445,12 @@ describe('ElectionEntity', () => {
       });
     }
 
-    it('MAC-1: transitions an ACTIVE election to CLOSED', () => {
-      const e = makeElection('ACTIVE');
-      e.markAsClosed();
-      expect(e.currentStatus).toBe('CLOSED');
+    it('PD-06: is true only for ACTIVE', () => {
+      expect(makeElection('ACTIVE').canAcceptVotes()).toBe(true);
+      for (const status of ['PENDING', 'CREATED', 'CLOSED', 'PUBLISHED']) {
+        expect(makeElection(status).canAcceptVotes()).toBe(false);
+      }
     });
-
-    it.each(['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED'] as const)(
-      'MAC-2: throws ElectionStatusTransitionError on %s and leaves it unchanged',
-      (status) => {
-        const e = makeElection(status);
-        expect(() => e.markAsClosed()).toThrow(ElectionStatusTransitionError);
-        expect(e.currentStatus).toBe(status);
-      },
-    );
   });
 
   describe('isWithinSchedule', () => {

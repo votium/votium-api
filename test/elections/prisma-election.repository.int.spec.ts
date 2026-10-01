@@ -63,7 +63,7 @@ describe('PrismaElectionRepository integration', () => {
       expect.objectContaining({
         name,
         description: 'Integration test election.',
-        currentStatus: 'CREATED',
+        currentStatus: 'PENDING',
         blankVoteEnabled: false,
       }),
     );
@@ -79,7 +79,7 @@ describe('PrismaElectionRepository integration', () => {
 
     const row = await prisma.election.findUnique({ where: { name } });
     expect(row).not.toBeNull();
-    expect(row!.current_status).toBe('CREATED');
+    expect(row!.current_status).toBe('PENDING');
     expect(row!.blank_vote_enabled).toBe(false);
     expect(row!.start_date.getUTCFullYear()).toBe(2026);
     expect(row!.start_date.getUTCMonth()).toBe(9);
@@ -147,7 +147,7 @@ describe('PrismaElectionRepository integration', () => {
       const saved = await repository.create(buildEntity(name));
       const updated = await repository.update(saved);
       expect(updated.id).toBe(saved.id);
-      expect(updated.currentStatus).toBe('CREATED');
+      expect(updated.currentStatus).toBe('PENDING');
       expect(updated.createdAt).toEqual(saved.createdAt);
     });
 
@@ -284,7 +284,13 @@ describe('PrismaElectionRepository integration', () => {
     });
 
     it('filters by lifecycle status', async () => {
+      // -A is explicitly CREATED so it cannot match the PENDING filter below; -B is
+      // left at the creation default (PENDING).
       await seedElection(`STATUS-${suffix}-A`);
+      await prisma.election.update({
+        where: { name: `STATUS-${suffix}-A` },
+        data: { current_status: 'CREATED' },
+      });
       const pending = await seedElection(`STATUS-${suffix}-B`);
       await prisma.election.update({
         where: { id: pending.id as string },
@@ -547,6 +553,10 @@ describe('PrismaElectionRepository integration', () => {
         data: { current_status: 'PENDING' },
       });
       await seedElection(`COMB-${suffix}-WRONG-STATUS`);
+      await prisma.election.update({
+        where: { name: `COMB-${suffix}-WRONG-STATUS` },
+        data: { current_status: 'CREATED' },
+      });
       const notActive = await seedElection(`COMB-${suffix}-NOT-ACTIVE`, {
         startDate: addDays(today, 1),
         endDate: addDays(today, 2),

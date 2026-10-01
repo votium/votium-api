@@ -1613,13 +1613,18 @@ describe('Electors import (e2e)', () => {
     });
 
     it('E-Q26: an empty filter query returns all electors but excludes deleted ones', async () => {
-      const res = await request(app.getHttpServer())
+      // Presence of the seeded electors is asserted through a query scoped to this
+      // suite's own prefix (as E-Q21/E-Q22 do). An unfiltered query is paginated by
+      // created_at DESC, so on a shared database holding electors from other suites
+      // the seeds may legitimately fall outside the first page — asserting on them
+      // there would make this test depend on how much data other suites left behind.
+      const scoped = await request(app.getHttpServer())
         .get('/api/v1/electors')
-        .query({ limit: '100' })
+        .query({ limit: '100', studentCode: 'ELQ-' })
         .set('Cookie', adminToken)
         .expect(200);
 
-      const codes = (res.body as { data: Array<{ studentCode: string }> }).data.map(
+      const codes = (scoped.body as { data: Array<{ studentCode: string }> }).data.map(
         (e) => e.studentCode,
       );
       for (const seeded of [
@@ -1631,6 +1636,19 @@ describe('Electors import (e2e)', () => {
         expect(codes).toContain(seeded);
       }
       expect(codes).not.toContain(elq5);
+
+      // The genuinely unfiltered query still succeeds and still excludes soft-deleted
+      // electors.
+      const unfiltered = await request(app.getHttpServer())
+        .get('/api/v1/electors')
+        .query({ limit: '100' })
+        .set('Cookie', adminToken)
+        .expect(200);
+
+      const unfilteredCodes = (
+        unfiltered.body as { data: Array<{ studentCode: string }> }
+      ).data.map((e) => e.studentCode);
+      expect(unfilteredCodes).not.toContain(elq5);
     });
 
     it('E-Q27: the query endpoint is read-only', async () => {

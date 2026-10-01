@@ -1,8 +1,22 @@
 import { ElectionStatusTransitionError } from '../errors/election-status-transition.error';
 
-export const ELECTION_STATUSES = ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE'] as const;
+export const ELECTION_STATUSES = ['PENDING', 'CREATED', 'ACTIVE', 'CLOSED', 'PUBLISHED'] as const;
 
 export type ElectionStatus = (typeof ELECTION_STATUSES)[number];
+
+// The formal election lifecycle, in lifecycle order:
+//   PENDING -> CREATED -> ACTIVE -> CLOSED -> PUBLISHED
+// This table is the single authoritative source of the transition graph: the forward
+// lifecycle is the only set of allowed moves, and PUBLISHED maps to an empty list so
+// terminality is structural rather than an extra guard. `canTransitionTo` and
+// `transitionTo` are both pure functions of it, so they cannot drift apart.
+export const ELECTION_TRANSITIONS: Readonly<Record<ElectionStatus, readonly ElectionStatus[]>> = {
+  PENDING: ['CREATED'],
+  CREATED: ['ACTIVE'],
+  ACTIVE: ['CLOSED'],
+  CLOSED: ['PUBLISHED'],
+  PUBLISHED: [],
+};
 
 export interface CreateElectionInput {
   name: string;
@@ -41,7 +55,7 @@ export interface UpdateElectionInput {
 }
 
 export class ElectionEntity {
-  static readonly DEFAULT_STATUS = 'CREATED';
+  static readonly DEFAULT_STATUS: ElectionStatus = 'PENDING';
   static readonly DEFAULT_BLANK_VOTE = false;
 
   private constructor(
@@ -126,78 +140,64 @@ export class ElectionEntity {
     );
   }
 
-  // Whether the election can still be edited. Only the initial/pending lifecycle state
-  // (CREATED) is editable. This is the single decision point for the editable-state rule.
+  // Whether the election can still be edited. Only the initial configuration state
+  // (PENDING) is editable; once the election is finalized (CREATED) its configuration
+  // is frozen, and ACTIVE/CLOSED/PUBLISHED are sealed. Single decision point for the
+  // editable-state rule.
   isEditable(): boolean {
-    return this.currentStatus === ElectionEntity.DEFAULT_STATUS;
+    return this._currentStatus === ElectionEntity.DEFAULT_STATUS;
   }
 
-  // Whether the election can be deleted. Only the initial lifecycle state (CREATED) is
-  // deletable, mirroring isEditable(). This is the single decision point for the
-  // deletable-state rule.
+  // Whether the election can be deleted. Only the initial configuration state (PENDING)
+  // is deletable, mirroring isEditable(). Single decision point for the deletable-state
+  // rule.
   isDeletable(): boolean {
-    return this.currentStatus === ElectionEntity.DEFAULT_STATUS;
+    return this._currentStatus === ElectionEntity.DEFAULT_STATUS;
   }
 
-  // Whether the election can still accept electoral-roll modifications. Only the
-  // pre-publication lifecycle states (CREATED or PENDING) are loadable; once the
-  // election is published/active/closed its roll is sealed. Single decision point
-  // for the registerable-state rule.
+  // Whether an electoral roll may still be loaded into this election. Only the
+  // initial configuration state (PENDING) accepts a roll; once the election is
+  // finalized (CREATED) the roll is sealed. Single decision point for the
+  // registerable-state rule.
   isRollLoadable(): boolean {
-    return (
-      this._currentStatus === ElectionEntity.DEFAULT_STATUS || this._currentStatus === 'PENDING'
-    );
+    return this._currentStatus === ElectionEntity.DEFAULT_STATUS;
   }
 
-  // Whether the electoral roll of this election can be modified. Only the
-  // PENDING lifecycle state allows roll modifications; CREATED/PUBLISHED/
-  // ACTIVE/CLOSED are sealed. Single decision point for the modifiable rule.
+  // Whether the electoral roll of this election can be modified. Only the initial
+  // configuration state (PENDING) allows roll modifications; CREATED/ACTIVE/CLOSED/
+  // PUBLISHED are sealed. Single decision point for the modifiable rule.
   isRollModifiable(): boolean {
-    return this._currentStatus === 'PENDING';
+    return this._currentStatus === ElectionEntity.DEFAULT_STATUS;
   }
 
-  // Whether the election can still accept candidate registrations. Only the
-  // PENDING lifecycle state may receive candidacies. Single decision point for
+  // Whether the election can still accept candidate registrations. Only the initial
+  // configuration state (PENDING) may receive candidacies. Single decision point for
   // the candidacy-eligibility rule.
   canAcceptCandidacy(): boolean {
-    return this._currentStatus === 'PENDING';
+    return this._currentStatus === ElectionEntity.DEFAULT_STATUS;
   }
 
-  // Transitions the election to PENDING (the state reached once a roll has been
-  // loaded). Idempotent when already PENDING. Refuses to demote a PUBLISHED, ACTIVE,
-  // or CLOSED election: those states are sealed and must never regress to PENDING.
-  markAsPending(): void {
-    if (this._currentStatus === 'PENDING') return;
-
-    if (this._currentStatus === ElectionEntity.DEFAULT_STATUS) {
-      this._currentStatus = 'PENDING';
-      return;
-    }
-
-    throw new ElectionStatusTransitionError();
+  // Whether the election is currently accepting votes. Voting is permitted only
+  // while the election is ACTIVE; every other lifecycle state rejects votes. Single
+  // decision point for the voting-state rule.
+  canAcceptVotes(): boolean {
+    return this._currentStatus === 'ACTIVE';
   }
 
-  // Transitions the election to ACTIVE (the state reached once an eligible PENDING
-  // election is manually started). Refuses any other status: only PENDING may start,
-  // and an already-active election must never be silently restarted.
-  markAsActive(): void {
-    if (this._currentStatus === 'PENDING') {
-      this._currentStatus = 'ACTIVE';
-      return;
-    }
-    throw new ElectionStatusTransitionError();
+  // Whether the lifecycle permits moving from the current status to `next`, per
+  // ELECTION_TRANSITIONS. Pure read: never mutates the entity.
+  canTransitionTo(next: ElectionStatus): boolean {
+    return ELECTION_TRANSITIONS[this._currentStatus].includes(next);
   }
 
-  // Transitions the election to CLOSED (the state reached once an ACTIVE election's
-  // configured end date/time has been reached — manually or automatically). Refuses
-  // any other status: only ACTIVE may close, and an already-closed election must
-  // never be silently re-closed.
-  markAsClosed(): void {
-    if (this._currentStatus === 'ACTIVE') {
-      this._currentStatus = 'CLOSED';
-      return;
+  // Performs the single authoritative lifecycle transition. Any move that is not in
+  // ELECTION_TRANSITIONS — a backward step, a skip, a self-transition, or any move out
+  // of PUBLISHED — throws and leaves the entity unchanged.
+  transitionTo(next: ElectionStatus): void {
+    if (!this.canTransitionTo(next)) {
+      throw new ElectionStatusTransitionError(this._currentStatus, next);
     }
-    throw new ElectionStatusTransitionError();
+    this._currentStatus = next;
   }
 
   // Merges the provided partial input into the entity. Only supplied fields change;

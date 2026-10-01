@@ -41,7 +41,9 @@ export class CloseExpiredElectionsUseCase {
         if (!election.hasReachedEnd(now)) continue;
 
         // Domain transition validation: only ACTIVE may close (throws otherwise).
-        election.markAsClosed();
+        // An automatic pass is idempotent by design (D5): an election that is no
+        // longer ACTIVE is silently skipped rather than surfaced as a failure.
+        election.transitionTo('CLOSED');
         result.eligible += 1;
 
         // Persist via the guarded transition path: only closes an election still

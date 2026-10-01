@@ -99,14 +99,14 @@ describe('PrismaElectionRepository integration - updateStatus', () => {
     const saved = await seedElection(`IES2-${suffix}`);
     const userId = await seedUser();
 
-    await repository.updateStatus(saved.id as string, 'PENDING', userId);
+    await repository.updateStatus(saved.id as string, 'CREATED', userId);
 
     const history = await prisma.electionStatusHistory.findMany({
       where: { election_id: saved.id as string },
     });
     expect(history).toHaveLength(1);
-    expect(history[0].old_status).toBe('CREATED');
-    expect(history[0].new_status).toBe('PENDING');
+    expect(history[0].old_status).toBe('PENDING');
+    expect(history[0].new_status).toBe('CREATED');
     expect(history[0].user_id).toBe(userId);
     expect(history[0].changed_at).toBeInstanceOf(Date);
   });
@@ -115,18 +115,18 @@ describe('PrismaElectionRepository integration - updateStatus', () => {
     const saved = await seedElection(`IES3-${suffix}`);
     const userId = await seedUser();
 
-    const updated = await repository.updateStatus(saved.id as string, 'PENDING', userId);
+    const updated = await repository.updateStatus(saved.id as string, 'CREATED', userId);
 
     const row = await prisma.election.findUnique({ where: { id: saved.id as string } });
     const history = await prisma.electionStatusHistory.findMany({
       where: { election_id: saved.id as string },
     });
-    expect(updated!.currentStatus).toBe('PENDING');
-    expect(row!.current_status).toBe('PENDING');
+    expect(updated!.currentStatus).toBe('CREATED');
+    expect(row!.current_status).toBe('CREATED');
     expect(history).toHaveLength(1);
 
     // A nonexistent election writes nothing at all (no status, no history).
-    await repository.updateStatus('00000000-0000-0000-0000-000000000000', 'PENDING', userId);
+    await repository.updateStatus('00000000-0000-0000-0000-000000000000', 'CREATED', userId);
     const orphanHistory = await prisma.electionStatusHistory.findMany({
       where: { election_id: '00000000-0000-0000-0000-000000000000' },
     });
@@ -150,11 +150,11 @@ describe('PrismaElectionRepository integration - updateStatus', () => {
     const other = await seedElection(`IES5-B-${suffix}`);
     const userId = await seedUser();
 
-    const updated = await repository.updateStatus(target.id as string, 'PENDING', userId);
+    const updated = await repository.updateStatus(target.id as string, 'CREATED', userId);
 
-    expect(updated!.currentStatus).toBe('PENDING');
+    expect(updated!.currentStatus).toBe('CREATED');
     const otherRow = await prisma.election.findUnique({ where: { id: other.id as string } });
-    expect(otherRow!.current_status).toBe('CREATED');
+    expect(otherRow!.current_status).toBe('PENDING');
     const otherHistory = await prisma.electionStatusHistory.findMany({
       where: { election_id: other.id as string },
     });
@@ -165,18 +165,18 @@ describe('PrismaElectionRepository integration - updateStatus', () => {
     const saved = await seedElection(`IES6-${suffix}`);
     const userId = await seedUser();
 
-    await repository.updateStatus(saved.id as string, 'PENDING', userId);
-    await repository.updateStatus(saved.id as string, 'PUBLISHED', userId);
+    await repository.updateStatus(saved.id as string, 'CREATED', userId);
+    await repository.updateStatus(saved.id as string, 'ACTIVE', userId);
 
     const history = await prisma.electionStatusHistory.findMany({
       where: { election_id: saved.id as string },
       orderBy: { changed_at: 'asc' },
     });
     expect(history).toHaveLength(2);
-    expect(history[0].old_status).toBe('CREATED');
-    expect(history[0].new_status).toBe('PENDING');
-    expect(history[1].old_status).toBe('PENDING');
-    expect(history[1].new_status).toBe('PUBLISHED');
+    expect(history[0].old_status).toBe('PENDING');
+    expect(history[0].new_status).toBe('CREATED');
+    expect(history[1].old_status).toBe('CREATED');
+    expect(history[1].new_status).toBe('ACTIVE');
   });
 
   async function seedActiveElection(name: string): Promise<ElectionEntity> {

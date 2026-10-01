@@ -168,7 +168,7 @@ describe('Elections creation (e2e)', () => {
       expect(res.body).toMatchObject({
         name,
         description: 'Election for the 2026 student council.',
-        currentStatus: 'CREATED',
+        currentStatus: 'PENDING',
         blankVoteEnabled: false,
       });
     });
@@ -179,7 +179,7 @@ describe('Elections creation (e2e)', () => {
       const res = await createElection(validElection(name), adminToken).expect(201);
       const body = res.body as Record<string, unknown>;
       expect(body.id).toBeTruthy();
-      expect(body.currentStatus).toBe('CREATED');
+      expect(body.currentStatus).toBe('PENDING');
       expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
       expect(Object.keys(body).sort()).toEqual(
         [
@@ -206,7 +206,7 @@ describe('Elections creation (e2e)', () => {
       expect(row).not.toBeNull();
       expect(row!.id).toBe(body.id);
       expect(row!.name).toBe(name);
-      expect(row!.current_status).toBe('CREATED');
+      expect(row!.current_status).toBe('PENDING');
       expect(row!.blank_vote_enabled).toBe(false);
       expect(row!.created_at).toBeInstanceOf(Date);
     });
@@ -353,14 +353,14 @@ describe('Elections creation (e2e)', () => {
       editableId = await createElectionAndGetId(editableName, adminToken);
     });
 
-    it('P1: ADMIN edits a CREATED election with 200 and preserves omitted fields', async () => {
+    it('P1: ADMIN edits a PENDING election with 200 and preserves omitted fields', async () => {
       const res = await patchElection(editableId, { description: 'Updated.' }, adminToken).expect(
         200,
       );
       const body = res.body as { name: string; description: string; currentStatus: string };
       expect(body.name).toBe(editableName);
       expect(body.description).toBe('Updated.');
-      expect(body.currentStatus).toBe('CREATED');
+      expect(body.currentStatus).toBe('PENDING');
     });
 
     it('P2: unauthenticated request is rejected with 401', async () => {
@@ -392,7 +392,7 @@ describe('Elections creation (e2e)', () => {
       const name = `NONEDIT-${suffix}`;
       usedNames.push(name);
       const id = await createElectionAndGetId(name, adminToken);
-      await prisma.election.update({ where: { id }, data: { current_status: 'PENDING' } });
+      await prisma.election.update({ where: { id }, data: { current_status: 'CREATED' } });
       const res = await patchElection(id, { description: 'x' }, adminToken).expect(409);
       expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_EDITABLE' });
     });
@@ -523,11 +523,11 @@ describe('Elections creation (e2e)', () => {
       const name = `DEL-NONPEND-${suffix}`;
       usedNames.push(name);
       const id = await createElectionAndGetId(name);
-      await prisma.election.update({ where: { id }, data: { current_status: 'PENDING' } });
+      await prisma.election.update({ where: { id }, data: { current_status: 'CREATED' } });
 
       const res = await deleteElection(id, adminToken).expect(409);
       expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_DELETABLE' });
-      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('PENDING');
+      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('CREATED');
     });
 
     it('D8: an election with candidates is rejected with 409 and the row is unchanged', async () => {
@@ -584,7 +584,7 @@ describe('Elections creation (e2e)', () => {
           start_time: new Date(Date.UTC(1970, 0, 1, 0, 0, 0)),
           end_date: addDays(today, 1),
           end_time: new Date(Date.UTC(1970, 0, 1, 23, 59, 59)),
-          current_status: 'CREATED',
+          current_status: 'PENDING',
           blank_vote_enabled: false,
           ...over,
         },
@@ -674,12 +674,8 @@ describe('Elections creation (e2e)', () => {
     it('Q7: the status filter works independently of the active default', async () => {
       const pending = `Q7-${suffix}-PENDING`;
       const created = `Q7-${suffix}-CREATED`;
-      await seedElection(pending, {
-        current_status: 'PENDING',
-        start_date: addDays(nextMonth, 15),
-        end_date: addDays(nextMonth, 30),
-      });
-      await seedElection(created);
+      await seedElection(pending);
+      await seedElection(created, { current_status: 'CREATED' });
 
       const res = await getElections(adminToken, `?name=Q7-${suffix}&status=PENDING`).expect(200);
       const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
@@ -714,7 +710,7 @@ describe('Elections creation (e2e)', () => {
 
       const res = await getElections(
         adminToken,
-        `?name=Q9-${suffix}&status=CREATED&startDate=${toDateStr(nextMonth)}`,
+        `?name=Q9-${suffix}&status=PENDING&startDate=${toDateStr(nextMonth)}`,
       ).expect(200);
       const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
       expect(names).toEqual([late]);
@@ -731,7 +727,7 @@ describe('Elections creation (e2e)', () => {
 
       const res = await getElections(
         adminToken,
-        `?name=Q10-${suffix}&status=CREATED&endDate=${toDateStr(addDays(today, 1))}`,
+        `?name=Q10-${suffix}&status=PENDING&endDate=${toDateStr(addDays(today, 1))}`,
       ).expect(200);
       const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
       expect(names).toEqual([early]);

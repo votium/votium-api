@@ -102,8 +102,9 @@ describe('Manual election start (e2e)', () => {
   };
 
   // Seeds directly via Prisma (bypassing the API) so dates can be relative to "now".
-  // Default seed is PENDING with a wide schedule-active window: yesterday 00:00 →
-  // tomorrow 23:59:59 (UTC), so it is eligible whenever `now` is.
+  // Default seed is CREATED (the only startable status) with a wide schedule-active
+  // window: yesterday 00:00 -> tomorrow 23:59:59 (UTC), so it is eligible whenever
+  // `now` is.
   async function seedElection(over: ElectionSeedOverrides = {}): Promise<string> {
     const name = `E2E-START-${suffix}-${electionCounter++}`;
     const created = await prisma.election.create({
@@ -114,7 +115,7 @@ describe('Manual election start (e2e)', () => {
         start_time: over.startTime ?? timeAt(0, 0, 0),
         end_date: over.endDate ?? addDays(today, 1),
         end_time: over.endTime ?? timeAt(23, 59, 59),
-        current_status: over.status ?? 'PENDING',
+        current_status: over.status ?? 'CREATED',
         blank_vote_enabled: false,
       },
     });
@@ -294,7 +295,7 @@ describe('Manual election start (e2e)', () => {
       );
     });
 
-    it('START-2: the database row is ACTIVE and one PENDING→ACTIVE history row is recorded', async () => {
+    it('START-2: the database row is ACTIVE and one CREATED->ACTIVE history row is recorded', async () => {
       const id = await seedEligibleElection();
 
       await startRequest(id, undefined, adminToken).expect(200);
@@ -304,7 +305,7 @@ describe('Manual election start (e2e)', () => {
 
       const history = await historyFor(id);
       expect(history).toHaveLength(1);
-      expect(history[0].old_status).toBe('PENDING');
+      expect(history[0].old_status).toBe('CREATED');
       expect(history[0].new_status).toBe('ACTIVE');
       expect(history[0].user_id).toBe(adminUser.id);
     });
@@ -323,12 +324,12 @@ describe('Manual election start (e2e)', () => {
       await startRequest(id, undefined, 'not-a-real-token').expect(401);
     });
 
-    it('START-5: an auditor is rejected with 403 and the election stays PENDING', async () => {
+    it('START-5: an auditor is rejected with 403 and the election stays CREATED', async () => {
       const id = await seedEligibleElection();
 
       const res = await startRequest(id, undefined, auditorToken).expect(403);
       expect(res.body).toMatchObject({ statusCode: 403 });
-      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('PENDING');
+      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('CREATED');
     });
   });
 
@@ -352,8 +353,8 @@ describe('Manual election start (e2e)', () => {
   });
 
   describe('Business rules', () => {
-    it('START-8: non-PENDING elections are rejected with 409 and the row is unchanged', async () => {
-      const statuses: SeedStatus[] = ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE'];
+    it('START-8: non-CREATED elections are rejected with 409 and the row is unchanged', async () => {
+      const statuses: SeedStatus[] = ['PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE'];
       for (const status of statuses) {
         const id = await seedElection({ status });
 
@@ -366,31 +367,23 @@ describe('Manual election start (e2e)', () => {
       }
     });
 
-    it('START-9: a PENDING election without an electoral roll is rejected with 409', async () => {
+    it('START-9: a CREATED election without an electoral roll still starts (roll is checked at finalize)', async () => {
       const id = await seedElection();
-      await seedCandidateAndCandidacy(id);
 
-      const res = await startRequest(id, undefined, adminToken).expect(409);
-      expect(res.body).toMatchObject({
-        statusCode: 409,
-        error: 'ELECTION_MISSING_ELECTORAL_ROLL',
-      });
-      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('PENDING');
+      await startRequest(id, undefined, adminToken).expect(200);
+
+      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('ACTIVE');
     });
 
-    it('START-10: a PENDING election without a registered candidacy is rejected with 409', async () => {
+    it('START-10: a CREATED election without a registered candidacy still starts (candidacies are checked at finalize)', async () => {
       const id = await seedElection();
-      await seedElectorAndRoll(id);
 
-      const res = await startRequest(id, undefined, adminToken).expect(409);
-      expect(res.body).toMatchObject({
-        statusCode: 409,
-        error: 'ELECTION_NO_CANDIDATES',
-      });
-      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('PENDING');
+      await startRequest(id, undefined, adminToken).expect(200);
+
+      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('ACTIVE');
     });
 
-    it('START-11: a PENDING election outside its schedule window is rejected with 422', async () => {
+    it('START-11: a CREATED election outside its schedule window is rejected with 422', async () => {
       const id = await seedElection({
         startDate: addDays(nextMonth, 15),
         startTime: timeAt(8, 0, 0),
@@ -405,19 +398,14 @@ describe('Manual election start (e2e)', () => {
         statusCode: 422,
         error: 'ELECTION_NOT_WITHIN_SCHEDULE',
       });
-      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('PENDING');
+      expect((await prisma.election.findUnique({ where: { id } }))!.current_status).toBe('CREATED');
     });
 
     it('START-12: no failed attempt writes a status or history row (no partial writes)', async () => {
       const failedIds: string[] = [];
 
-      const noRoll = await seedElection();
-      failedIds.push(noRoll);
-      await seedCandidateAndCandidacy(noRoll);
-
-      const noCandidates = await seedElection();
-      failedIds.push(noCandidates);
-      await seedElectorAndRoll(noCandidates);
+      const notCreated = await seedElection({ status: 'PENDING' });
+      failedIds.push(notCreated);
 
       const outOfWindow = await seedElection({
         startDate: addDays(nextMonth, 15),
@@ -432,8 +420,7 @@ describe('Manual election start (e2e)', () => {
       const published = await seedElection({ status: 'PUBLISHED' });
       failedIds.push(published);
 
-      await startRequest(noRoll, undefined, adminToken).expect(409);
-      await startRequest(noCandidates, undefined, adminToken).expect(409);
+      await startRequest(notCreated, undefined, adminToken).expect(409);
       await startRequest(outOfWindow, undefined, adminToken).expect(422);
       await startRequest(published, undefined, adminToken).expect(409);
 
@@ -443,8 +430,10 @@ describe('Manual election start (e2e)', () => {
         expect(history).toHaveLength(0);
         if (id === published) {
           expect(row!.current_status).toBe('PUBLISHED');
-        } else {
+        } else if (id === notCreated) {
           expect(row!.current_status).toBe('PENDING');
+        } else {
+          expect(row!.current_status).toBe('CREATED');
         }
       }
     });
@@ -465,7 +454,7 @@ describe('Manual election start (e2e)', () => {
       expect(row!.current_status).toBe('ACTIVE');
       const history = await historyFor(id);
       expect(history).toHaveLength(1);
-      expect(history[0].old_status).toBe('PENDING');
+      expect(history[0].old_status).toBe('CREATED');
       expect(history[0].new_status).toBe('ACTIVE');
     });
 

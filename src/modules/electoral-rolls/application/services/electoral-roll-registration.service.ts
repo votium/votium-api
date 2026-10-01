@@ -59,8 +59,8 @@ export class ElectoralRollRegistrationService {
       throw new ElectionNotFoundError(electionId);
     }
 
-    // Validate election accepts electoral-roll loads (CREATED or PENDING).
-    // PUBLISHED/ACTIVE/CLOSED are sealed and must never accept a roll.
+    // Validate election accepts electoral-roll loads (PENDING only).
+    // CREATED/ACTIVE/CLOSED/PUBLISHED are sealed and must never accept a roll.
     if (!election.isRollLoadable()) {
       throw new ElectionNotRegisterableError();
     }
@@ -146,25 +146,10 @@ export class ElectoralRollRegistrationService {
       registered = await this.electoralRollRepo.createMany(electionId, newElectorIds);
     }
 
-    // Transition CREATED → PENDING once the roll has been loaded. The domain rule
-    // guarantees the transition is legal and idempotent for PENDING; only a CREATED
-    // election reaches this branch. A race (election deleted or status changed
-    // concurrently) surfaces as null from updateStatus: tolerated and logged, never
-    // failing the request (partial-success convention).
-    if (registered > 0 && election.currentStatus === 'CREATED') {
-      election.markAsPending();
-      const updated = await this.electionRepo.updateStatus(electionId, 'PENDING', requestingUserId);
-      if (!updated) {
-        this.logger.warn(
-          `Election ${electionId} could not be transitioned to PENDING (updateStatus returned null).`,
-        );
-      } else {
-        await this.audit.log('ELECTION_STATUS_CHANGED', requestingUserId, {
-          electionId,
-          newStatus: 'PENDING',
-        });
-      }
-    }
+    // Loading the roll no longer changes the election's lifecycle state. The
+    // PENDING -> CREATED edge is an explicit administrative action (FinalizeElectionUseCase);
+    // the roll load only has to satisfy isRollLoadable() above. This keeps every
+    // lifecycle transition on a single, explicit path.
 
     // Audit log
     await this.audit.log(auditAction, requestingUserId, {

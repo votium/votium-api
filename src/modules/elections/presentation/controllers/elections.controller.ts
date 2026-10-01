@@ -28,6 +28,8 @@ import { GetElectionsUseCase } from '../../application/use-cases/get-elections.u
 import { UpdateElectionUseCase } from '../../application/use-cases/update-election.use-case';
 import { DeleteElectionUseCase } from '../../application/use-cases/delete-election.use-case';
 import { StartElectionUseCase } from '../../application/use-cases/start-election.use-case';
+import { FinalizeElectionUseCase } from '../../application/use-cases/finalize-election.use-case';
+import { PublishElectionUseCase } from '../../application/use-cases/publish-election.use-case';
 import { ElectionPresenter } from '../presenters/election.presenter';
 import { ElectionDetailResponseDto } from '../dtos/election-detail-response.dto';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
@@ -53,6 +55,8 @@ export class ElectionsController {
     private readonly updateElection: UpdateElectionUseCase,
     private readonly deleteElection: DeleteElectionUseCase,
     private readonly startElection: StartElectionUseCase,
+    private readonly finalizeElection: FinalizeElectionUseCase,
+    private readonly publishElection: PublishElectionUseCase,
   ) {}
 
   @Get()
@@ -196,19 +200,19 @@ export class ElectionsController {
     await this.deleteElection.execute(id, req.user?.sub);
   }
 
-  @Post(':id/start')
+  @Post(':id/finalize')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Manually start an election',
+    summary: 'Finalize an election',
     description:
-      'Starts a PENDING election whose schedule window includes the current date/time and ' +
-      'which has an associated electoral roll and at least one registered candidacy. ' +
-      'Requires ADMINISTRATOR role.',
+      'Performs the PENDING -> CREATED transition, freezing the election configuration. ' +
+      'The election must have an associated electoral roll and at least one registered ' +
+      'candidacy. Requires ADMINISTRATOR role.',
   })
   @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
   @ApiResponse({
     status: 200,
-    description: 'Election started successfully.',
+    description: 'Election finalized successfully.',
     type: ElectionResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
@@ -220,6 +224,36 @@ export class ElectionsController {
     description:
       'Election is not PENDING, does not have an electoral roll, or has no registered candidacies.',
   })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async finalize(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.finalizeElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':id/start')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually start an election',
+    description:
+      'Performs the CREATED -> ACTIVE transition for an election whose schedule window ' +
+      'includes the current date/time. The electoral roll and candidacies were already ' +
+      'validated at finalization. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election started successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({ status: 409, description: 'Election is not CREATED.' })
   @ApiResponse({
     status: 422,
     description: 'Current date/time is outside the election start and closing range.',
@@ -228,6 +262,36 @@ export class ElectionsController {
   @Roles(RoleName.ADMINISTRATOR)
   async start(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
     const election = await this.startElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':id/publish')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Publish a closed election',
+    description:
+      'Performs the CLOSED -> PUBLISHED transition. A closed election is necessarily past ' +
+      'its schedule, so no roll, candidacy or schedule checks apply. Requires ' +
+      'ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election published successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({ status: 409, description: 'Election is not CLOSED.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async publish(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.publishElection.execute({
       electionId: id,
       requestingUserId: req.user.sub,
     });
