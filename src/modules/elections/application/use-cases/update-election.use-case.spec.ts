@@ -18,7 +18,7 @@ function buildEditableElection(
     startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
     endDate: new Date(Date.UTC(2026, 9, 1)),
     endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
-    currentStatus: 'CREATED',
+    currentStatus: 'PENDING',
     blankVoteEnabled: false,
     createdAt: new Date('2026-08-19T15:00:00.000Z'),
     ...over,
@@ -54,7 +54,7 @@ describe('UpdateElectionUseCase', () => {
     ...over,
   });
 
-  it('UC-1: edits an editable election and returns the updated entity with CREATED status', async () => {
+  it('UC-1: edits an editable election and returns the updated entity with PENDING status', async () => {
     const result = await new UpdateElectionUseCase(elections, audit).execute(
       'election-1',
       validDto(),
@@ -63,7 +63,7 @@ describe('UpdateElectionUseCase', () => {
 
     expect(elections.update.mock.calls).toHaveLength(1);
     const passed = elections.update.mock.calls[0][0];
-    expect(passed.currentStatus).toBe('CREATED');
+    expect(passed.currentStatus).toBe('PENDING');
     expect(result).toBe(passed);
   });
 
@@ -136,8 +136,8 @@ describe('UpdateElectionUseCase', () => {
     ).rejects.toBeInstanceOf(ElectionNotFoundError);
   });
 
-  it('UC-8: throws ElectionNotEditableError for non-CREATED status and never calls update', async () => {
-    for (const status of ['PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE'] as const) {
+  it('UC-8: throws ElectionNotEditableError for non-PENDING status and never calls update', async () => {
+    for (const status of ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE'] as const) {
       elections.findById.mockResolvedValue(buildEditableElection({ currentStatus: status }));
       await expect(
         new UpdateElectionUseCase(elections, audit).execute('election-1', { name: 'X' }, 'admin-1'),

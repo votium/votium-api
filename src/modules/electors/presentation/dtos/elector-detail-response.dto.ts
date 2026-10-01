@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { ELECTION_STATUSES } from 'src/modules/elections/domain/entities/election.entity';
 
 export class ElectorElectionDto {
   @ApiProperty({ example: 'uuid' })
@@ -7,7 +8,7 @@ export class ElectorElectionDto {
   @ApiProperty({ example: 'Student Council Election 2026' })
   name!: string;
 
-  @ApiProperty({ example: 'ACTIVE', enum: ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE'] })
+  @ApiProperty({ example: 'ACTIVE', enum: ELECTION_STATUSES })
   status!: string;
 
   @ApiProperty({ example: true })

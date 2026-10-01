@@ -439,9 +439,10 @@ describe('Automatic election closure (e2e)', () => {
 
   describe('Manual start → automatic close lifecycle', () => {
     it('E2E-8: manual start then automatic close produces one coherent two-row history', async () => {
-      // Eligible PENDING seed with roll + candidacy, wide schedule window so manual start succeeds.
+      // Eligible CREATED seed (the only startable status), wide schedule window so manual
+      // start succeeds.
       const id = await seedElection({
-        status: 'PENDING',
+        status: 'CREATED',
         startDate: addDays(today, -1),
         startTime: timeAt(0, 0, 0),
         endDate: addDays(today, 1),
@@ -450,7 +451,7 @@ describe('Automatic election closure (e2e)', () => {
       await seedElectorAndRoll(id);
       await seedCandidateAndCandidacy(id);
 
-      // Manual start (admin) → PENDING→ACTIVE with actor.
+      // Manual start (admin) -> CREATED->ACTIVE with actor.
       await request(app.getHttpServer())
         .post(`/api/v1/elections/${id}/start`)
         .set('Cookie', adminToken)
@@ -458,7 +459,7 @@ describe('Automatic election closure (e2e)', () => {
 
       const afterStart = await historyFor(id);
       expect(afterStart).toHaveLength(1);
-      expect(afterStart[0].old_status).toBe('PENDING');
+      expect(afterStart[0].old_status).toBe('CREATED');
       expect(afterStart[0].new_status).toBe('ACTIVE');
       expect(afterStart[0].user_id).toBe(adminUser.id);
 
@@ -472,7 +473,7 @@ describe('Automatic election closure (e2e)', () => {
 
       const history = await historyFor(id);
       expect(history).toHaveLength(2);
-      expect(history[0].old_status).toBe('PENDING');
+      expect(history[0].old_status).toBe('CREATED');
       expect(history[0].new_status).toBe('ACTIVE');
       expect(history[0].user_id).toBe(adminUser.id);
       expect(history[1].old_status).toBe('ACTIVE');

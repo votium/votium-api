@@ -301,7 +301,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   describe('Authorization', () => {
     it('MA1: an authenticated administrator registers a single elector', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(
         200,
@@ -315,7 +315,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MA2: an authenticated administrator registers multiple electors', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -332,7 +332,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MA3: an auditor is rejected with 403', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), auditorToken).expect(
         403,
@@ -342,7 +342,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MA4: an elector/voter token is rejected with 403', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), electorToken).expect(
         403,
@@ -352,7 +352,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MA5: a token with an unknown role is rejected with 403', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const unauthorized = craftToken({
         sub: adminUser.id,
         email: adminUser.email,
@@ -370,19 +370,19 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MA6: a missing JWT is rejected with 401', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await manualRegister(electionId, entries([codeA, '2710'])).expect(401);
     });
 
     it('MA7: an invalid JWT is rejected with 401', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await manualRegister(electionId, entries([codeA, '2710']), 'not-a-token').expect(401);
     });
 
     it('MA8: an expired JWT is rejected with 401', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const expired = craftToken(
         { sub: adminUser.id, email: adminUser.email, actorType: 'USER', role: 'ADMINISTRATOR' },
         -60,
@@ -398,7 +398,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MA9: a client-supplied role header cannot bypass authorization', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/register/${electionId}`)
@@ -413,7 +413,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   describe('Input validation', () => {
     it('MV1: a request without a body is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/register/${electionId}`)
@@ -424,7 +424,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MV2: an empty electors array is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, { electors: [] }, adminToken).expect(400);
 
@@ -432,7 +432,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MV3: a missing studentCode is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -444,7 +444,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MV4: a whitespace-only studentCode is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -456,7 +456,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MV5: a missing programCode is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -470,7 +470,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     it.each(['2A70', '271'])(
       'MV6: an invalid programCode format (%s) is rejected with 400',
       async (programCode) => {
-        const electionId = await seedElection('CREATED');
+        const electionId = await seedElection('PENDING');
 
         const res = await manualRegister(
           electionId,
@@ -494,7 +494,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MV8: unknown request properties are rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -508,7 +508,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   describe('Elector matching', () => {
     it('MM1: an existing pair resolves and creates a roll pointing to the elector', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(
         200,
@@ -526,7 +526,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MM6: a programCode with surrounding whitespace is trimmed and matches', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -540,7 +540,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MM2: a wrong program code does not match', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2711']), adminToken).expect(
         200,
@@ -552,7 +552,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MM3: a wrong student code does not match', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([ghostA, '2710']), adminToken).expect(
         200,
@@ -564,7 +564,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MM4: an unmatched pair never creates an elector', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const before = await prisma.elector.count({
         where: { student_code: { in: usedStudentCodes } },
       });
@@ -587,7 +587,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MM5: an INACTIVE elector is reported as an invalid row', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeD, '2710']), adminToken).expect(
         200,
@@ -604,7 +604,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('ER-D1: a logically deleted elector is reported as not found and never registered', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const deletedCode = `MANUAL-DEL-${suffix}`;
       await prisma.elector.create({
         data: {
@@ -636,7 +636,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   describe('Electoral roll & duplicates', () => {
     it('MD1: an already registered elector is not duplicated', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       await createDirectRoll(electionId, electorIds[codeA]);
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(
@@ -654,7 +654,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MD2: a repeated request is idempotent', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const body = entries([codeA, '2710']);
 
       await manualRegister(electionId, body, adminToken).expect(200);
@@ -670,7 +670,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MD3: duplicate entries within one request are registered only once', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -693,8 +693,8 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MD4: registration is scoped to the route election', async () => {
-      const electionA = await seedElection('CREATED');
-      const electionB = await seedElection('CREATED');
+      const electionA = await seedElection('PENDING');
+      const electionB = await seedElection('PENDING');
 
       await manualRegister(electionA, entries([codeA, '2710']), adminToken).expect(200);
       const res = await manualRegister(electionB, entries([codeA, '2710']), adminToken).expect(200);
@@ -715,7 +715,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MD5: a duplicate unmatched pair is reported only once', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -746,17 +746,7 @@ describe('Manual electoral roll registration (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 404, error: 'ELECTION_NOT_FOUND' });
     });
 
-    it('ME2: a CREATED election accepts the registration', async () => {
-      const electionId = await seedElection('CREATED');
-
-      const res = await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(
-        200,
-      );
-
-      expect((res.body as ManualRegisterResponse).registered).toBe(1);
-    });
-
-    it('ME3: a PENDING election accepts the registration', async () => {
+    it('ME2: a PENDING election accepts the registration', async () => {
       const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(
@@ -766,7 +756,7 @@ describe('Manual electoral roll registration (e2e)', () => {
       expect((res.body as ManualRegisterResponse).registered).toBe(1);
     });
 
-    it.each(['PUBLISHED', 'ACTIVE', 'CLOSED'] as const)(
+    it.each(['CREATED', 'PUBLISHED', 'ACTIVE', 'CLOSED'] as const)(
       'ME%d: a %s election is rejected with 409',
       async (status) => {
         const electionId = await seedElection(status);
@@ -802,23 +792,11 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
   });
 
-  describe('Status transitions', () => {
-    it('MT1: a CREATED election transitions to PENDING after a successful load', async () => {
-      const electionId = await seedElection('CREATED');
-
-      await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(200);
-
-      const rowInDb = await prisma.election.findUnique({ where: { id: electionId } });
-      expect(rowInDb!.current_status).toBe('PENDING');
-
-      const history = await historyFor(electionId);
-      expect(history).toHaveLength(1);
-      expect(history[0].old_status).toBe('CREATED');
-      expect(history[0].new_status).toBe('PENDING');
-      expect(history[0].user_id).toBe(adminUser.id);
-    });
-
-    it('MT2: a PENDING election stays PENDING with no new history row', async () => {
+  describe('No implicit status transition', () => {
+    // The PENDING -> CREATED edge is an explicit administrative action
+    // (POST /elections/:id/finalize). Manual roll registration must never change the
+    // election's lifecycle state, so no history row is written here.
+    it('MT1: the election stays PENDING with no history row after a successful load', async () => {
       const electionId = await seedElection('PENDING');
 
       await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(200);
@@ -830,21 +808,21 @@ describe('Manual electoral roll registration (e2e)', () => {
       expect(history).toHaveLength(0);
     });
 
-    it('MT3: a CREATED election with zero new registrations stays CREATED', async () => {
-      const electionId = await seedElection('CREATED');
+    it('MT2: an election with zero new registrations stays PENDING with no history', async () => {
+      const electionId = await seedElection('PENDING');
       await createDirectRoll(electionId, electorIds[codeA]);
 
       await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(200);
 
       const rowInDb = await prisma.election.findUnique({ where: { id: electionId } });
-      expect(rowInDb!.current_status).toBe('CREATED');
+      expect(rowInDb!.current_status).toBe('PENDING');
 
       const history = await historyFor(electionId);
       expect(history).toHaveLength(0);
     });
 
-    it('MT4: an ELECTION_STATUS_CHANGED audit entry is written on transition', async () => {
-      const electionId = await seedElection('CREATED');
+    it('MT3: no ELECTION_STATUS_CHANGED audit entry is written on a successful load', async () => {
+      const electionId = await seedElection('PENDING');
 
       await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(200);
 
@@ -852,18 +830,13 @@ describe('Manual electoral roll registration (e2e)', () => {
         where: { user_id: adminUser.id, action: 'ELECTION_STATUS_CHANGED' },
       });
       const matching = audit
-        .map((entry) => ({
-          entry,
-          details: JSON.parse(entry.details ?? '{}') as Record<string, unknown>,
-        }))
-        .filter(({ details }) => details.electionId === electionId);
+        .map((entry) => JSON.parse(entry.details ?? '{}') as Record<string, unknown>)
+        .filter((details) => details.electionId === electionId);
 
-      expect(matching).toHaveLength(1);
-      expect(matching[0].details.newStatus).toBe('PENDING');
+      expect(matching).toHaveLength(0);
     });
-
-    it('MT5: no status audit is written without a transition', async () => {
-      const electionId = await seedElection('CREATED');
+    it('MT4: no status audit is written when nothing is matched', async () => {
+      const electionId = await seedElection('PENDING');
 
       await manualRegister(electionId, entries([ghostA, '2710']), adminToken).expect(200);
 
@@ -880,7 +853,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   describe('Multiple records & partial success', () => {
     it('MR1: mixed counts are reported accurately', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       await createDirectRoll(electionId, electorIds[codeB]);
 
       const res = await manualRegister(
@@ -906,7 +879,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MR2: error row indexes are 1-based positions in the submitted array', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -929,7 +902,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MR3: partial success persists the valid rolls (non-atomic convention)', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -954,7 +927,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MR4: dedup and partial success combine accurately', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(
         electionId,
@@ -981,7 +954,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   describe('Response contract', () => {
     it('MF1: the response contains exactly the expected keys', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(
         200,
@@ -1001,7 +974,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MF2: the registered count matches the persisted roll delta', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const before = await prisma.electoralRoll.count({ where: { election_id: electionId } });
 
       const res = await manualRegister(
@@ -1017,7 +990,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MF3: the response includes the completion message', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(
         200,
@@ -1029,7 +1002,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MF4: the response does not leak sensitive data', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(
         200,
@@ -1048,7 +1021,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   describe('Data integrity', () => {
     it('MI1: the elector table is not modified by the endpoint', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const before = await prisma.elector.count({
         where: { student_code: { in: usedStudentCodes } },
       });
@@ -1062,7 +1035,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MI2: elector identity fields are not modified', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(200);
 
@@ -1072,7 +1045,7 @@ describe('Manual electoral roll registration (e2e)', () => {
     });
 
     it('MI3: roll rows reference the correct election and electors', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await manualRegister(
         electionId,
@@ -1093,7 +1066,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
   describe('Audit', () => {
     it('MB1: a MANUAL_REGISTER_ELECTORAL_ROLL audit entry is written', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await manualRegister(electionId, entries([codeA, '2710']), adminToken).expect(200);
 

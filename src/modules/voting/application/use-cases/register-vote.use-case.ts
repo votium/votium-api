@@ -57,7 +57,9 @@ export class RegisterVoteUseCase {
       return this.resolveAlreadyVoted(roll, input);
     }
 
-    if (election.currentStatus !== 'ACTIVE') {
+    // Uses the entity's single decision point for the voting-state rule instead of
+    // re-deriving "ACTIVE" here, so the lifecycle rule lives in one place only.
+    if (!election.canAcceptVotes()) {
       throw new ElectionNotActiveError(input.electionId);
     }
 

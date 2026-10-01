@@ -18,7 +18,7 @@ function buildElection(
     startTime: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
     endDate: new Date(Date.UTC(2026, 9, 1)),
     endTime: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
-    currentStatus: 'CREATED',
+    currentStatus: 'PENDING',
     blankVoteEnabled: false,
     createdAt: new Date('2026-08-19T15:00:00.000Z'),
     ...over,
@@ -51,7 +51,7 @@ describe('DeleteElectionUseCase', () => {
     elections.delete.mockResolvedValue(undefined);
   });
 
-  it('UC-1: deletes an eligible CREATED election and logs the audit entry', async () => {
+  it('UC-1: deletes an eligible PENDING election and logs the audit entry', async () => {
     await new DeleteElectionUseCase(elections, audit).execute('election-1', 'admin-1');
 
     expect(elections.delete.mock.calls).toHaveLength(1);
@@ -73,8 +73,8 @@ describe('DeleteElectionUseCase', () => {
     expect(elections.delete.mock.calls).toHaveLength(0);
   });
 
-  it('UC-3: throws ElectionNotDeletableError for non-CREATED status and never deletes', async () => {
-    for (const status of ['PENDING', 'PUBLISHED', 'CLOSED', 'ACTIVE'] as const) {
+  it('UC-3: throws ElectionNotDeletableError for non-PENDING status and never deletes', async () => {
+    for (const status of ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE'] as const) {
       elections.findById.mockResolvedValue(buildElection({ currentStatus: status }));
       await expect(
         new DeleteElectionUseCase(elections, audit).execute('election-1', 'admin-1'),

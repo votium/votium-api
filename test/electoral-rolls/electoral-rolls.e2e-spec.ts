@@ -248,7 +248,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
 
   describe('Authorization', () => {
     it('EA1: an authenticated administrator uploads and processes a CSV', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -269,7 +269,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EA2: an auditor is rejected with 403', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), auditorToken).expect(
         403,
@@ -279,7 +279,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EA3: an unauthenticated request is rejected with 401', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
@@ -288,13 +288,13 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EA4: an invalid JWT is rejected with 401', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), 'not-a-token').expect(401);
     });
 
     it('EA5: a request without the authentication cookie is rejected with 401', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
@@ -307,7 +307,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
 
   describe('File validation', () => {
     it('EF1: a request without a file is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await request(app.getHttpServer())
         .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
@@ -318,7 +318,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EF2: a non-CSV file extension is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -334,7 +334,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EF3: a malformed CSV is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -346,7 +346,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EF4: a row with the wrong column count is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv('99999999,2710,extra'), adminToken).expect(
         400,
@@ -359,7 +359,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EF5: an empty student code is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(',2710'), adminToken).expect(400);
 
@@ -370,7 +370,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EF6: an empty program code is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(`${codeA},`), adminToken).expect(400);
 
@@ -381,7 +381,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EF7: an invalid program code format is rejected with 400', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(`${codeA},2A70`), adminToken).expect(400);
 
@@ -392,7 +392,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EF8: a CSV with a header row is processed normally', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -420,8 +420,8 @@ describe('Electoral roll bulk registration (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 404, error: 'ELECTION_NOT_FOUND' });
     });
 
-    it('EE2: a CREATED election accepts the registration', async () => {
-      const electionId = await seedElection('CREATED');
+    it('EE2: a PENDING election accepts the registration', async () => {
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
       const body = res.body as BulkRegisterResponse;
@@ -429,13 +429,13 @@ describe('Electoral roll bulk registration (e2e)', () => {
       expect(body.registered).toBe(1);
     });
 
-    it('EE3: a PENDING election accepts the registration', async () => {
-      const electionId = await seedElection('PENDING');
+    it('EE3: a CREATED (finalized) election is sealed and rejected with 409', async () => {
+      const electionId = await seedElection('CREATED');
 
-      const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
-      const body = res.body as BulkRegisterResponse;
+      await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(409);
 
-      expect(body.registered).toBe(1);
+      const rowInDb = await prisma.election.findUnique({ where: { id: electionId } });
+      expect(rowInDb!.current_status).toBe('CREATED');
     });
 
     it('EE4: a PUBLISHED election is rejected with 409', async () => {
@@ -491,23 +491,11 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
   });
 
-  describe('Status transitions', () => {
-    it('ET1: a CREATED election transitions to PENDING after a successful load', async () => {
-      const electionId = await seedElection('CREATED');
-
-      await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
-
-      const rowInDb = await prisma.election.findUnique({ where: { id: electionId } });
-      expect(rowInDb!.current_status).toBe('PENDING');
-
-      const history = await historyFor(electionId);
-      expect(history).toHaveLength(1);
-      expect(history[0].old_status).toBe('CREATED');
-      expect(history[0].new_status).toBe('PENDING');
-      expect(history[0].user_id).toBe(adminUser.id);
-    });
-
-    it('ET2: a PENDING election stays PENDING with no new history row', async () => {
+  describe('No implicit status transition', () => {
+    // The PENDING -> CREATED edge is an explicit administrative action
+    // (POST /elections/:id/finalize). Loading the roll must never change the
+    // election's lifecycle state, so no history row is written here.
+    it('ET1: the election stays PENDING with no history row after a successful load', async () => {
       const electionId = await seedElection('PENDING');
 
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
@@ -519,33 +507,33 @@ describe('Electoral roll bulk registration (e2e)', () => {
       expect(history).toHaveLength(0);
     });
 
-    it('ET3: a CREATED election with zero newly registered stays CREATED with no history', async () => {
-      const electionId = await seedElection('CREATED');
+    it('ET2: a fully-registered election is not auto-finalized', async () => {
+      const electionId = await seedElection('PENDING');
       await createDirectRoll(electionId, electorIds[codeA]);
 
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
 
       const rowInDb = await prisma.election.findUnique({ where: { id: electionId } });
-      expect(rowInDb!.current_status).toBe('CREATED');
+      expect(rowInDb!.current_status).toBe('PENDING');
 
       const history = await historyFor(electionId);
       expect(history).toHaveLength(0);
     });
 
-    it('ET4: a CREATED election with zero matched rows stays CREATED with no history', async () => {
-      const electionId = await seedElection('CREATED');
+    it('ET3: an election with zero matched rows stays PENDING with no history', async () => {
+      const electionId = await seedElection('PENDING');
 
       await bulkRegister(electionId, toCsv(row('GHOST-1', '2710')), adminToken).expect(200);
 
       const rowInDb = await prisma.election.findUnique({ where: { id: electionId } });
-      expect(rowInDb!.current_status).toBe('CREATED');
+      expect(rowInDb!.current_status).toBe('PENDING');
 
       const history = await historyFor(electionId);
       expect(history).toHaveLength(0);
     });
 
-    it('ET5: an ELECTION_STATUS_CHANGED audit entry is written on transition', async () => {
-      const electionId = await seedElection('CREATED');
+    it('ET4: no ELECTION_STATUS_CHANGED audit entry is written on a successful load', async () => {
+      const electionId = await seedElection('PENDING');
 
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
 
@@ -553,18 +541,14 @@ describe('Electoral roll bulk registration (e2e)', () => {
         where: { user_id: adminUser.id, action: 'ELECTION_STATUS_CHANGED' },
       });
       const matching = audit
-        .map((entry) => ({
-          entry,
-          details: JSON.parse(entry.details ?? '{}') as Record<string, unknown>,
-        }))
-        .filter(({ details }) => details.electionId === electionId);
+        .map((entry) => JSON.parse(entry.details ?? '{}') as Record<string, unknown>)
+        .filter((details) => details.electionId === electionId);
 
-      expect(matching).toHaveLength(1);
-      expect(matching[0].details.newStatus).toBe('PENDING');
+      expect(matching).toHaveLength(0);
     });
 
-    it('ET6: no ELECTION_STATUS_CHANGED audit entry is written without a transition', async () => {
-      const electionId = await seedElection('CREATED');
+    it('ET5: no ELECTION_STATUS_CHANGED audit entry is written without a transition', async () => {
+      const electionId = await seedElection('PENDING');
 
       await bulkRegister(electionId, toCsv(row('GHOST-1', '2710')), adminToken).expect(200);
 
@@ -604,7 +588,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
 
   describe('Elector matching', () => {
     it('EM1: registers all rows when every elector matches', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -622,7 +606,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EM2: registers the matched rows and reports the unmatched ones', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -643,7 +627,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EM3: reports notFound for every row when nothing matches', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -661,7 +645,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EM4: a wrong program code prevents the match', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2711')), adminToken).expect(200);
       const body = res.body as BulkRegisterResponse;
@@ -671,7 +655,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EM5: matching a student code with the wrong program code is not matched', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '9999')), adminToken).expect(200);
       const body = res.body as BulkRegisterResponse;
@@ -681,7 +665,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EM6: an INACTIVE elector is reported as an invalid row', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(row(codeD, '2710')), adminToken).expect(200);
 
@@ -698,7 +682,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
 
   describe('Duplicate prevention', () => {
     it('ED1: an already registered elector is reported instead of duplicated', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       await createDirectRoll(electionId, electorIds[codeA]);
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
@@ -714,7 +698,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('ED2: duplicate CSV rows are registered only once', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -733,7 +717,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('ED3: re-importing the same file reports everything as already registered', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const csv = toCsv(row(codeA, '2710'), row(codeB, '2710'));
 
       await bulkRegister(electionId, csv, adminToken).expect(200);
@@ -749,7 +733,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('ED4: no duplicate ElectoralRoll records exist after an idempotent import', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const csv = toCsv(row(codeA, '2710'));
 
       await bulkRegister(electionId, csv, adminToken).expect(200);
@@ -766,7 +750,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
 
   describe('Response accuracy', () => {
     it('ER1: the response contains all required fields with the message', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
       const body = res.body as BulkRegisterResponse;
@@ -786,7 +770,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('ER2: the counts reflect the processed file accurately', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -803,7 +787,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('ER3: row-level errors carry the correct row numbers and reasons', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(
         electionId,
@@ -820,7 +804,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('ER4: the response does not leak sensitive data', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       const res = await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
 
@@ -833,7 +817,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
 
   describe('Data integrity', () => {
     it('EI1: the elector table is not modified by the endpoint', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
       const before = await prisma.elector.count({
         where: { student_code: { in: usedStudentCodes } },
       });
@@ -847,7 +831,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EI2: elector student code and program code are not modified', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
 
@@ -857,7 +841,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EI3: ElectoralRoll records point to the right election', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
 
@@ -870,7 +854,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EI4: ElectoralRoll records point to the right electors', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await bulkRegister(
         electionId,
@@ -885,7 +869,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     });
 
     it('EI5: a BULK_REGISTER_ELECTORAL_ROLL audit entry is written', async () => {
-      const electionId = await seedElection('CREATED');
+      const electionId = await seedElection('PENDING');
 
       await bulkRegister(electionId, toCsv(row(codeA, '2710')), adminToken).expect(200);
 
