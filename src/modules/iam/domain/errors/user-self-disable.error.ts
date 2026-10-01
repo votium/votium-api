@@ -2,6 +2,6 @@ import { ValidationException } from 'src/shared/exceptions/base/validation.excep
 
 export class UserSelfDisableError extends ValidationException {
   constructor() {
-    super('Users cannot disable themselves', 'USER_SELF_DISABLE');
+    super('Users cannot deactivate themselves', 'USER_SELF_DISABLE');
   }
 }

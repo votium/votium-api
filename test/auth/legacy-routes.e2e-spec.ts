@@ -160,10 +160,13 @@ describe('Legacy auth routes removed (e2e)', () => {
     });
 
     it('E4-04: GET /api/v1/electors/me is removed', async () => {
+      // The legacy /electors/me handler is gone. `me` now collides with the
+      // admin-only `GET /electors/:id` route, so an ELECTOR token (no `role`
+      // claim) is rejected by RolesGuard before id parsing.
       await request(app.getHttpServer())
         .get('/api/v1/electors/me')
         .set('Cookie', electorToken())
-        .expect(404);
+        .expect(403);
     });
 
     it('E4-05: GET /api/v1/users/me is removed', async () => {
