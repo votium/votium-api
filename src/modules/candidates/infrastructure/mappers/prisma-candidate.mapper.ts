@@ -14,6 +14,8 @@ export type PrismaCandidateRow = {
   companion_student_code: string | null;
   companion_program_code: string | null;
   companion_identification: string | null;
+  email: string | null;
+  phone: string | null;
   created_at: Date;
   deleted_at: Date | null;
 };
@@ -35,6 +37,8 @@ export type PrismaCandidateUpdateData = Partial<
     | 'companion_student_code'
     | 'companion_program_code'
     | 'companion_identification'
+    | 'email'
+    | 'phone'
   >
 >;
 
@@ -55,6 +59,8 @@ export class PrismaCandidateMapper {
       companionStudentCode: row.companion_student_code,
       companionProgramCode: row.companion_program_code,
       companionIdentification: row.companion_identification,
+      email: row.email,
+      phone: row.phone,
     });
   }
 
@@ -71,6 +77,8 @@ export class PrismaCandidateMapper {
       companion_student_code: entity.companionStudentCode,
       companion_program_code: entity.companionProgramCode,
       companion_identification: entity.companionIdentification,
+      email: entity.email,
+      phone: entity.phone,
     };
   }
 
@@ -96,6 +104,12 @@ export class PrismaCandidateMapper {
     }
     if (input.companionIdentification != null) {
       data.companion_identification = input.companionIdentification;
+    }
+    if (input.email != null) {
+      data.email = input.email;
+    }
+    if (input.phone != null) {
+      data.phone = input.phone;
     }
     return data;
   }

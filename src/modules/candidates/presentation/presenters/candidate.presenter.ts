@@ -21,6 +21,8 @@ export class CandidatePresenter {
       companionStudentCode: entity.companionStudentCode,
       companionProgramCode: entity.companionProgramCode,
       companionIdentification: entity.companionIdentification,
+      email: entity.email ?? null,
+      phone: entity.phone ?? null,
       createdAt: entity.createdAt?.toISOString() ?? '',
     });
   }
@@ -69,6 +71,8 @@ export class CandidatePresenter {
       companionStudentCode: candidate.companionStudentCode,
       companionProgramCode: candidate.companionProgramCode,
       companionIdentification: candidate.companionIdentification,
+      email: candidate.email ?? null,
+      phone: candidate.phone ?? null,
       createdAt: candidate.createdAt?.toISOString() ?? '',
       elections: electionDtos,
       isCurrentlyActive,

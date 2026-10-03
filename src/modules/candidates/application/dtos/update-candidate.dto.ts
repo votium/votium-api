@@ -1,6 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 function trimValue(value: unknown): unknown {
   return typeof value === 'string' ? value.trim() : value;
@@ -74,4 +82,17 @@ export class UpdateCandidateDto {
   @IsString()
   @IsNotEmpty()
   companionIdentification?: string;
+
+  @ApiProperty({ example: 'candidate@example.com', required: false })
+  @IsOptional()
+  @Transform(({ value }) => trimValue(value))
+  @IsEmail()
+  email?: string;
+
+  @ApiProperty({ example: '3001234567', required: false })
+  @IsOptional()
+  @Transform(({ value }) => trimValue(value))
+  @IsString()
+  @IsNotEmpty()
+  phone?: string;
 }

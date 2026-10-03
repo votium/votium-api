@@ -74,6 +74,12 @@ export class CandidateDetailResponseDto {
   @ApiProperty({ example: '2000000000', nullable: true })
   companionIdentification!: string | null;
 
+  @ApiProperty({ example: 'candidate@example.com', nullable: true })
+  email!: string | null;
+
+  @ApiProperty({ example: '3001234567', nullable: true })
+  phone!: string | null;
+
   @ApiProperty({ example: '2026-08-29T15:00:00.000Z', type: 'string', format: 'date-time' })
   createdAt!: string;
 
@@ -131,6 +137,12 @@ export class CandidateResponseDto {
 
   @ApiProperty({ example: '2000000000', nullable: true })
   companionIdentification!: string | null;
+
+  @ApiProperty({ example: 'candidate@example.com', nullable: true })
+  email!: string | null;
+
+  @ApiProperty({ example: '3001234567', nullable: true })
+  phone!: string | null;
 
   @ApiProperty({ example: '2026-08-29T15:00:00.000Z', type: 'string', format: 'date-time' })
   createdAt!: string;

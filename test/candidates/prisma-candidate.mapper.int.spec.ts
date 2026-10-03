@@ -140,6 +140,8 @@ describe('PrismaCandidateMapper.toPersistence', () => {
       companion_student_code: null,
       companion_program_code: null,
       companion_identification: null,
+      email: null,
+      phone: null,
     });
     expect(data).not.toHaveProperty('id');
     expect(data).not.toHaveProperty('created_at');
@@ -172,6 +174,8 @@ describe('PrismaCandidateMapper.toPersistence', () => {
       companion_student_code: '20209999',
       companion_program_code: '9999',
       companion_identification: '2000000000',
+      email: null,
+      phone: null,
       status: 'ACTIVE',
     });
   });
@@ -192,6 +196,8 @@ describe('PrismaCandidateMapper.toDomain', () => {
       companion_student_code: '20209999',
       companion_program_code: null,
       companion_identification: '2000000000',
+      email: null,
+      phone: null,
       created_at: new Date('2026-08-19T15:00:00.000Z'),
       deleted_at: null,
     });
@@ -220,6 +226,8 @@ describe('PrismaCandidateMapper.toDomain', () => {
       companion_student_code: null,
       companion_program_code: null,
       companion_identification: null,
+      email: null,
+      phone: null,
       created_at: new Date('2026-08-19T15:00:00.000Z'),
       deleted_at: new Date('2026-09-01T10:00:00.000Z'),
     };

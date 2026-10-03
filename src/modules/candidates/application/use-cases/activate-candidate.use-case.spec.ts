@@ -38,6 +38,8 @@ describe('ActivateCandidateUseCase', () => {
       companionStudentCode: null,
       companionProgramCode: null,
       companionIdentification: null,
+      email: null,
+      phone: null,
     });
   }
 
@@ -56,6 +58,8 @@ describe('ActivateCandidateUseCase', () => {
       companionStudentCode: null,
       companionProgramCode: null,
       companionIdentification: null,
+      email: null,
+      phone: null,
     });
   }
 

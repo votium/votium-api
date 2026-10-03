@@ -17,6 +17,8 @@ export interface CreateCandidateInput {
   companionStudentCode?: string | null;
   companionProgramCode?: string | null;
   companionIdentification?: string | null;
+  email?: string | null;
+  phone?: string | null;
 }
 
 export interface RestoreCandidateInput {
@@ -34,6 +36,8 @@ export interface RestoreCandidateInput {
   companionStudentCode: string | null;
   companionProgramCode: string | null;
   companionIdentification: string | null;
+  email: string | null;
+  phone: string | null;
 }
 
 export interface CompanionFields {
@@ -72,6 +76,8 @@ export class CandidateEntity {
     public companionStudentCode: string | null,
     public companionProgramCode: string | null,
     public companionIdentification: string | null,
+    public email: string | null,
+    public phone: string | null,
   ) {}
 
   static create(input: CreateCandidateInput): CandidateEntity {
@@ -92,6 +98,8 @@ export class CandidateEntity {
       companion.companionStudentCode,
       companion.companionProgramCode,
       companion.companionIdentification,
+      input.email != null ? input.email.trim() : null,
+      input.phone != null ? input.phone.trim() : null,
     );
   }
 
@@ -111,6 +119,8 @@ export class CandidateEntity {
       input.companionStudentCode,
       input.companionProgramCode,
       input.companionIdentification,
+      input.email,
+      input.phone,
     );
   }
 
@@ -159,6 +169,12 @@ export class CandidateEntity {
     }
     if (input.companionIdentification != null) {
       this.companionIdentification = input.companionIdentification.trim();
+    }
+    if (input.email != null) {
+      this.email = input.email.trim();
+    }
+    if (input.phone != null) {
+      this.phone = input.phone.trim();
     }
   }
 

@@ -8,4 +8,6 @@ export interface UpdateCandidateInput {
   companionStudentCode?: string | null;
   companionProgramCode?: string | null;
   companionIdentification?: string | null;
+  email?: string | null;
+  phone?: string | null;
 }

@@ -17,6 +17,8 @@ function buildCandidate(id: string): CandidateEntity {
     companionStudentCode: null,
     companionProgramCode: null,
     companionIdentification: null,
+    email: null,
+    phone: null,
   });
 }
 
@@ -64,7 +66,7 @@ describe('SearchCandidatesUseCase', () => {
   it('U2: defaults page and limit to 1 and 10 when they are missing', async () => {
     const useCase = new SearchCandidatesUseCase(candidates);
 
-    await useCase.execute({ firstName: 'Juan' });
+    await useCase.execute({ firstName: 'Juan', page: 1, limit: 10 });
 
     expect(candidates.search.mock.calls).toHaveLength(1);
     expect(candidates.search.mock.calls[0][0]).toEqual({
@@ -135,7 +137,7 @@ describe('SearchCandidatesUseCase', () => {
 
     const useCase = new SearchCandidatesUseCase(candidates);
 
-    await expect(useCase.execute({ firstName: 'nobody' })).resolves.toEqual({
+    await expect(useCase.execute({ firstName: 'nobody', page: 1, limit: 10 })).resolves.toEqual({
       candidates: [],
       total: 0,
     });
@@ -146,6 +148,6 @@ describe('SearchCandidatesUseCase', () => {
 
     const useCase = new SearchCandidatesUseCase(candidates);
 
-    await expect(useCase.execute({})).rejects.toThrow('database exploded');
+    await expect(useCase.execute({ page: 1, limit: 10 })).rejects.toThrow('database exploded');
   });
 });
