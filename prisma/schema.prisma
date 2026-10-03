@@ -14,11 +14,11 @@ datasource db {
 }
 
 enum StatusElection {
-  CREATED
   PENDING
-  PUBLISHED
-  CLOSED
+  CREATED
   ACTIVE
+  CLOSED
+  PUBLISHED
 }
 
 model Role {
@@ -31,23 +31,42 @@ model Role {
 }
 
 model User {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   first_name    String
   last_name     String
-  email         String    @unique
+  email         String   @unique
   password_hash String
   role_id       String
-  created_at    DateTime  @default(now())
-  updated_at    DateTime  @updatedAt
-  status        String    @default("ACTIVE")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  status        String   @default("ACTIVE")
+  deleted_at    DateTime?
 
   role          Role                    @relation(fields: [role_id], references: [id])
   auditLogs     AuditLog[]
   notifications Notification[]
   reports       Report[]
   statusHistory ElectionStatusHistory[]
+  mfaChallenges MfaChallenge[]
 
   @@map("users")
+}
+
+model MfaChallenge {
+  id          String    @id @default(uuid())
+  user_id     String
+  session_id  String    @unique
+  otp_hash    String
+  attempts    Int       @default(0)
+  expires_at  DateTime
+  resend_at   DateTime?
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@map("mfa_challenges")
 }
 
 model AuditLog {
@@ -71,7 +90,7 @@ model Election {
   start_time         DateTime       @db.Time()
   end_date           DateTime       @db.Date()
   end_time           DateTime       @db.Time()
-  current_status     StatusElection @default(CREATED)
+  current_status     StatusElection @default(PENDING)
   blank_vote_enabled Boolean        @default(false)
   created_at         DateTime       @default(now())
 
@@ -84,19 +103,20 @@ model Election {
   statusHistory  ElectionStatusHistory[]
   voteMetadata   VoteMetadata[]
 
+  @@unique([name])
   @@map("elections")
 }
 
 model ElectionStatusHistory {
   id          String         @id @default(uuid())
   election_id String
-  user_id     String
+  user_id     String? // NULL = system/automatic transition (no human actor)
   old_status  StatusElection
   new_status  StatusElection
   changed_at  DateTime       @default(now())
 
   election Election @relation(fields: [election_id], references: [id])
-  user     User     @relation(fields: [user_id], references: [id])
+  user     User?    @relation(fields: [user_id], references: [id])
 
   @@map("election_status_history")
 }
@@ -140,14 +160,20 @@ model Report {
 }
 
 model Candidate {
-  id                    String   @id @default(uuid())
-  first_name            String
-  last_name             String
-  student_code          String   @unique
-  program_code          String
-  identification_number String   @unique
-  status                String
-  created_at            DateTime @default(now())
+  id                       String   @id @default(uuid())
+  first_name               String
+  last_name                String
+  student_code             String   @unique
+  program_code             String
+  identification_number    String   @unique
+  status                   String
+  companion_first_name     String?
+  companion_last_name      String?
+  companion_student_code   String?
+  companion_program_code   String?
+  companion_identification String?
+  created_at               DateTime @default(now())
+  deleted_at               DateTime?
 
   candidays Candiday[]
 
@@ -186,29 +212,53 @@ model Result {
 }
 
 model Elector {
-  id            String   @id @default(uuid())
-  first_name    String
-  last_name     String
-  email         String   @unique
-  password_hash String
-  student_code  String   @unique
-  program_code  String
-  status        String
-  created_at    DateTime @default(now())
+  id             String    @id @default(uuid())
+  first_name     String
+  last_name      String
+  email          String    @unique
+  password_hash  String
+  student_code   String    @unique
+  program_code   String
+  identification String?   @unique
+  status         String
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
 
   electoralRolls ElectoralRoll[]
+  mfaChallenges  ElectorMfaChallenge[]
 
   @@map("electors")
 }
 
+model ElectorMfaChallenge {
+  id          String    @id @default(uuid())
+  elector_id  String
+  session_id  String    @unique
+  otp_hash    String
+  attempts    Int       @default(0)
+  expires_at  DateTime
+  resend_at   DateTime?
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  elector Elector @relation(fields: [elector_id], references: [id], onDelete: Cascade)
+
+  @@index([elector_id])
+  @@map("elector_mfa_challenges")
+}
+
 model ElectoralRoll {
-  id                String    @id @default(uuid())
-  election_id       String
-  elector_id        String
-  has_voted         Boolean   @default(false)
-  vote_attempts     Int       @default(0)
-  last_vote_attempt DateTime?
-  created_at        DateTime  @default(now())
+  id                        String    @id @default(uuid())
+  election_id               String
+  elector_id                String
+  has_voted                 Boolean   @default(false)
+  vote_attempts             Int       @default(0)
+  last_vote_attempt         DateTime?
+  last_vote_candidacy_id    String?
+  last_vote_idempotency_key String?
+  last_vote_registered_at   DateTime?
+  created_at                DateTime  @default(now())
 
   election     Election      @relation(fields: [election_id], references: [id])
   elector      Elector       @relation(fields: [elector_id], references: [id])
