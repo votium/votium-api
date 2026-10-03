@@ -88,6 +88,9 @@ export class PrismaDashboardRepository implements DashboardRepository {
 
   async findRecentActivity(limit: number): Promise<RecentActivityRow[]> {
     const rows = await this.prisma.auditLog.findMany({
+      // Exclude MFA/session events: they are authentication noise, not meaningful
+      // system activity (documented deviation from spec §16/§17 "latest records").
+      where: { action: { notIn: MFA_ACTIONS } },
       orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
       take: limit,
       select: {
@@ -98,17 +101,90 @@ export class PrismaDashboardRepository implements DashboardRepository {
       },
     });
 
-    return rows.map((row) => {
+    const mapped = rows.map((row) => {
       const details = parseDetails(row.details);
       const resourceType = mapActionToResourceType(row.action);
       return {
         action: row.action,
         resourceType,
-        resourceName: extractResourceName(details, resourceType),
+        resourceId: extractResourceId(details, resourceType),
         userName: `${row.user.first_name} ${row.user.last_name}`.trim(),
         occurredAt: row.timestamp,
       };
     });
+
+    const resourceNames = await this.resolveResourceNames(mapped);
+
+    return mapped.map((row) => ({
+      action: row.action,
+      resourceType: row.resourceType,
+      resourceName: row.resourceId ? (resourceNames.get(row.resourceId) ?? '') : '',
+      userName: row.userName,
+      occurredAt: row.occurredAt,
+    }));
+  }
+
+  // Resolves human-readable resource names from the id stored in the audit-log
+  // `details`, via batched lookups (at most one query per entity, no N+1). The
+  // audit table has no resource FK, so the id in `details` is the only linkage.
+  private async resolveResourceNames(
+    rows: ReadonlyArray<{ resourceType: string; resourceId: string | null }>,
+  ): Promise<Map<string, string>> {
+    const electionIds = new Set<string>();
+    const candidateIds = new Set<string>();
+    const electorIds = new Set<string>();
+    const userIds = new Set<string>();
+
+    for (const row of rows) {
+      if (!row.resourceId) continue;
+      const entity = RESOURCE_NAME_CONFIG[row.resourceType]?.entity;
+      if (entity === 'election') electionIds.add(row.resourceId);
+      else if (entity === 'candidate') candidateIds.add(row.resourceId);
+      else if (entity === 'elector') electorIds.add(row.resourceId);
+      else if (entity === 'user') userIds.add(row.resourceId);
+    }
+
+    const names = new Map<string, string>();
+
+    if (electionIds.size > 0) {
+      const found = await this.prisma.election.findMany({
+        where: { id: { in: [...electionIds] } },
+        select: { id: true, name: true },
+      });
+      for (const item of found) names.set(item.id, item.name);
+    }
+
+    if (candidateIds.size > 0) {
+      collectPersonNames(
+        names,
+        await this.prisma.candidate.findMany({
+          where: { id: { in: [...candidateIds] } },
+          select: { id: true, first_name: true, last_name: true },
+        }),
+      );
+    }
+
+    if (electorIds.size > 0) {
+      collectPersonNames(
+        names,
+        await this.prisma.elector.findMany({
+          where: { id: { in: [...electorIds] } },
+          select: { id: true, first_name: true, last_name: true },
+        }),
+      );
+    }
+
+    if (userIds.size > 0) {
+      collectPersonNames(
+        names,
+        await this.prisma.user.findMany({
+          where: { id: { in: [...userIds] } },
+          select: { id: true, first_name: true, last_name: true },
+        }),
+      );
+    }
+
+    return names;
   }
 }
 
@@ -126,8 +202,8 @@ function currentElectionTime(now: Date): Date {
 
 // The audit-log table stores only `action` + free-form `details` JSON; there is no
 // authoritative resource type/name column. This map derives a display resource type
-// from the action prefix, and a best-effort resource name from the id present in
-// `details` (never a fabricated human name).
+// from the action prefix; the resource name is later resolved from the id stored in
+// `details` (see RESOURCE_NAME_CONFIG), never fabricated.
 const ACTION_RESOURCE_TYPE: Record<string, string> = {
   ELECTION_CREATED: 'Election',
   ELECTION_UPDATED: 'Election',
@@ -159,14 +235,31 @@ const ACTION_RESOURCE_TYPE: Record<string, string> = {
   ELECTORAL_ROLL_ELECTOR_REMOVED: 'ElectoralRoll',
 };
 
-const RESOURCE_NAME_KEYS: Record<string, string[]> = {
-  Election: ['electionId'],
-  Candidate: ['candidateId'],
-  Candidacy: ['candidacyId'],
-  Elector: ['electorId'],
-  User: ['targetUserId', 'userId'],
-  Mfa: ['sessionId'],
-  ElectoralRoll: ['electionId'],
+// Auth/session events excluded from "recent activity": they are operational noise
+// (logins, OTP) rather than dashboard-relevant system activity. Keeping the action
+// set here makes the filter auditable and easy to extend.
+const MFA_ACTIONS = ['MFA_OTP_SENT', 'MFA_RESEND', 'MFA_VERIFY_SUCCESS', 'MFA_VERIFY_FAILED'];
+
+// Maps a resource type to the `details` keys that carry its id, and to the entity
+// whose current record supplies the display name. Types without a resolvable name
+// (Mfa) or without an entry (Unknown) resolve to an empty name.
+type NameableEntity = 'election' | 'candidate' | 'elector' | 'user';
+
+interface ResourceNameResolution {
+  idKeys: string[];
+  entity?: NameableEntity;
+}
+
+const RESOURCE_NAME_CONFIG: Record<string, ResourceNameResolution> = {
+  Election: { idKeys: ['electionId'], entity: 'election' },
+  Candidate: { idKeys: ['candidateId'], entity: 'candidate' },
+  // A candidacy has no name of its own; its display name is the candidate's.
+  Candidacy: { idKeys: ['candidateId'], entity: 'candidate' },
+  Elector: { idKeys: ['electorId'], entity: 'elector' },
+  User: { idKeys: ['targetUserId', 'userId'], entity: 'user' },
+  Mfa: { idKeys: ['sessionId'] },
+  // An electoral roll has no name; its display name is the election's.
+  ElectoralRoll: { idKeys: ['electionId'], entity: 'election' },
 };
 
 function mapActionToResourceType(action: string): string {
@@ -185,15 +278,25 @@ function parseDetails(details: string | null): Record<string, unknown> | null {
   }
 }
 
-function extractResourceName(
+function extractResourceId(
   details: Record<string, unknown> | null,
   resourceType: string,
-): string {
-  if (!details) return '';
-  const keys = RESOURCE_NAME_KEYS[resourceType] ?? [];
-  for (const key of keys) {
+): string | null {
+  if (!details) return null;
+  const config = RESOURCE_NAME_CONFIG[resourceType];
+  if (!config) return null;
+  for (const key of config.idKeys) {
     const value = details[key];
     if (typeof value === 'string' && value.length > 0) return value;
   }
-  return '';
+  return null;
+}
+
+function collectPersonNames(
+  names: Map<string, string>,
+  rows: Array<{ id: string; first_name: string; last_name: string }>,
+): void {
+  for (const row of rows) {
+    names.set(row.id, `${row.first_name} ${row.last_name}`.trim());
+  }
 }
