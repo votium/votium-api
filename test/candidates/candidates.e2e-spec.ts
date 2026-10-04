@@ -288,6 +288,8 @@ describe('Candidates registration (e2e)', () => {
           'companionStudentCode',
           'companionProgramCode',
           'companionIdentification',
+          'email',
+          'phone',
           'createdAt',
         ].sort(),
       );
@@ -884,6 +886,8 @@ describe('Candidates registration (e2e)', () => {
           'companionStudentCode',
           'companionProgramCode',
           'companionIdentification',
+          'email',
+          'phone',
           'createdAt',
         ].sort(),
       );
@@ -1331,6 +1335,8 @@ describe('Candidates registration (e2e)', () => {
           'companionStudentCode',
           'companionProgramCode',
           'companionIdentification',
+          'email',
+          'phone',
           'createdAt',
           'elections',
           'isCurrentlyActive',
@@ -1804,6 +1810,8 @@ describe('Candidates registration (e2e)', () => {
           'companionStudentCode',
           'companionProgramCode',
           'companionIdentification',
+          'email',
+          'phone',
           'createdAt',
         ].sort(),
       );
@@ -2352,6 +2360,8 @@ describe('Candidates registration (e2e)', () => {
       const editable = [
         'firstName',
         'lastName',
+        'email',
+        'phone',
         'programCode',
         'identificationNumber',
         'companionFirstName',

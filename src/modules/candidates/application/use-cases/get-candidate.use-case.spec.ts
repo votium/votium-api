@@ -22,6 +22,8 @@ function buildCandidate(id: string): CandidateEntity {
     companionStudentCode: null,
     companionProgramCode: null,
     companionIdentification: null,
+    email: null,
+    phone: null,
   });
 }
 

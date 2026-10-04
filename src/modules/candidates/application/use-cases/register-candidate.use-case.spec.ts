@@ -20,6 +20,8 @@ function buildSavedCandidate(): CandidateEntity {
     companionStudentCode: null,
     companionProgramCode: null,
     companionIdentification: null,
+    email: null,
+    phone: null,
   });
 }
 
@@ -299,6 +301,8 @@ describe('RegisterCandidateUseCase', () => {
       companionStudentCode: null,
       companionProgramCode: null,
       companionIdentification: null,
+      email: null,
+      phone: null,
     });
 
     const persisted = candidates.create.mock.calls[0][0];
@@ -326,6 +330,8 @@ describe('RegisterCandidateUseCase', () => {
         companionStudentCode: '20209999',
         companionProgramCode: '9999',
         companionIdentification: null,
+        email: null,
+        phone: null,
       }),
     ).rejects.toBeInstanceOf(CandidateCompanionIncompleteError);
 
