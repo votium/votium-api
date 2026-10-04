@@ -16,6 +16,8 @@ describe('CandidatePresenter', () => {
     companionStudentCode: null,
     companionProgramCode: null,
     companionIdentification: null,
+    email: null,
+    phone: null,
   });
 
   const entityWithCompanion = CandidateEntity.restore({
@@ -32,6 +34,8 @@ describe('CandidatePresenter', () => {
     companionStudentCode: '20207777',
     companionProgramCode: '9999',
     companionIdentification: '2000000000',
+    email: null,
+    phone: null,
   });
 
   it('maps all candidate fields to the response DTO', () => {
@@ -50,6 +54,8 @@ describe('CandidatePresenter', () => {
       companionStudentCode: null,
       companionProgramCode: null,
       companionIdentification: null,
+      email: null,
+      phone: null,
       createdAt: '2026-08-19T15:00:00.000Z',
     });
   });
@@ -78,6 +84,8 @@ describe('CandidatePresenter', () => {
         'companionStudentCode',
         'companionProgramCode',
         'companionIdentification',
+        'email',
+        'phone',
         'createdAt',
       ].sort(),
     );
@@ -118,6 +126,8 @@ describe('CandidatePresenter', () => {
       companionStudentCode: null,
       companionProgramCode: null,
       companionIdentification: null,
+      email: null,
+      phone: null,
     });
 
     it('maps an array of entities to an array of response DTOs', () => {
@@ -137,6 +147,8 @@ describe('CandidatePresenter', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
         createdAt: '2026-08-19T15:00:00.000Z',
       });
       expect(list[1]).toEqual({
@@ -152,6 +164,8 @@ describe('CandidatePresenter', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
         createdAt: '2026-08-19T16:00:00.000Z',
       });
     });
@@ -176,6 +190,8 @@ describe('CandidatePresenter', () => {
         'companionStudentCode',
         'companionProgramCode',
         'companionIdentification',
+        'email',
+        'phone',
         'createdAt',
       ].sort();
 

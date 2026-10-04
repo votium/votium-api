@@ -172,6 +172,8 @@ model Candidate {
   companion_student_code   String?
   companion_program_code   String?
   companion_identification String?
+  email                    String?
+  phone                    String?
   created_at               DateTime @default(now())
   deleted_at               DateTime?
 

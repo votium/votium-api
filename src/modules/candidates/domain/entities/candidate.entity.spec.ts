@@ -16,6 +16,8 @@ describe('CandidateEntity', () => {
     companionStudentCode: '20209999',
     companionProgramCode: '9999',
     companionIdentification: '2000000000',
+    email: null,
+    phone: null,
   };
 
   describe('create', () => {
@@ -72,7 +74,9 @@ describe('CandidateEntity', () => {
         companionLastName: '  Lopez ',
         companionStudentCode: ' 20209999 ',
         companionProgramCode: ' 9999 ',
-        companionIdentification: ' 2000000000 ',
+        companionIdentification: '  2000000000  ',
+        email: null,
+        phone: null,
       });
 
       expect(entity.companionFirstName).toBe('Maria');
@@ -123,6 +127,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
 
       expect(entity.companionFirstName).toBeNull();
@@ -159,6 +165,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
 
       expect(entity.id).toBe('candidate-1');
@@ -186,6 +194,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
 
       expect(entity.firstName).toBe('  Juan  ');
@@ -204,6 +214,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: '20209999',
         companionProgramCode: '9999',
         companionIdentification: '2000000000',
+        email: null,
+        phone: null,
       });
 
       expect(entity.companionFirstName).toBe('  Maria  ');
@@ -224,6 +236,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
 
       expect(entity.companionFirstName).toBeNull();
@@ -262,6 +276,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: '20209999',
         companionProgramCode: '9999',
         companionIdentification: '2000000000',
+        email: null,
+        phone: null,
       });
 
       entity.deactivate();
@@ -294,6 +310,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
 
       expect(entity.status).toBe(CandidateEntity.INACTIVE_STATUS);
@@ -320,6 +338,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
 
       entity.reactivate();
@@ -348,6 +368,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
         ...overrides,
       });
     }
@@ -455,6 +477,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
     }
 
@@ -545,6 +569,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
 
       active.update({ firstName: 'X' });
@@ -578,6 +604,8 @@ describe('CandidateEntity', () => {
         companionStudentCode: null,
         companionProgramCode: null,
         companionIdentification: null,
+        email: null,
+        phone: null,
       });
 
       entity.update({ firstName: 'Changed' });

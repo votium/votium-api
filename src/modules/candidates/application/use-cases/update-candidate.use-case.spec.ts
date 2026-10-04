@@ -23,6 +23,8 @@ function buildCandidate(
     companionStudentCode: overrides.companionStudentCode ?? null,
     companionProgramCode: overrides.companionProgramCode ?? null,
     companionIdentification: overrides.companionIdentification ?? null,
+    email: overrides.email ?? null,
+    phone: overrides.phone ?? null,
   });
 }
 
@@ -41,6 +43,8 @@ function buildUpdated(overrides: Partial<UpdateCandidateInput> = {}): CandidateE
     companionStudentCode: overrides.companionStudentCode ?? null,
     companionProgramCode: overrides.companionProgramCode ?? null,
     companionIdentification: overrides.companionIdentification ?? null,
+    email: overrides.email ?? null,
+    phone: overrides.phone ?? null,
   });
 }
 

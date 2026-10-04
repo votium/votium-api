@@ -208,6 +208,8 @@ export class CandidatesController {
       companionStudentCode: dto.companionStudentCode,
       companionProgramCode: dto.companionProgramCode,
       companionIdentification: dto.companionIdentification,
+      email: dto.email,
+      phone: dto.phone,
     });
     return CandidatePresenter.toResponse(candidate);
   }
@@ -284,6 +286,8 @@ export class CandidatesController {
         companionStudentCode: dto.companionStudentCode,
         companionProgramCode: dto.companionProgramCode,
         companionIdentification: dto.companionIdentification,
+        email: dto.email,
+        phone: dto.phone,
       },
       req.user.sub,
     );
