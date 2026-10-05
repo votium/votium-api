@@ -12,6 +12,7 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -25,6 +26,7 @@ import {
   ApiResponse,
   ApiParam,
   ApiCookieAuth,
+  ApiProduces,
   ApiQuery,
 } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -39,6 +41,7 @@ import { ActivateElectorUseCase } from '../../application/use-cases/activate-ele
 import { DeactivateElectorUseCase } from '../../application/use-cases/deactivate-elector.use-case';
 import { DeleteElectorUseCase } from '../../application/use-cases/delete-elector.use-case';
 import { GetElectorUseCase } from '../../application/use-cases/get-elector.use-case';
+import { GetElectoralRegistryTemplateUseCase } from '../../application/use-cases/get-electoral-registry-template.use-case';
 import { ImportElectoralRegistryUseCase } from '../../application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from '../../application/use-cases/search-electors.use-case';
 import { UpdateElectorUseCase } from '../../application/use-cases/update-elector.use-case';
@@ -50,6 +53,7 @@ import { ElectorsListResponseDto } from '../dtos/electors-list-response.dto';
 import { ImportElectoralRegistryResponseDto } from '../dtos/import-electoral-registry-response.dto';
 import { SearchElectorsQueryDto } from '../dtos/search-electors-query.dto';
 import { UpdateElectorResponseDto } from '../dtos/update-elector-response.dto';
+import { ELECTORAL_REGISTRY_TEMPLATE_FILENAME } from '../../application/electoral-registry-template';
 
 const MAX_CSV_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
@@ -73,6 +77,7 @@ export class ElectorsController {
     private readonly searchElectors: SearchElectorsUseCase,
     private readonly getElector: GetElectorUseCase,
     private readonly updateElector: UpdateElectorUseCase,
+    private readonly getElectoralRegistryTemplate: GetElectoralRegistryTemplateUseCase,
   ) {}
 
   @Get()
@@ -245,6 +250,32 @@ export class ElectorsController {
     });
 
     return ElectoralRegistryPresenter.toImportResponse(summary);
+  }
+
+  @Get('template/csv')
+  @ApiOperation({
+    summary: 'Download the elector bulk-upload CSV template',
+    description:
+      'Returns the official CSV template for the elector bulk upload. Row 1 contains the ' +
+      'machine-readable headers; row 2 contains a Spanish description per column. ' +
+      'Requires ADMINISTRATOR role.',
+  })
+  @ApiProduces('text/csv')
+  @ApiResponse({
+    status: 200,
+    description: 'Elector CSV template downloaded.',
+    content: { 'text/csv': { schema: { type: 'string', format: 'binary' } } },
+  })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  downloadTemplate(): StreamableFile {
+    const csv = this.getElectoralRegistryTemplate.execute();
+    return new StreamableFile(Buffer.from(csv, 'utf8'), {
+      type: 'text/csv',
+      disposition: `attachment; filename="${ELECTORAL_REGISTRY_TEMPLATE_FILENAME}"`,
+    });
   }
 
   @Delete(':id')

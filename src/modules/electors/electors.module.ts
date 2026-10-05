@@ -13,6 +13,7 @@ import { ActivateElectorUseCase } from './application/use-cases/activate-elector
 import { DeactivateElectorUseCase } from './application/use-cases/deactivate-elector.use-case';
 import { DeleteElectorUseCase } from './application/use-cases/delete-elector.use-case';
 import { GetElectorUseCase } from './application/use-cases/get-elector.use-case';
+import { GetElectoralRegistryTemplateUseCase } from './application/use-cases/get-electoral-registry-template.use-case';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
 import { UpdateElectorUseCase } from './application/use-cases/update-elector.use-case';
@@ -67,6 +68,10 @@ import { ElectorsController } from './presentation/controllers/electors.controll
       provide: GetElectorUseCase,
       useFactory: (electors: ElectorRepository) => new GetElectorUseCase(electors),
       inject: [ELECTOR_REPOSITORY],
+    },
+    {
+      provide: GetElectoralRegistryTemplateUseCase,
+      useFactory: () => new GetElectoralRegistryTemplateUseCase(),
     },
     {
       provide: UpdateElectorUseCase,
