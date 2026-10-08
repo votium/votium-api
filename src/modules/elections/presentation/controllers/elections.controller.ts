@@ -7,8 +7,8 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
-  Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -148,10 +148,10 @@ export class ElectionsController {
     return ElectionPresenter.toResponse(election);
   }
 
-  @Patch(':id')
+  @Put(':id')
   @ApiOperation({
     summary: 'Update an existing election',
-    description: 'Updates an election in CREATED state. Requires ADMINISTRATOR role.',
+    description: 'Updates an election in PENDING state. Requires ADMINISTRATOR role.',
   })
   @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
   @ApiResponse({

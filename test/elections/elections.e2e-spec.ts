@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { envs } from '../../src/config';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import {
@@ -31,6 +33,17 @@ class FakeEmailService implements AsyncEmailServicePort {
   last(): { to: string; code: string } {
     return this.sent[this.sent.length - 1];
   }
+}
+
+interface SwaggerOperationShape {
+  tags?: string[];
+  parameters?: Array<{ name: string; in: string; required?: boolean }>;
+  security?: Array<{ cookie: string[] }>;
+  requestBody?: {
+    required?: boolean;
+    content: Record<string, { schema: { $ref?: string } }>;
+  };
+  responses: Record<string, { content: Record<string, { schema: { $ref?: string } }> }>;
 }
 
 describe('Elections creation (e2e)', () => {
@@ -332,7 +345,13 @@ describe('Elections creation (e2e)', () => {
     });
   });
 
-  describe('PATCH /elections/:id', () => {
+  describe('PUT /elections/:id', () => {
+    const putElection = (id: string, payload: Record<string, unknown>, token: string) =>
+      request(app.getHttpServer())
+        .put(`/api/v1/elections/${id}`)
+        .set('Cookie', token)
+        .send(payload);
+
     const patchElection = (id: string, payload: Record<string, unknown>, token: string) =>
       request(app.getHttpServer())
         .patch(`/api/v1/elections/${id}`)
@@ -344,96 +363,287 @@ describe('Elections creation (e2e)', () => {
       return (res.body as { id: string }).id;
     };
 
+    const validUpdate = (name: string): Record<string, unknown> => ({
+      name,
+      description: 'Updated election for the 2026 student council.',
+      startDate: '2026-10-01',
+      startTime: '08:00:00',
+      endDate: '2026-10-01',
+      endTime: '18:00:00',
+      blankVoteEnabled: false,
+    });
+
     let editableId = '';
     let editableName = '';
 
     beforeAll(async () => {
-      editableName = `PATCH-${suffix}`;
+      editableName = `PUT-${suffix}`;
       usedNames.push(editableName);
       editableId = await createElectionAndGetId(editableName, adminToken);
     });
 
-    it('P1: ADMIN edits a PENDING election with 200 and preserves omitted fields', async () => {
-      const res = await patchElection(editableId, { description: 'Updated.' }, adminToken).expect(
-        200,
-      );
+    it('U-01: ADMIN updates a PENDING election with 200', async () => {
+      const res = await putElection(editableId, validUpdate(editableName), adminToken).expect(200);
       const body = res.body as { name: string; description: string; currentStatus: string };
       expect(body.name).toBe(editableName);
-      expect(body.description).toBe('Updated.');
+      expect(body.description).toBe('Updated election for the 2026 student council.');
       expect(body.currentStatus).toBe('PENDING');
     });
 
-    it('P2: unauthenticated request is rejected with 401', async () => {
-      await patchElection(editableId, { description: 'x' }, '').expect(401);
+    it('U-02: the old PATCH route is no longer registered (404)', async () => {
+      await patchElection(editableId, validUpdate(editableName), adminToken).expect(404);
     });
 
-    it('P3: an invalid token is rejected with 401', async () => {
-      await patchElection(editableId, { description: 'x' }, 'not-a-real-token').expect(401);
+    it('U-03: a complete update changes all configurable fields', async () => {
+      const res = await putElection(
+        editableId,
+        {
+          ...validUpdate(editableName),
+          description: 'Complete update.',
+          startDate: '2026-10-02',
+          startTime: '09:00:00',
+          endDate: '2026-10-02',
+          endTime: '20:00:00',
+        },
+        adminToken,
+      ).expect(200);
+      const body = res.body as Record<string, unknown>;
+      expect(body.description).toBe('Complete update.');
+      expect(body.startDate).toBe('2026-10-02');
+      expect(body.startTime).toBe('09:00:00');
+      expect(body.endDate).toBe('2026-10-02');
+      expect(body.endTime).toBe('20:00:00');
     });
 
-    it('P4: a non-admin role (AUDITOR) is rejected with 403', async () => {
-      await patchElection(editableId, { description: 'x' }, auditorToken).expect(403);
+    it('U-04: the response matches the election response contract', async () => {
+      const res = await putElection(editableId, validUpdate(editableName), adminToken).expect(200);
+      const body = res.body as Record<string, unknown>;
+      expect(Object.keys(body).sort()).toEqual(
+        [
+          'id',
+          'name',
+          'description',
+          'startDate',
+          'startTime',
+          'endDate',
+          'endTime',
+          'currentStatus',
+          'blankVoteEnabled',
+          'createdAt',
+        ].sort(),
+      );
     });
 
-    it('P5: a non-UUID id is rejected with 400', async () => {
-      await patchElection('not-a-uuid', { description: 'x' }, adminToken).expect(400);
+    it('U-05: a non-UUID id is rejected with 400', async () => {
+      await putElection('not-a-uuid', validUpdate(editableName), adminToken).expect(400);
     });
 
-    it('P6: a valid UUID that does not exist is rejected with 404', async () => {
-      const res = await patchElection(
+    it('U-06: a valid UUID that does not exist is rejected with 404', async () => {
+      const res = await putElection(
         '00000000-0000-0000-0000-000000000000',
-        { description: 'x' },
+        validUpdate(editableName),
         adminToken,
       ).expect(404);
       expect(res.body).toMatchObject({ statusCode: 404, error: 'ELECTION_NOT_FOUND' });
     });
 
-    it('P7: an election in a non-editable state is rejected with 409', async () => {
+    it('U-07: a missing required field is rejected with 400', async () => {
+      const payload = validUpdate(editableName);
+      delete payload.startDate;
+      await putElection(editableId, payload, adminToken).expect(400);
+    });
+
+    it('U-08: omitting blankVoteEnabled is accepted and keeps false', async () => {
+      const payload = validUpdate(editableName);
+      delete payload.blankVoteEnabled;
+      const res = await putElection(editableId, payload, adminToken).expect(200);
+      expect((res.body as { blankVoteEnabled: boolean }).blankVoteEnabled).toBe(false);
+    });
+
+    it('U-09: a client-supplied id is rejected with 400', async () => {
+      await putElection(
+        editableId,
+        { ...validUpdate(editableName), id: '00000000-0000-0000-0000-000000000000' },
+        adminToken,
+      ).expect(400);
+    });
+
+    it('U-10: a client-supplied currentStatus is rejected with 400', async () => {
+      await putElection(
+        editableId,
+        { ...validUpdate(editableName), currentStatus: 'ACTIVE' },
+        adminToken,
+      ).expect(400);
+    });
+
+    it('U-11: an election in a non-editable state is rejected with 409', async () => {
       const name = `NONEDIT-${suffix}`;
       usedNames.push(name);
       const id = await createElectionAndGetId(name, adminToken);
       await prisma.election.update({ where: { id }, data: { current_status: 'CREATED' } });
-      const res = await patchElection(id, { description: 'x' }, adminToken).expect(409);
+      const res = await putElection(id, validUpdate(name), adminToken).expect(409);
       expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_EDITABLE' });
     });
 
-    it('P8: renaming to an existing election name is rejected with 409', async () => {
-      const other = `OTHER-${suffix}`;
-      usedNames.push(other);
-      await createElectionAndGetId(other, adminToken);
-      const res = await patchElection(editableId, { name: other }, adminToken).expect(409);
-      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NAME_CONFLICT' });
+    it('U-12: unauthenticated request is rejected with 401', async () => {
+      await putElection(editableId, validUpdate(editableName), '').expect(401);
     });
 
-    it('P9: renaming to its own current name succeeds (self excluded)', async () => {
-      await patchElection(editableId, { name: editableName }, adminToken).expect(200);
+    it('U-13: an invalid token is rejected with 401', async () => {
+      await putElection(editableId, validUpdate(editableName), 'not-a-real-token').expect(401);
     });
 
-    it('P10: an invalid startDate is rejected with 400', async () => {
-      await patchElection(editableId, { startDate: '2026-13-40' }, adminToken).expect(400);
+    it('U-14: a non-admin role (AUDITOR) is rejected with 403', async () => {
+      await putElection(editableId, validUpdate(editableName), auditorToken).expect(403);
     });
 
-    it('P11: a partial update producing an invalid interval is rejected with 400', async () => {
-      const res = await patchElection(editableId, { startTime: '19:00:00' }, adminToken).expect(
-        400,
-      );
+    it('U-15: an invalid startDate is rejected with 400', async () => {
+      await putElection(
+        editableId,
+        { ...validUpdate(editableName), startDate: '2026-13-40' },
+        adminToken,
+      ).expect(400);
+    });
+
+    it('U-16: an invalid startTime is rejected with 400', async () => {
+      await putElection(
+        editableId,
+        { ...validUpdate(editableName), startTime: '25:00:00' },
+        adminToken,
+      ).expect(400);
+    });
+
+    it('U-17: an invalid interval (end == start) is rejected with 400', async () => {
+      const res = await putElection(
+        editableId,
+        { ...validUpdate(editableName), endTime: '08:00:00' },
+        adminToken,
+      ).expect(400);
       expect(res.body).toMatchObject({ statusCode: 400, error: 'ELECTION_INVALID_DATE_RANGE' });
     });
 
-    it('P12: a client-supplied immutable field in the body is rejected with 400', async () => {
-      await patchElection(editableId, { currentStatus: 'ACTIVE' }, adminToken).expect(400);
+    it('U-18: a non-boolean blankVoteEnabled is rejected with 400', async () => {
+      await putElection(
+        editableId,
+        { ...validUpdate(editableName), blankVoteEnabled: 'true' },
+        adminToken,
+      ).expect(400);
     });
 
-    it('P13: a non-boolean blankVoteEnabled is rejected with 400', async () => {
-      await patchElection(editableId, { blankVoteEnabled: 'true' }, adminToken).expect(400);
+    it('U-19: renaming to an existing election name is rejected with 409', async () => {
+      const other = `OTHER-${suffix}`;
+      usedNames.push(other);
+      await createElectionAndGetId(other, adminToken);
+      const res = await putElection(
+        editableId,
+        { ...validUpdate(editableName), name: other },
+        adminToken,
+      ).expect(409);
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NAME_CONFLICT' });
     });
 
-    it('P14: a successful edit does not alter currentStatus or createdAt', async () => {
+    it('U-20: renaming to its own current name succeeds (self excluded)', async () => {
+      await putElection(editableId, validUpdate(editableName), adminToken).expect(200);
+    });
+
+    it('U-21: a successful edit persists the configurable values', async () => {
+      await putElection(
+        editableId,
+        { ...validUpdate(editableName), description: 'Persisted.' },
+        adminToken,
+      ).expect(200);
+      const row = await prisma.election.findUnique({ where: { id: editableId } });
+      expect(row!.description).toBe('Persisted.');
+    });
+
+    it('U-22: a successful edit does not alter currentStatus or createdAt', async () => {
       const before = await prisma.election.findUnique({ where: { id: editableId } });
-      await patchElection(editableId, { description: 'Again.' }, adminToken).expect(200);
+      await putElection(editableId, validUpdate(editableName), adminToken).expect(200);
       const after = await prisma.election.findUnique({ where: { id: editableId } });
       expect(after!.current_status).toBe(before!.current_status);
       expect(after!.created_at.toISOString()).toBe(before!.created_at.toISOString());
+    });
+  });
+
+  describe('Swagger / OpenAPI', () => {
+    const buildDocument = () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addCookieAuth(envs.authCookieName)
+        .build();
+      return SwaggerModule.createDocument(app, config);
+    };
+
+    const findUpdatePath = (document: ReturnType<typeof buildDocument>) =>
+      Object.keys(document.paths).find(
+        (p) =>
+          p.endsWith('/elections/{id}') && !p.includes('/start') && !p.includes('/candidacies'),
+      );
+
+    it('SW-01: the update operation is exposed as PUT and PATCH is removed', () => {
+      const document = buildDocument();
+      const pathKey = findUpdatePath(document);
+      expect(pathKey).toBeDefined();
+      expect(document.paths[pathKey!].put).toBeDefined();
+      expect(document.paths[pathKey!].patch).toBeUndefined();
+    });
+
+    it('SW-02: PUT is tagged elections and cookie-secured', () => {
+      const document = buildDocument();
+      const pathKey = findUpdatePath(document);
+      const operation = document.paths[pathKey!].put as unknown as SwaggerOperationShape;
+      expect(operation.tags).toContain('elections');
+      expect(operation.security).toEqual([{ cookie: [] }]);
+    });
+
+    it('SW-03: the request schema marks the six configurable fields as required', () => {
+      const document = buildDocument();
+      const pathKey = findUpdatePath(document);
+      const operation = document.paths[pathKey!].put as unknown as SwaggerOperationShape;
+      const ref = operation.requestBody!.content['application/json'].schema.$ref;
+      expect(ref).toBe('#/components/schemas/UpdateElectionDto');
+      const schema = document.components?.schemas?.['UpdateElectionDto'] as
+        | { required?: string[]; properties?: Record<string, unknown> }
+        | undefined;
+      expect(schema).toBeDefined();
+      expect(schema!.required).toEqual(
+        expect.arrayContaining([
+          'name',
+          'description',
+          'startDate',
+          'startTime',
+          'endDate',
+          'endTime',
+        ]),
+      );
+      expect(schema!.required).not.toContain('blankVoteEnabled');
+    });
+
+    it('SW-04: the request schema excludes system-managed fields', () => {
+      const document = buildDocument();
+      const schema = document.components?.schemas?.['UpdateElectionDto'] as
+        | { properties?: Record<string, unknown> }
+        | undefined;
+      expect(schema).toBeDefined();
+      for (const forbidden of ['id', 'currentStatus', 'createdAt']) {
+        expect(schema!.properties?.[forbidden]).toBeUndefined();
+      }
+    });
+
+    it('SW-05: the id path parameter and error responses are documented', () => {
+      const document = buildDocument();
+      const pathKey = findUpdatePath(document);
+      const operation = document.paths[pathKey!].put as unknown as SwaggerOperationShape;
+      expect(operation.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'id', in: 'path', required: true }),
+        ]),
+      );
+      for (const status of ['200', '400', '401', '403', '404', '409']) {
+        expect(operation.responses[status]).toBeDefined();
+      }
     });
   });
 
