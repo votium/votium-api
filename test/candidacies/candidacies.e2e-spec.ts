@@ -333,8 +333,8 @@ describe('Candidacies registration (e2e)', () => {
       expect(await prisma.candiday.count({ where: { election_id: electionId } })).toBe(1);
     });
 
-    it.each(['CREATED', 'PUBLISHED', 'ACTIVE', 'CLOSED'] as const)(
-      'E2E-15/16/17/18: a %s election is rejected with 409',
+    it.each(['CREATED', 'PUBLISHED', 'ACTIVE', 'CLOSED', 'CANCELLED'] as const)(
+      'E2E-15/16/17/18/20: a %s election is rejected with 409',
       async (status) => {
         const electionId = await seedElection(status);
         const candidateId = await seedCandidate();

@@ -27,6 +27,17 @@ export class PrismaVoteRepository implements VoteRepository {
 
   private async runRecordVote(input: RecordVoteInput): Promise<RecordVoteResult> {
     return this.prisma.$transaction(async (tx) => {
+      // Serialize with cancellation: take a share lock on the election row and verify it
+      // is still ACTIVE at write time. The cancellation transition is an UPDATE on the
+      // same row, so the two contend on this lock — either the vote commits while ACTIVE
+      // (cancel blocks), or the cancel commits first and this read observes CANCELLED and
+      // aborts. This guarantees no vote is committed after cancellation takes effect.
+      const locked = await tx.$queryRaw<Array<{ current_status: string }>>`
+        SELECT current_status FROM elections WHERE id = ${input.electionId} FOR SHARE`;
+      if (locked.length === 0 || locked[0].current_status !== 'ACTIVE') {
+        return { outcome: 'election_not_active' };
+      }
+
       const claim = await tx.electoralRoll.updateMany({
         where: {
           election_id: input.electionId,

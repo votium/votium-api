@@ -159,7 +159,7 @@ describe('ElectionEntity', () => {
     });
 
     it('PD-01: is false for any non-PENDING status', () => {
-      for (const status of ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
+      for (const status of ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE', 'CANCELLED']) {
         expect(makeElection(status).isEditable()).toBe(false);
       }
     });
@@ -186,7 +186,7 @@ describe('ElectionEntity', () => {
     });
 
     it('PD-02: is false for any non-PENDING status', () => {
-      for (const status of ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE']) {
+      for (const status of ['CREATED', 'PUBLISHED', 'CLOSED', 'ACTIVE', 'CANCELLED']) {
         expect(makeElection(status).isDeletable()).toBe(false);
       }
     });
@@ -227,6 +227,10 @@ describe('ElectionEntity', () => {
     it('PD-03: is false for CLOSED', () => {
       expect(makeElection('CLOSED').isRollLoadable()).toBe(false);
     });
+
+    it('PD-03: is false for CANCELLED', () => {
+      expect(makeElection('CANCELLED').isRollLoadable()).toBe(false);
+    });
   });
 
   describe('isRollModifiable', () => {
@@ -264,6 +268,10 @@ describe('ElectionEntity', () => {
     it('PD-04: is false for CLOSED', () => {
       expect(makeElection('CLOSED').isRollModifiable()).toBe(false);
     });
+
+    it('PD-04: is false for CANCELLED', () => {
+      expect(makeElection('CANCELLED').isRollModifiable()).toBe(false);
+    });
   });
 
   describe('state machine', () => {
@@ -285,13 +293,14 @@ describe('ElectionEntity', () => {
     const ALL_STATUSES = ELECTION_STATUSES;
 
     describe('ELECTION_TRANSITIONS', () => {
-      it('declares exactly the forward lifecycle graph', () => {
+      it('declares exactly the forward lifecycle graph plus the cancellation sink', () => {
         expect(ELECTION_TRANSITIONS).toEqual({
-          PENDING: ['CREATED'],
-          CREATED: ['ACTIVE'],
-          ACTIVE: ['CLOSED'],
-          CLOSED: ['PUBLISHED'],
+          PENDING: ['CREATED', 'CANCELLED'],
+          CREATED: ['ACTIVE', 'CANCELLED'],
+          ACTIVE: ['CLOSED', 'CANCELLED'],
+          CLOSED: ['PUBLISHED', 'CANCELLED'],
           PUBLISHED: [],
+          CANCELLED: [],
         });
       });
 
@@ -329,6 +338,30 @@ describe('ElectionEntity', () => {
         e.transitionTo('PUBLISHED');
         expect(e.currentStatus).toBe('PUBLISHED');
       });
+
+      it('SM-05: transitions PENDING to CANCELLED', () => {
+        const e = makeElection('PENDING');
+        e.transitionTo('CANCELLED');
+        expect(e.currentStatus).toBe('CANCELLED');
+      });
+
+      it('SM-06: transitions CREATED to CANCELLED', () => {
+        const e = makeElection('CREATED');
+        e.transitionTo('CANCELLED');
+        expect(e.currentStatus).toBe('CANCELLED');
+      });
+
+      it('SM-07: transitions ACTIVE to CANCELLED', () => {
+        const e = makeElection('ACTIVE');
+        e.transitionTo('CANCELLED');
+        expect(e.currentStatus).toBe('CANCELLED');
+      });
+
+      it('SM-08: transitions CLOSED to CANCELLED', () => {
+        const e = makeElection('CLOSED');
+        e.transitionTo('CANCELLED');
+        expect(e.currentStatus).toBe('CANCELLED');
+      });
     });
 
     describe('transitionTo - invalid transitions leave the status unchanged', () => {
@@ -350,6 +383,12 @@ describe('ElectionEntity', () => {
         ['PUBLISHED', 'ACTIVE'],
         ['PUBLISHED', 'CLOSED'],
         ['PUBLISHED', 'PUBLISHED'],
+        ['PUBLISHED', 'CANCELLED'],
+        ['CANCELLED', 'PENDING'],
+        ['CANCELLED', 'CREATED'],
+        ['CANCELLED', 'ACTIVE'],
+        ['CANCELLED', 'CLOSED'],
+        ['CANCELLED', 'PUBLISHED'],
       ];
 
       it.each(invalidPairs)('SM: rejects %s -> %s', (from, to) => {
@@ -402,6 +441,21 @@ describe('ElectionEntity', () => {
         }
         expect(e.currentStatus).toBe('PUBLISHED');
       });
+
+      it('TP-03: CANCELLED cannot transition to anything, including itself', () => {
+        for (const target of ALL_STATUSES) {
+          expect(makeElection('CANCELLED').canTransitionTo(target)).toBe(false);
+        }
+      });
+
+      it('TP-04: a cancelled election refuses every further transition and stays CANCELLED', () => {
+        const e = makeElection('ACTIVE');
+        e.transitionTo('CANCELLED');
+        for (const target of ALL_STATUSES) {
+          expect(() => e.transitionTo(target)).toThrow(ElectionStatusTransitionError);
+        }
+        expect(e.currentStatus).toBe('CANCELLED');
+      });
     });
   });
 
@@ -423,7 +477,7 @@ describe('ElectionEntity', () => {
 
     it('PD-05: is true only for PENDING', () => {
       expect(makeElection('PENDING').canAcceptCandidacy()).toBe(true);
-      for (const status of ['CREATED', 'ACTIVE', 'CLOSED', 'PUBLISHED']) {
+      for (const status of ['CREATED', 'ACTIVE', 'CLOSED', 'PUBLISHED', 'CANCELLED']) {
         expect(makeElection(status).canAcceptCandidacy()).toBe(false);
       }
     });
@@ -447,7 +501,7 @@ describe('ElectionEntity', () => {
 
     it('PD-06: is true only for ACTIVE', () => {
       expect(makeElection('ACTIVE').canAcceptVotes()).toBe(true);
-      for (const status of ['PENDING', 'CREATED', 'CLOSED', 'PUBLISHED']) {
+      for (const status of ['PENDING', 'CREATED', 'CLOSED', 'PUBLISHED', 'CANCELLED']) {
         expect(makeElection(status).canAcceptVotes()).toBe(false);
       }
     });

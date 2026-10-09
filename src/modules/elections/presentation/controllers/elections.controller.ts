@@ -30,6 +30,8 @@ import { DeleteElectionUseCase } from '../../application/use-cases/delete-electi
 import { StartElectionUseCase } from '../../application/use-cases/start-election.use-case';
 import { FinalizeElectionUseCase } from '../../application/use-cases/finalize-election.use-case';
 import { PublishElectionUseCase } from '../../application/use-cases/publish-election.use-case';
+import { CloseElectionUseCase } from '../../application/use-cases/close-election.use-case';
+import { CancelElectionUseCase } from '../../application/use-cases/cancel-election.use-case';
 import { ElectionPresenter } from '../presenters/election.presenter';
 import { ElectionDetailResponseDto } from '../dtos/election-detail-response.dto';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
@@ -57,6 +59,8 @@ export class ElectionsController {
     private readonly startElection: StartElectionUseCase,
     private readonly finalizeElection: FinalizeElectionUseCase,
     private readonly publishElection: PublishElectionUseCase,
+    private readonly closeElection: CloseElectionUseCase,
+    private readonly cancelElection: CancelElectionUseCase,
   ) {}
 
   @Get()
@@ -292,6 +296,74 @@ export class ElectionsController {
   @Roles(RoleName.ADMINISTRATOR)
   async publish(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
     const election = await this.publishElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':id/close')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually close an active election',
+    description:
+      'Performs the ACTIVE -> CLOSED transition for an election whose configured end ' +
+      'date/time has been reached. Reuses the same closing rules as the automatic closure ' +
+      'scheduler. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election closed successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({ status: 409, description: 'Election is not ACTIVE.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Current date/time is before the election end date/time.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async close(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.closeElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel an election',
+    description:
+      'Performs the terminal CANCELLED transition from any non-terminal state ' +
+      '(PENDING, CREATED, ACTIVE or CLOSED). A cancelled election is permanently frozen: ' +
+      'it cannot be edited, started, closed, published, voted on, or returned to an ' +
+      'operational state. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election cancelled successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Election is PUBLISHED, already CANCELLED, or otherwise not cancellable.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async cancel(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.cancelElection.execute({
       electionId: id,
       requestingUserId: req.user.sub,
     });

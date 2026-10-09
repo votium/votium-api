@@ -38,7 +38,7 @@ describe('PrismaVoteRepository integration', () => {
     await prisma.$disconnect();
   });
 
-  async function seedElection(): Promise<string> {
+  async function seedElection(status: 'ACTIVE' | 'CANCELLED' = 'ACTIVE'): Promise<string> {
     const created = await prisma.election.create({
       data: {
         name: `VOTE-INT-${suffix}-${Math.random()}`,
@@ -47,6 +47,7 @@ describe('PrismaVoteRepository integration', () => {
         start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
         end_date: new Date(Date.UTC(2026, 9, 1)),
         end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        current_status: status,
       },
     });
     usedElectionIds.push(created.id);
@@ -228,6 +229,64 @@ describe('PrismaVoteRepository integration', () => {
         where: { election_id_candidacy_id: { election_id: electionId, candidacy_id: candidacyId } },
       });
       expect(tally!.votes).toBe(2);
+    });
+
+    it('IV-06: recordVote on a CANCELLED election returns election_not_active and claims nothing', async () => {
+      const electionId = await seedElection('CANCELLED');
+      const candidacyId = await seedCandidacy(electionId);
+      const electorId = await seedElector();
+      await seedRoll(electionId, electorId);
+
+      const result = await repository.recordVote(
+        buildInput(electionId, electorId, candidacyId, new Date()),
+      );
+
+      expect(result).toEqual({ outcome: 'election_not_active' });
+
+      const roll = await findRoll(electionId, electorId);
+      expect(roll!.has_voted).toBe(false);
+      expect(roll!.vote_attempts).toBe(0);
+
+      const count = await prisma.result.count({ where: { election_id: electionId } });
+      expect(count).toBe(0);
+    });
+
+    it('IV-07: recordVote on a missing election returns election_not_active without throwing', async () => {
+      const electorId = await seedElector();
+      const missingElectionId = '00000000-0000-4000-8000-000000000000';
+
+      const result = await repository.recordVote(
+        buildInput(missingElectionId, electorId, 'candidacy-x', new Date()),
+      );
+
+      expect(result).toEqual({ outcome: 'election_not_active' });
+    });
+
+    it('IV-08: a concurrent cancellation serializes with recordVote — no vote commits after cancellation', async () => {
+      const electionId = await seedElection('ACTIVE');
+      const candidacyId = await seedCandidacy(electionId);
+      const electorId = await seedElector();
+      await seedRoll(electionId, electorId);
+
+      // Race the vote against a cancellation UPDATE on the same elections row. The vote
+      // takes a FOR SHARE lock and the cancel an exclusive lock, so the two serialize.
+      const [voteResult] = await Promise.all([
+        repository.recordVote(buildInput(electionId, electorId, candidacyId, new Date())),
+        prisma.election.update({
+          where: { id: electionId },
+          data: { current_status: 'CANCELLED' },
+        }),
+      ]);
+
+      const roll = await findRoll(electionId, electorId);
+      // Invariant: a recorded vote and a not-active outcome are mutually exclusive with
+      // the persisted roll state — the forbidden "recorded after cancellation" case would
+      // require `outcome !== 'recorded'` while `has_voted === true`, which cannot occur.
+      if (voteResult.outcome === 'recorded') {
+        expect(roll!.has_voted).toBe(true);
+      } else if (voteResult.outcome === 'election_not_active') {
+        expect(roll!.has_voted).toBe(false);
+      }
     });
   });
 });

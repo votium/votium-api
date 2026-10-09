@@ -375,6 +375,43 @@ describe('Elector vote registration (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_ACTIVE' });
     });
 
+    it('VT-01: rejects a new vote on a CANCELLED election with 409 and claims nothing', async () => {
+      const electionId = await seedElection({ status: 'CANCELLED' });
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      const res = await postVote(electionId, { candidacyId }, electorToken).expect(409);
+
+      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_ACTIVE' });
+
+      const roll = await findRoll(electionId, elector1.id);
+      expect(roll?.has_voted).toBe(false);
+      const tally = await findTally(electionId, candidacyId);
+      expect(tally).toBeNull();
+    });
+
+    it('VT-02: a safe retry of a vote registered before cancellation still replays', async () => {
+      const electionId = await seedElection();
+      const candidacyId = await seedCandidacy(electionId);
+      await seedRoll(electionId, elector1.id);
+
+      await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+
+      // Cancel the election after the vote was registered.
+      await prisma.election.update({
+        where: { id: electionId },
+        data: { current_status: 'CANCELLED' },
+      });
+
+      // The idempotent retry resolves the already-registered vote before the state check,
+      // so it still replays the stored result instead of surfacing the cancelled state.
+      const retry = await postVote(electionId, { candidacyId }, electorToken, 'key-1').expect(201);
+      expect(retry.body).toMatchObject({ electionId, candidacyId });
+
+      const tally = await findTally(electionId, candidacyId);
+      expect(tally?.votes).toBe(1);
+    });
+
     it('VE-15: rejects a vote when the voting window is in the past with 422', async () => {
       const start = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2h ago
       const end = new Date(Date.now() - 60 * 60 * 1000); // 1h ago

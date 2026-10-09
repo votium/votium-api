@@ -17,7 +17,7 @@ import { VoteAlreadyRegisteredError } from '../../domain/errors/vote-already-reg
 import type { VoteRepository } from '../../domain/repositories/vote.repository.interface';
 import { RegisterVoteUseCase, type RegisterVoteInput } from './register-vote.use-case';
 
-const NOT_ACTIVE_STATUSES = ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED'] as const;
+const NOT_ACTIVE_STATUSES = ['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED', 'CANCELLED'] as const;
 
 // Narrow single-day window: 2026-10-01 08:00Z .. 18:00Z (schedule boundary tests).
 const NARROW_WINDOW = {
@@ -235,6 +235,14 @@ describe('RegisterVoteUseCase', () => {
         expect(votes.recordVote.mock.calls).toHaveLength(0);
       },
     );
+
+    it('RV-08: throws ElectionNotActiveError when the repository reports election_not_active (cancellation won the race)', async () => {
+      votes.recordVote.mockResolvedValue({ outcome: 'election_not_active' });
+
+      await expect(buildUseCase().execute(buildInput())).rejects.toBeInstanceOf(
+        ElectionNotActiveError,
+      );
+    });
   });
 
   describe('election schedule', () => {

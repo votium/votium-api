@@ -23,6 +23,8 @@ import { DeleteElectionUseCase } from './application/use-cases/delete-election.u
 import { StartElectionUseCase } from './application/use-cases/start-election.use-case';
 import { FinalizeElectionUseCase } from './application/use-cases/finalize-election.use-case';
 import { PublishElectionUseCase } from './application/use-cases/publish-election.use-case';
+import { CloseElectionUseCase } from './application/use-cases/close-election.use-case';
+import { CancelElectionUseCase } from './application/use-cases/cancel-election.use-case';
 import { CloseExpiredElectionsUseCase } from './application/use-cases/close-expired-elections.use-case';
 import {
   ELECTION_REPOSITORY,
@@ -90,6 +92,18 @@ import { ElectionsController } from './presentation/controllers/elections.contro
       provide: PublishElectionUseCase,
       useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
         new PublishElectionUseCase(elections, audit),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: CloseElectionUseCase,
+      useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
+        new CloseElectionUseCase(elections, audit),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: CancelElectionUseCase,
+      useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
+        new CancelElectionUseCase(elections, audit),
       inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
     },
     {
