@@ -20,14 +20,14 @@ export class UpdateElectionDto {
   @Transform(({ value }) => trimValue(value))
   @IsString()
   @IsNotEmpty()
-  @MaxLength(100)
+  @MaxLength(500)
   name!: string;
 
   @ApiProperty({ example: 'Annual election for the student council.' })
   @Transform(({ value }) => trimValue(value))
   @IsString()
   @IsNotEmpty()
-  @MaxLength(100)
+  @MaxLength(500)
   description!: string;
 
   @ApiProperty({

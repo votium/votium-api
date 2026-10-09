@@ -2,9 +2,9 @@ import { CandidacyEntity, UpdateCandidacyInput } from '../entities/candidacy.ent
 
 export const CANDIDACY_REPOSITORY = 'CandidacyRepository';
 
-// Read-model returned by findByElection: a candidacy joined with the minimal
-// candidate identity required by the election-candidacies query. This is a
-// domain-level projection and never exposes Prisma models.
+// Read-model returned by findByElection and findPaginatedByElection: a candidacy
+// joined with the minimal candidate identity required by the election-candidacies
+// query. This is a domain-level projection and never exposes Prisma models.
 export interface CandidacyWithCandidate {
   id: string;
   electionId: string;
@@ -39,6 +39,26 @@ export interface CandidacyListParams {
   candidateName?: string;
 }
 
+// Pagination + filter input for the election-scoped candidacy listing.
+export interface CandidacyPageParams {
+  // 1-based page number.
+  page: number;
+  // Number of candidacies per page.
+  limit: number;
+  // Partial, case-insensitive match on the candidate first or last name.
+  // Trimmed internally; empty/whitespace-only values are ignored. INACTIVE
+  // candidates are always excluded.
+  candidateName?: string;
+}
+
+// Paginated read result for one election's candidacies: the requested page plus
+// the total number of matching candidacies (unpaginated, used for pagination
+// metadata).
+export interface CandidacyPageResult {
+  candidacies: CandidacyWithCandidate[];
+  total: number;
+}
+
 export interface CandidacyRepository {
   // Returns every positionNumber currently used by candidacies of the election,
   // ascending. Includes candidacy rows of INACTIVE candidates: the unique
@@ -59,6 +79,16 @@ export interface CandidacyRepository {
     electionId: string,
     params?: CandidacyListParams,
   ): Promise<CandidacyWithCandidate[]>;
+
+  // Returns a page of candidacies for the election (ordered by position_number
+  // ascending) plus the total number of matches (unpaginated) for pagination
+  // metadata. Same scoping/filtering rules as findByElection: only the requested
+  // election, INACTIVE and soft-deleted candidates excluded, candidateName
+  // partial/case-insensitive. page/limit are 1-based. Read-only.
+  findPaginatedByElection(
+    electionId: string,
+    params: CandidacyPageParams,
+  ): Promise<CandidacyPageResult>;
 
   // Returns the candidacy with the given id, or null when it does not exist.
   findById(id: string): Promise<CandidacyEntity | null>;

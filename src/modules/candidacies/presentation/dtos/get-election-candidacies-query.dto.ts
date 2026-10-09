@@ -1,7 +1,22 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class GetElectionCandidaciesQueryDto {
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page: number = 1;
+
+  @ApiProperty({ example: 10, required: false })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit: number = 10;
+
   @ApiProperty({
     example: 'Juan',
     required: false,
@@ -11,14 +26,4 @@ export class GetElectionCandidaciesQueryDto {
   @IsOptional()
   @IsString()
   candidateName?: string;
-
-  @ApiProperty({
-    example: 'Student Council Election 2026',
-    required: false,
-    description:
-      'Filters candidacies by the election name (partial, case-insensitive). Returns an empty list when it does not match.',
-  })
-  @IsOptional()
-  @IsString()
-  electionName?: string;
 }

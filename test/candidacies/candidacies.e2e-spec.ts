@@ -81,8 +81,15 @@ describe('Candidacies registration (e2e)', () => {
     return extractAuthCookie(verifyRes);
   };
 
-  const registerCandidacy = (payload: Record<string, unknown>, token: string) =>
-    request(app.getHttpServer()).post('/api/v1/candidacies').set('Cookie', token).send(payload);
+  const associateCandidacy = (
+    electionId: string,
+    payload: Record<string, unknown>,
+    token: string,
+  ) =>
+    request(app.getHttpServer())
+      .post(`/api/v1/elections/${electionId}/candidacies`)
+      .set('Cookie', token)
+      .send(payload);
 
   async function seedElection(status: ElectionStatus): Promise<string> {
     const row = await prisma.election.create({
@@ -203,12 +210,12 @@ describe('Candidacies registration (e2e)', () => {
     await app.close();
   });
 
-  describe('POST /candidacies', () => {
-    it('E2E-01: an ADMIN registers a candidate in a Pending election with 201 and DB row', async () => {
+  describe('POST /elections/:electionId/candidacies', () => {
+    it('AS-01: an ADMIN associates an existing candidate with a Pending election (201 + DB row)', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate();
 
-      const res = await registerCandidacy({ electionId, candidateId }, adminToken).expect(201);
+      const res = await associateCandidacy(electionId, { candidateId }, adminToken).expect(201);
 
       const body = res.body as Record<string, unknown>;
       expect(body).toMatchObject({
@@ -227,28 +234,30 @@ describe('Candidacies registration (e2e)', () => {
       expect(row!.position_number).toBe(1);
     });
 
-    it('E2E-02: the response represents the created candidacy without extra fields', async () => {
+    it('AS-02: the response represents the created candidacy without extra fields', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate();
 
-      const res = await registerCandidacy({ electionId, candidateId }, adminToken).expect(201);
+      const res = await associateCandidacy(electionId, { candidateId }, adminToken).expect(201);
       const body = res.body as Record<string, unknown>;
       expect(Object.keys(body).sort()).toEqual(
         ['id', 'electionId', 'candidateId', 'positionNumber', 'imageUrl', 'createdAt'].sort(),
       );
     });
 
-    it('E2E-03: position auto-increments across two registrations in the same election', async () => {
+    it('AS-03: position auto-increments across two associations in the same election', async () => {
       const electionId = await seedElection('PENDING');
       const candidateA = await seedCandidate();
       const candidateB = await seedCandidate();
 
-      const first = await registerCandidacy(
-        { electionId, candidateId: candidateA },
+      const first = await associateCandidacy(
+        electionId,
+        { candidateId: candidateA },
         adminToken,
       ).expect(201);
-      const second = await registerCandidacy(
-        { electionId, candidateId: candidateB },
+      const second = await associateCandidacy(
+        electionId,
+        { candidateId: candidateB },
         adminToken,
       ).expect(201);
 
@@ -256,90 +265,99 @@ describe('Candidacies registration (e2e)', () => {
       expect((second.body as { positionNumber: number }).positionNumber).toBe(2);
     });
 
-    it('E2E-04: unauthenticated request is rejected with 401', async () => {
-      await registerCandidacy({ electionId: 'x', candidateId: 'y' }, '').expect(401);
+    it('AS-04: unauthenticated request is rejected with 401', async () => {
+      await associateCandidacy(
+        '00000000-0000-4000-8000-000000000000',
+        { candidateId: 'y' },
+        '',
+      ).expect(401);
     });
 
-    it('E2E-05: an invalid token is rejected with 401', async () => {
-      const res = await registerCandidacy(
-        { electionId: 'x', candidateId: 'y' },
+    it('AS-05: an invalid token is rejected with 401', async () => {
+      const res = await associateCandidacy(
+        '00000000-0000-4000-8000-000000000000',
+        { candidateId: 'y' },
         'not-a-real-token',
       ).expect(401);
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
 
-    it('E2E-06: a non-admin role (AUDITOR) is rejected with 403', async () => {
+    it('AS-06: a non-admin role (AUDITOR) is rejected with 403', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate();
 
-      const res = await registerCandidacy({ electionId, candidateId }, auditorToken).expect(403);
+      const res = await associateCandidacy(electionId, { candidateId }, auditorToken).expect(403);
       expect(res.body).toMatchObject({ statusCode: 403 });
       expect(await prisma.candiday.count({ where: { election_id: electionId } })).toBe(0);
     });
 
-    it('E2E-07: a missing electionId is rejected with 400', async () => {
-      const candidateId = await seedCandidate();
-      await registerCandidacy({ candidateId }, adminToken).expect(400);
-    });
-
-    it('E2E-08: a missing candidateId is rejected with 400', async () => {
-      const electionId = await seedElection('PENDING');
-      await registerCandidacy({ electionId }, adminToken).expect(400);
-    });
-
-    it('E2E-09: a non-UUID electionId is rejected with 400', async () => {
-      const candidateId = await seedCandidate();
-      await registerCandidacy({ electionId: 'not-a-uuid', candidateId }, adminToken).expect(400);
-    });
-
-    it('E2E-10: a non-UUID candidateId is rejected with 400', async () => {
-      const electionId = await seedElection('PENDING');
-      await registerCandidacy({ electionId, candidateId: 'not-a-uuid' }, adminToken).expect(400);
-    });
-
-    it('E2E-11: an unknown body field is rejected with 400', async () => {
+    it('AS-07: a client-supplied electionId in the body is rejected with 400', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate();
-      await registerCandidacy({ electionId, candidateId, positionNumber: 99 }, adminToken).expect(
+
+      await associateCandidacy(electionId, { candidateId, electionId }, adminToken).expect(400);
+    });
+
+    it('AS-08: a missing candidateId is rejected with 400', async () => {
+      const electionId = await seedElection('PENDING');
+      await associateCandidacy(electionId, {}, adminToken).expect(400);
+    });
+
+    it('AS-09: a non-UUID electionId in the path is rejected with 400', async () => {
+      const candidateId = await seedCandidate();
+      await associateCandidacy('not-a-uuid', { candidateId }, adminToken).expect(400);
+    });
+
+    it('AS-10: a non-UUID candidateId is rejected with 400', async () => {
+      const electionId = await seedElection('PENDING');
+      await associateCandidacy(electionId, { candidateId: 'not-a-uuid' }, adminToken).expect(400);
+    });
+
+    it('AS-11: an unknown body field is rejected with 400', async () => {
+      const electionId = await seedElection('PENDING');
+      const candidateId = await seedCandidate();
+      await associateCandidacy(electionId, { candidateId, positionNumber: 99 }, adminToken).expect(
         400,
       );
     });
 
-    it('E2E-12: a missing election is rejected with 404', async () => {
+    it('AS-12: a missing election is rejected with 404', async () => {
       const candidateId = await seedCandidate();
-      const res = await registerCandidacy(
-        { electionId: '00000000-0000-0000-0000-000000000000', candidateId },
+      const res = await associateCandidacy(
+        '00000000-0000-0000-0000-000000000000',
+        { candidateId },
         adminToken,
       ).expect(404);
       expect(res.body).toMatchObject({ statusCode: 404, error: 'ELECTION_NOT_FOUND' });
     });
 
-    it('E2E-13: a missing candidate is rejected with 404', async () => {
+    it('AS-13: a missing candidate is rejected with 404', async () => {
       const electionId = await seedElection('PENDING');
-      const res = await registerCandidacy(
-        { electionId, candidateId: '00000000-0000-0000-0000-000000000000' },
+      const res = await associateCandidacy(
+        electionId,
+        { candidateId: '00000000-0000-0000-0000-000000000000' },
         adminToken,
       ).expect(404);
       expect(res.body).toMatchObject({ statusCode: 404, error: 'CANDIDATE_NOT_FOUND' });
     });
 
-    it('E2E-14: a duplicate candidacy is rejected with 409', async () => {
+    it('AS-14: a duplicate candidacy is rejected with 409', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate();
-      await registerCandidacy({ electionId, candidateId }, adminToken).expect(201);
+      await associateCandidacy(electionId, { candidateId }, adminToken).expect(201);
 
-      const res = await registerCandidacy({ electionId, candidateId }, adminToken).expect(409);
+      const res = await associateCandidacy(electionId, { candidateId }, adminToken).expect(409);
       expect(res.body).toMatchObject({ statusCode: 409, error: 'CANDIDACY_DUPLICATE' });
       expect(await prisma.candiday.count({ where: { election_id: electionId } })).toBe(1);
     });
 
     it.each(['CREATED', 'PUBLISHED', 'ACTIVE', 'CLOSED', 'CANCELLED'] as const)(
-      'E2E-15/16/17/18/20: a %s election is rejected with 409',
+      'AS-15: a %s election is rejected with 409',
       async (status) => {
         const electionId = await seedElection(status);
         const candidateId = await seedCandidate();
 
-        const res = await registerCandidacy({ electionId, candidateId }, adminToken).expect(409);
+        const res = await associateCandidacy(electionId, { candidateId }, adminToken).expect(409);
         expect(res.body).toMatchObject({
           statusCode: 409,
           error: 'ELECTION_NOT_ELIGIBLE_FOR_CANDIDACY',
@@ -348,20 +366,22 @@ describe('Candidacies registration (e2e)', () => {
       },
     );
 
-    it('E2E-19: failed requests do not create unrelated rows', async () => {
+    it('AS-16: failed requests do not create unrelated rows', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate();
       const before = await prisma.candiday.count({ where: { election_id: electionId } });
 
-      await registerCandidacy({ candidateId }, adminToken).expect(400);
-      await registerCandidacy({ electionId, candidateId }, '').expect(401);
-      await registerCandidacy({ electionId, candidateId }, auditorToken).expect(403);
-      await registerCandidacy(
-        { electionId: '00000000-0000-0000-0000-000000000000', candidateId },
+      await associateCandidacy(electionId, {}, adminToken).expect(400);
+      await associateCandidacy(electionId, { candidateId }, '').expect(401);
+      await associateCandidacy(electionId, { candidateId }, auditorToken).expect(403);
+      await associateCandidacy(
+        '00000000-0000-0000-0000-000000000000',
+        { candidateId },
         adminToken,
       ).expect(404);
-      await registerCandidacy(
-        { electionId, candidateId: '00000000-0000-0000-0000-000000000000' },
+      await associateCandidacy(
+        electionId,
+        { candidateId: '00000000-0000-0000-0000-000000000000' },
         adminToken,
       ).expect(404);
 

@@ -35,15 +35,3 @@ export class CandidacyWithCandidateResponseDto {
     Object.assign(this, partial);
   }
 }
-
-export class ElectionCandidaciesResponseDto {
-  @ApiProperty({ example: 'Student Council Election 2026' })
-  electionName!: string;
-
-  @ApiProperty({ type: [CandidacyWithCandidateResponseDto] })
-  candidacies!: CandidacyWithCandidateResponseDto[];
-
-  constructor(partial: Partial<ElectionCandidaciesResponseDto>) {
-    Object.assign(this, partial);
-  }
-}

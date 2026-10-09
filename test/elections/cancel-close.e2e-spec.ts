@@ -343,9 +343,16 @@ describe('Election close & cancel (e2e)', () => {
         }
 
         const updateRes = await request(app.getHttpServer())
-          .patch(`/api/v1/elections/${id}`)
+          .put(`/api/v1/elections/${id}`)
           .set('Cookie', adminToken)
-          .send({ description: 'attempted edit' })
+          .send({
+            name: 'Attempted Edit',
+            description: 'Attempted edit of a cancelled election.',
+            startDate: '2026-10-01',
+            startTime: '08:00:00',
+            endDate: '2026-10-02',
+            endTime: '18:00:00',
+          })
           .expect(409);
         expect(updateRes.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NOT_EDITABLE' });
 

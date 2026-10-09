@@ -39,15 +39,15 @@ interface LoginResponseBody {
   sessionId: string;
 }
 
-interface CandidacyQueryBody {
-  electionName: string;
-  candidacies: Array<{
+interface PaginatedCandidaciesBody {
+  data: Array<{
     id: string;
     positionNumber: number;
     imageUrl: string | null;
     createdAt: string;
     candidate: { id: string; firstName: string; lastName: string };
   }>;
+  meta: { page: number; limit: number; total: number; totalPages: number };
 }
 
 interface SwaggerOperationShape {
@@ -233,7 +233,7 @@ describe('Election candidacies query (e2e)', () => {
   });
 
   describe('GET /elections/:electionId/candidacies', () => {
-    it('E2E-01: an ADMIN retrieves the candidacies of an election grouped in the envelope', async () => {
+    it('LC-01: an ADMIN retrieves the candidacies of an election in the paginated envelope', async () => {
       const electionId = await seedElection('PENDING', `E2E-CQ-01-${suffix}`);
       const candidateA = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
       const candidateB = await seedCandidate({ firstName: 'Luis', lastName: 'Mora' });
@@ -241,26 +241,26 @@ describe('Election candidacies query (e2e)', () => {
       await seedCandidacy(electionId, candidateB, 1);
 
       const res = await getCandidacies(electionId, {}, adminToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(body.electionName).toBe(`E2E-CQ-01-${suffix}`);
-      expect(body.candidacies).toHaveLength(2);
-      expect(body.candidacies.map((item) => item.positionNumber)).toEqual([1, 2]);
+      expect(body.data).toHaveLength(2);
+      expect(body.data.map((item) => item.positionNumber)).toEqual([1, 2]);
+      expect(body.meta).toMatchObject({ page: 1, limit: 10, total: 2, totalPages: 1 });
     });
 
-    it('E2E-02: an AUDITOR also retrieves the candidacies', async () => {
+    it('LC-02: an AUDITOR also retrieves the candidacies', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
       await seedCandidacy(electionId, candidateId, 1);
 
       const res = await getCandidacies(electionId, {}, auditorToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(body.candidacies).toHaveLength(1);
-      expect(body.candidacies[0].candidate.firstName).toBe('Ana');
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].candidate.firstName).toBe('Ana');
     });
 
-    it('E2E-03: candidacies are scoped to the requested election only', async () => {
+    it('LC-03: candidacies are scoped to the requested election only', async () => {
       const electionA = await seedElection('PENDING');
       const electionB = await seedElection('PENDING');
       const candidateA = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
@@ -269,28 +269,36 @@ describe('Election candidacies query (e2e)', () => {
       await seedCandidacy(electionB, candidateB, 1);
 
       const res = await getCandidacies(electionA, {}, adminToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(body.candidacies).toHaveLength(1);
-      expect(body.candidacies[0].candidate.lastName).toBe('Lopez');
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].candidate.lastName).toBe('Lopez');
+      expect(body.meta.total).toBe(1);
     });
 
-    it('E2E-04: without filters every applicable candidacy of the election is returned', async () => {
+    it('LC-04: page and limit slice the result and the totals are scoped to the election', async () => {
       const electionId = await seedElection('PENDING');
-      const candidateA = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
-      const candidateB = await seedCandidate({ firstName: 'Luis', lastName: 'Mora' });
-      const candidateC = await seedCandidate({ firstName: 'Ursula', lastName: 'Ibarra' });
-      await seedCandidacy(electionId, candidateA, 1);
-      await seedCandidacy(electionId, candidateB, 2);
-      await seedCandidacy(electionId, candidateC, 3);
+      const a = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
+      const b = await seedCandidate({ firstName: 'Bruno', lastName: 'Lopez' });
+      const c = await seedCandidate({ firstName: 'Carlos', lastName: 'Lopez' });
+      await seedCandidacy(electionId, a, 1);
+      await seedCandidacy(electionId, b, 2);
+      await seedCandidacy(electionId, c, 3);
 
-      const res = await getCandidacies(electionId, {}, adminToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const page1 = (
+        await getCandidacies(electionId, { page: 1, limit: 2 }, adminToken).expect(200)
+      ).body as PaginatedCandidaciesBody;
+      expect(page1.data.map((i) => i.positionNumber)).toEqual([1, 2]);
+      expect(page1.meta).toMatchObject({ page: 1, limit: 2, total: 3, totalPages: 2 });
 
-      expect(body.candidacies).toHaveLength(3);
+      const page2 = (
+        await getCandidacies(electionId, { page: 2, limit: 2 }, adminToken).expect(200)
+      ).body as PaginatedCandidaciesBody;
+      expect(page2.data.map((i) => i.positionNumber)).toEqual([3]);
+      expect(page2.meta).toMatchObject({ page: 2, limit: 2, total: 3, totalPages: 2 });
     });
 
-    it('E2E-05: candidateName filters with a partial, case-insensitive first-name match', async () => {
+    it('LC-05: candidateName filters with a partial, case-insensitive first-name match', async () => {
       const electionId = await seedElection('PENDING');
       const candidateA = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
       const candidateB = await seedCandidate({ firstName: 'Bruno', lastName: 'Lopez' });
@@ -298,13 +306,14 @@ describe('Election candidacies query (e2e)', () => {
       await seedCandidacy(electionId, candidateB, 2);
 
       const res = await getCandidacies(electionId, { candidateName: 'an' }, adminToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(body.candidacies).toHaveLength(1);
-      expect(body.candidacies[0].candidate.firstName).toBe('Ana');
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].candidate.firstName).toBe('Ana');
+      expect(body.meta.total).toBe(1);
     });
 
-    it('E2E-06: candidateName also matches the candidate last name', async () => {
+    it('LC-06: candidateName also matches the candidate last name', async () => {
       const electionId = await seedElection('PENDING');
       const candidateA = await seedCandidate({ firstName: 'Ana', lastName: 'Garcia' });
       const candidateB = await seedCandidate({ firstName: 'Luis', lastName: 'Mora' });
@@ -314,83 +323,23 @@ describe('Election candidacies query (e2e)', () => {
       const res = await getCandidacies(electionId, { candidateName: 'garcia' }, adminToken).expect(
         200,
       );
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(body.candidacies).toHaveLength(1);
-      expect(body.candidacies[0].candidate.lastName).toBe('Garcia');
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].candidate.lastName).toBe('Garcia');
     });
 
-    it('E2E-07: electionName filters with a partial, case-insensitive match', async () => {
-      const electionId = await seedElection('PENDING', `Student Council E2E-07-${suffix}`);
-      const candidateId = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
-      await seedCandidacy(electionId, candidateId, 1);
-
-      const res = await getCandidacies(electionId, { electionName: 'STUDENT' }, adminToken).expect(
-        200,
-      );
-      const body = res.body as CandidacyQueryBody;
-
-      expect(body.candidacies).toHaveLength(1);
-    });
-
-    it('E2E-08: candidateName and electionName combine with AND semantics', async () => {
-      const electionId = await seedElection('PENDING', `Student Council E2E-08-${suffix}`);
-      const candidateA = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
-      const candidateB = await seedCandidate({ firstName: 'Luis', lastName: 'Mora' });
-      await seedCandidacy(electionId, candidateA, 1);
-      await seedCandidacy(electionId, candidateB, 2);
-
-      const res = await getCandidacies(
-        electionId,
-        { candidateName: 'ana', electionName: 'Student' },
-        adminToken,
-      ).expect(200);
-      const body = res.body as CandidacyQueryBody;
-
-      expect(body.candidacies).toHaveLength(1);
-      expect(body.candidacies[0].candidate.firstName).toBe('Ana');
-    });
-
-    it('E2E-09: an existing election without candidacies returns an empty list, not an error', async () => {
+    it('LC-07: an existing election without candidacies returns an empty paginated result', async () => {
       const electionId = await seedElection('PUBLISHED');
 
       const res = await getCandidacies(electionId, {}, adminToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(body.candidacies).toEqual([]);
+      expect(body.data).toEqual([]);
+      expect(body.meta).toMatchObject({ total: 0, totalPages: 0 });
     });
 
-    it('E2E-10: an electionName that does not match returns an empty list', async () => {
-      const electionId = await seedElection('PENDING', `Student Council E2E-10-${suffix}`);
-      const candidateId = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
-      await seedCandidacy(electionId, candidateId, 1);
-
-      const res = await getCandidacies(
-        electionId,
-        { electionName: 'Football Tournament' },
-        adminToken,
-      ).expect(200);
-      const body = res.body as CandidacyQueryBody;
-
-      expect(body.candidacies).toEqual([]);
-    });
-
-    it('E2E-11: a candidateName with no match returns an empty list', async () => {
-      const electionId = await seedElection('PENDING');
-      const candidateId = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
-      await seedCandidacy(electionId, candidateId, 1);
-
-      const res = await getCandidacies(
-        electionId,
-        { candidateName: 'nonexistent-name' },
-        adminToken,
-      ).expect(200);
-      const body = res.body as CandidacyQueryBody;
-
-      expect(body.candidacies).toEqual([]);
-    });
-
-    it('E2E-12: a nonexistent election is rejected with 404', async () => {
+    it('LC-08: a nonexistent election is rejected with 404', async () => {
       const res = await getCandidacies(
         '00000000-0000-0000-0000-000000000000',
         {},
@@ -400,36 +349,37 @@ describe('Election candidacies query (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 404, error: 'ELECTION_NOT_FOUND' });
     });
 
-    it('E2E-13: a non-UUID electionId is rejected with 400', async () => {
+    it('LC-09: a non-UUID electionId is rejected with 400', async () => {
       await getCandidacies('not-a-uuid', {}, adminToken).expect(400);
     });
 
-    it('E2E-14: an unknown query parameter is rejected with 400', async () => {
+    it.each([
+      ['page 0', { page: 0 }],
+      ['negative page', { page: -1 }],
+      ['non-integer page', { page: 'x' }],
+      ['limit 0', { limit: 0 }],
+      ['negative limit', { limit: -1 }],
+    ])('LC-10: invalid pagination (%s) is rejected with 400', async (_label, query) => {
+      const electionId = await seedElection('PENDING');
+
+      await getCandidacies(electionId, query, adminToken).expect(400);
+    });
+
+    it('LC-11: an unknown query parameter is rejected with 400', async () => {
       const electionId = await seedElection('PENDING');
 
       await getCandidacies(electionId, { unknownParam: 'x' }, adminToken).expect(400);
     });
 
-    it('E2E-15: an unauthenticated request is rejected with 401', async () => {
+    it('LC-12: unauthenticated and invalid-token requests are rejected with 401', async () => {
       const electionId = await seedElection('PENDING');
 
       await getCandidacies(electionId, {}, '').expect(401);
-    });
-
-    it('E2E-16: an invalid token is rejected with 401', async () => {
-      const electionId = await seedElection('PENDING');
-
       const res = await getCandidacies(electionId, {}, 'not-a-real-token').expect(401);
       expect(res.body).toMatchObject({ statusCode: 401 });
     });
 
-    // Note (plan D9): a third-role 403 case is deliberately not tested here.
-    // Both allowed roles are part of the fixture and RoleName only exposes
-    // ADMINISTRATOR and AUDITOR today (mirrors elections.e2e-spec.ts Q5).
-    // RolesGuard's 403 path is already covered on other endpoints; a dedicated
-    // roles.guard.spec.ts is a repo-wide watch item, out of scope for TS-18.
-
-    it('E2E-17: INACTIVE candidates are excluded from the results', async () => {
+    it('LC-13: INACTIVE candidates are excluded from the results', async () => {
       const electionId = await seedElection('PENDING');
       const active = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
       const inactive = await seedCandidate({
@@ -441,13 +391,14 @@ describe('Election candidacies query (e2e)', () => {
       await seedCandidacy(electionId, inactive, 2);
 
       const res = await getCandidacies(electionId, {}, adminToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(body.candidacies).toHaveLength(1);
-      expect(body.candidacies[0].candidate.firstName).toBe('Ana');
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].candidate.firstName).toBe('Ana');
+      expect(body.meta.total).toBe(1);
     });
 
-    it('CE-D1: logically deleted candidates are excluded from the results', async () => {
+    it('LC-14: logically deleted candidates are excluded from the results', async () => {
       const electionId = await seedElection('PENDING');
       const active = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
       const deleted = await seedCandidate({ firstName: 'Luis', lastName: 'Mora' });
@@ -459,22 +410,23 @@ describe('Election candidacies query (e2e)', () => {
       });
 
       const res = await getCandidacies(electionId, {}, adminToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(body.candidacies).toHaveLength(1);
-      expect(body.candidacies[0].candidate.firstName).toBe('Ana');
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].candidate.firstName).toBe('Ana');
     });
 
-    it('E2E-18: the response contains exactly the documented fields', async () => {
+    it('LC-15: the response contains exactly the documented fields', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
       await seedCandidacy(electionId, candidateId, 1);
 
       const res = await getCandidacies(electionId, {}, adminToken).expect(200);
-      const body = res.body as CandidacyQueryBody;
+      const body = res.body as PaginatedCandidaciesBody;
 
-      expect(Object.keys(body).sort()).toEqual(['candidacies', 'electionName']);
-      const item = body.candidacies[0];
+      expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+      expect(Object.keys(body.meta).sort()).toEqual(['limit', 'page', 'total', 'totalPages']);
+      const item = body.data[0];
       expect(Object.keys(item).sort()).toEqual([
         'candidate',
         'createdAt',
@@ -485,7 +437,7 @@ describe('Election candidacies query (e2e)', () => {
       expect(Object.keys(item.candidate).sort()).toEqual(['firstName', 'id', 'lastName']);
     });
 
-    it('E2E-19: no sensitive information leaks in the response', async () => {
+    it('LC-16: no sensitive information leaks in the response', async () => {
       const electionId = await seedElection('PENDING');
       const candidateId = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
       await seedCandidacy(electionId, candidateId, 1);
@@ -502,7 +454,7 @@ describe('Election candidacies query (e2e)', () => {
   });
 
   describe('Swagger / OpenAPI', () => {
-    it('SW1-SW8: the generated OpenAPI document documents the endpoint', () => {
+    it('SW1-SW8: the generated OpenAPI document documents the GET endpoint', () => {
       const config = new DocumentBuilder()
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
@@ -534,19 +486,12 @@ describe('Election candidacies query (e2e)', () => {
         ]),
       );
 
-      // SW4: both query parameters are documented as optional.
+      // SW4: pagination and candidateName query parameters are documented as optional.
       expect(operation.parameters).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
-            name: 'candidateName',
-            in: 'query',
-            required: false,
-          }),
-          expect.objectContaining({
-            name: 'electionName',
-            in: 'query',
-            required: false,
-          }),
+          expect.objectContaining({ name: 'page', in: 'query', required: false }),
+          expect.objectContaining({ name: 'limit', in: 'query', required: false }),
+          expect.objectContaining({ name: 'candidateName', in: 'query', required: false }),
         ]),
       );
 
@@ -554,24 +499,28 @@ describe('Election candidacies query (e2e)', () => {
       expect(operation.security).toEqual([{ cookie: [] }]);
       expect(document.components?.securitySchemes?.cookie).toBeDefined();
 
-      // SW6: the successful response schema matches the runtime response.
+      // SW6: the successful response schema matches the paginated runtime response.
       const success = operation.responses?.['200'];
       expect(success).toBeDefined();
       const schemaRef = success?.content?.['application/json']?.schema?.$ref;
-      expect(schemaRef).toBe('#/components/schemas/ElectionCandidaciesResponseDto');
-      const responseSchema = document.components?.schemas?.['ElectionCandidaciesResponseDto'] as
+      expect(schemaRef).toBe('#/components/schemas/ElectionCandidaciesListResponseDto');
+      const responseSchema = document.components?.schemas?.[
+        'ElectionCandidaciesListResponseDto'
+      ] as
         | {
             properties?: {
-              electionName?: { type?: string };
-              candidacies?: { type?: string; items?: { $ref?: string } };
+              data?: { type?: string; items?: { $ref?: string } };
+              meta?: { $ref?: string };
             };
           }
         | undefined;
       expect(responseSchema).toBeDefined();
-      expect(responseSchema!.properties!.electionName).toMatchObject({ type: 'string' });
-      expect(responseSchema!.properties!.candidacies).toMatchObject({
+      expect(responseSchema!.properties!.data).toMatchObject({
         type: 'array',
         items: { $ref: '#/components/schemas/CandidacyWithCandidateResponseDto' },
+      });
+      expect(responseSchema!.properties!.meta).toMatchObject({
+        $ref: '#/components/schemas/PaginatedMetaDto',
       });
       const itemSchema = document.components?.schemas?.['CandidacyWithCandidateResponseDto'] as
         | {
@@ -597,6 +546,55 @@ describe('Election candidacies query (e2e)', () => {
 
       // SW8: the operation summary is present.
       expect(operation.summary).toBeTruthy();
+    });
+
+    it('SW-ASSOC: the generated OpenAPI document documents the POST association endpoint', () => {
+      const config = new DocumentBuilder()
+        .setTitle('Votium API')
+        .setDescription('Electronic voting system API')
+        .setVersion('1.0')
+        .addCookieAuth(envs.authCookieName)
+        .build();
+      const document = SwaggerModule.createDocument(app, config);
+
+      const pathKey = Object.keys(document.paths).find((p) =>
+        p.endsWith('/elections/{electionId}/candidacies'),
+      );
+      expect(pathKey).toBeDefined();
+      const operation = document.paths[pathKey!].post as unknown as SwaggerOperationShape & {
+        requestBody?: {
+          content?: Record<string, { schema?: { $ref?: string } }>;
+        };
+      };
+      expect(operation).toBeDefined();
+
+      // Grouped under candidacies; electionId path param documented.
+      expect(operation.tags).toContain('candidacies');
+      expect(operation.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'electionId', in: 'path', required: true }),
+        ]),
+      );
+
+      // The request body references the AssociateCandidacyDto schema.
+      expect(operation.requestBody?.content?.['application/json']?.schema?.$ref).toBe(
+        '#/components/schemas/AssociateCandidacyDto',
+      );
+
+      // The association schema has no electionId property.
+      const bodySchema = document.components?.schemas?.['AssociateCandidacyDto'] as
+        | { properties?: Record<string, unknown> }
+        | undefined;
+      expect(bodySchema?.properties).not.toHaveProperty('electionId');
+      expect(bodySchema?.properties).toHaveProperty('candidateId');
+
+      // Success and relevant error responses are documented.
+      expect(operation.responses?.['201']).toBeDefined();
+      expect(operation.responses?.['400']).toBeDefined();
+      expect(operation.responses?.['401']).toBeDefined();
+      expect(operation.responses?.['403']).toBeDefined();
+      expect(operation.responses?.['404']).toBeDefined();
+      expect(operation.responses?.['409']).toBeDefined();
     });
   });
 });
