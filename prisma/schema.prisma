@@ -19,6 +19,7 @@ enum StatusElection {
   ACTIVE
   CLOSED
   PUBLISHED
+  CANCELLED
 }
 
 model Role {

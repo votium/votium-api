@@ -93,6 +93,13 @@ export class RegisterVoteUseCase {
       now,
     });
 
+    // The transaction re-checked the authoritative election state: the election was
+    // cancelled (or otherwise stopped being ACTIVE) between the fast-path read above and
+    // the write. Surface the same not-active error as the pre-transaction check.
+    if (result.outcome === 'election_not_active') {
+      throw new ElectionNotActiveError(input.electionId);
+    }
+
     if (result.outcome === 'recorded') {
       return {
         electionId: input.electionId,

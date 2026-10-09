@@ -893,7 +893,7 @@ describe('PrismaElectionRepository integration', () => {
       expect(results.some((e) => e.id === saved.id)).toBe(false);
     });
 
-    it.each(['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED'] as const)(
+    it.each(['CREATED', 'PENDING', 'PUBLISHED', 'CLOSED', 'CANCELLED'] as const)(
       'EXP-6: does NOT return a %s election with a past end date (only ACTIVE is eligible)',
       async (status) => {
         const saved = await seedExpiredCandidate(
@@ -1095,6 +1095,137 @@ describe('PrismaElectionRepository integration', () => {
       const history = await repository.findStatusHistory('00000000-0000-0000-0000-000000000000');
 
       expect(history).toEqual([]);
+    });
+  });
+
+  describe('updateStatus to CANCELLED and enum round-trip', () => {
+    const usedUserIds: string[] = [];
+
+    afterEach(async () => {
+      if (usedUserIds.length > 0) {
+        await prisma.electionStatusHistory.deleteMany({
+          where: { user_id: { in: usedUserIds } },
+        });
+        await prisma.user.deleteMany({ where: { id: { in: usedUserIds } } });
+        usedUserIds.length = 0;
+      }
+    });
+
+    async function seedUser(): Promise<string> {
+      const role = await prisma.role.upsert({
+        where: { name: 'ADMINISTRATOR' },
+        update: {},
+        create: { name: 'ADMINISTRATOR' },
+      });
+      const user = await prisma.user.create({
+        data: {
+          first_name: 'Cancel',
+          last_name: 'Actor',
+          email: `cancel-actor-${suffix}-${Math.random()}@example.com`,
+          password_hash: 'pbkdf2$placeholder',
+          role_id: role.id,
+          status: 'ACTIVE',
+        },
+      });
+      usedUserIds.push(user.id);
+      return user.id;
+    }
+
+    it('IU-10: guarded updateStatus to CANCELLED records exactly one history row per source state', async () => {
+      const sources: ElectionStatus[] = ['PENDING', 'CREATED', 'ACTIVE', 'CLOSED'];
+      const userId = await seedUser();
+
+      for (const source of sources) {
+        const name = `IU10-${source}-${suffix}-${Math.random()}`;
+        usedNames.push(name);
+        const saved = await repository.create(buildEntity(name));
+        await prisma.election.update({
+          where: { id: saved.id as string },
+          data: { current_status: source },
+        });
+
+        const updated = await repository.updateStatus(
+          saved.id as string,
+          'CANCELLED',
+          userId,
+          source,
+        );
+
+        expect(updated).not.toBeNull();
+        expect(updated!.currentStatus).toBe('CANCELLED');
+
+        const row = await prisma.election.findUnique({ where: { id: saved.id as string } });
+        expect(row!.current_status).toBe('CANCELLED');
+
+        const history = await prisma.electionStatusHistory.findMany({
+          where: { election_id: saved.id as string },
+        });
+        expect(history).toHaveLength(1);
+        expect(history[0].old_status).toBe(source);
+        expect(history[0].new_status).toBe('CANCELLED');
+        expect(history[0].user_id).toBe(userId);
+      }
+    });
+
+    it('IU-11: guarded updateStatus to CANCELLED with a stale source resolves null and writes no history', async () => {
+      const name = `IU11-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      await prisma.election.update({
+        where: { id: saved.id as string },
+        data: { current_status: 'CANCELLED' },
+      });
+      const userId = await seedUser();
+
+      // The election is already CANCELLED, so a guarded transition keyed on ACTIVE (the
+      // stale source) loses the race: it must resolve null and write no duplicate history.
+      const result = await repository.updateStatus(
+        saved.id as string,
+        'CANCELLED',
+        userId,
+        'ACTIVE',
+      );
+
+      expect(result).toBeNull();
+      expect(
+        await prisma.electionStatusHistory.count({ where: { election_id: saved.id as string } }),
+      ).toBe(0);
+    });
+
+    it('IU-12: two concurrent ACTIVE -> CANCELLED writes produce exactly one history row', async () => {
+      const name = `IU12-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      await prisma.election.update({
+        where: { id: saved.id as string },
+        data: { current_status: 'ACTIVE' },
+      });
+      const userId = await seedUser();
+
+      const [a, b] = await Promise.all([
+        repository.updateStatus(saved.id as string, 'CANCELLED', userId, 'ACTIVE'),
+        repository.updateStatus(saved.id as string, 'CANCELLED', userId, 'ACTIVE'),
+      ]);
+
+      const nonNull = [a, b].filter((r) => r !== null);
+      expect(nonNull).toHaveLength(1);
+      expect(
+        await prisma.electionStatusHistory.count({ where: { election_id: saved.id as string } }),
+      ).toBe(1);
+    });
+
+    it('MIG-01: a CANCELLED value round-trips through the mapper into the domain entity', async () => {
+      const name = `MIG1-${suffix}`;
+      usedNames.push(name);
+      const saved = await repository.create(buildEntity(name));
+      await prisma.election.update({
+        where: { id: saved.id as string },
+        data: { current_status: 'CANCELLED' },
+      });
+
+      const found = await repository.findById(saved.id as string);
+      expect(found).not.toBeNull();
+      expect(found!.currentStatus).toBe('CANCELLED');
     });
   });
 });

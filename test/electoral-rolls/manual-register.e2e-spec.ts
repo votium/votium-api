@@ -756,7 +756,7 @@ describe('Manual electoral roll registration (e2e)', () => {
       expect((res.body as ManualRegisterResponse).registered).toBe(1);
     });
 
-    it.each(['CREATED', 'PUBLISHED', 'ACTIVE', 'CLOSED'] as const)(
+    it.each(['CREATED', 'PUBLISHED', 'ACTIVE', 'CLOSED', 'CANCELLED'] as const)(
       'ME%d: a %s election is rejected with 409',
       async (status) => {
         const electionId = await seedElection(status);

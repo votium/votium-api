@@ -1,21 +1,32 @@
 import { ElectionStatusTransitionError } from '../errors/election-status-transition.error';
 
-export const ELECTION_STATUSES = ['PENDING', 'CREATED', 'ACTIVE', 'CLOSED', 'PUBLISHED'] as const;
+export const ELECTION_STATUSES = [
+  'PENDING',
+  'CREATED',
+  'ACTIVE',
+  'CLOSED',
+  'PUBLISHED',
+  'CANCELLED',
+] as const;
 
 export type ElectionStatus = (typeof ELECTION_STATUSES)[number];
 
 // The formal election lifecycle, in lifecycle order:
 //   PENDING -> CREATED -> ACTIVE -> CLOSED -> PUBLISHED
+// plus a terminal CANCELLED sink reachable from every non-terminal state:
+//   PENDING/CREATED/ACTIVE/CLOSED -> CANCELLED
 // This table is the single authoritative source of the transition graph: the forward
-// lifecycle is the only set of allowed moves, and PUBLISHED maps to an empty list so
-// terminality is structural rather than an extra guard. `canTransitionTo` and
-// `transitionTo` are both pure functions of it, so they cannot drift apart.
+// lifecycle and the cancellation sink are the only allowed moves, and both PUBLISHED and
+// CANCELLED map to empty lists so terminality is structural rather than an extra guard.
+// `canTransitionTo` and `transitionTo` are both pure functions of it, so they cannot
+// drift apart.
 export const ELECTION_TRANSITIONS: Readonly<Record<ElectionStatus, readonly ElectionStatus[]>> = {
-  PENDING: ['CREATED'],
-  CREATED: ['ACTIVE'],
-  ACTIVE: ['CLOSED'],
-  CLOSED: ['PUBLISHED'],
+  PENDING: ['CREATED', 'CANCELLED'],
+  CREATED: ['ACTIVE', 'CANCELLED'],
+  ACTIVE: ['CLOSED', 'CANCELLED'],
+  CLOSED: ['PUBLISHED', 'CANCELLED'],
   PUBLISHED: [],
+  CANCELLED: [],
 };
 
 export interface CreateElectionInput {

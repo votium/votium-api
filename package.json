@@ -16,7 +16,7 @@
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "lint:fix": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest --selectProjects unit",
-    "test:integration": "node --experimental-vm-modules node_modules/.bin/jest --selectProjects integration",
+    "test:integration": "node --experimental-vm-modules node_modules/.bin/jest --selectProjects integration --runInBand",
     "test:cov": "jest --coverage",
     "test:watch": "jest --watch",
     "test:e2e": "node --experimental-vm-modules node_modules/.bin/jest --selectProjects e2e --runInBand"
