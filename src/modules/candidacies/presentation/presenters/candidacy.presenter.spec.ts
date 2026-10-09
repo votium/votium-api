@@ -78,17 +78,16 @@ describe('CandidacyPresenter', () => {
     });
   });
 
-  it('P-04: toElectionCandidacies delegates to toCandidacyWithCandidate (behavior-preserving refactor)', () => {
+  it('P-04: toElectionCandidaciesList maps candidacies into the paginated envelope', () => {
     const candidacy = buildCandidacyWithCandidate({ positionNumber: 2 });
 
-    const result = CandidacyPresenter.toElectionCandidacies({
-      electionName: 'Student Council Election 2026',
-      candidacies: [candidacy],
-    });
+    const result = CandidacyPresenter.toElectionCandidaciesList(
+      { candidacies: [candidacy], total: 1 },
+      1,
+      10,
+    );
 
-    expect(result).toEqual({
-      electionName: 'Student Council Election 2026',
-      candidacies: [CandidacyPresenter.toCandidacyWithCandidate(candidacy)],
-    });
+    expect(result.data).toEqual([CandidacyPresenter.toCandidacyWithCandidate(candidacy)]);
+    expect(result.meta).toEqual({ page: 1, limit: 10, total: 1, totalPages: 1 });
   });
 });

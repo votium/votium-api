@@ -14,14 +14,14 @@ export class CreateElectionDto {
   @Transform(({ value }) => trimValue(value))
   @IsString()
   @IsNotEmpty()
-  @MaxLength(100)
+  @MaxLength(500)
   name!: string;
 
   @ApiProperty({ example: 'Annual election for the student council.' })
   @Transform(({ value }) => trimValue(value))
   @IsString()
   @IsNotEmpty()
-  @MaxLength(100)
+  @MaxLength(500)
   description!: string;
 
   @ApiProperty({ example: '2026-08-29', description: 'Start date in YYYY-MM-DD format.' })

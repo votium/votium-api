@@ -60,7 +60,9 @@ describe('DeleteCandidacyUseCase', () => {
       findUsedPositions: jest.fn(),
       create: jest.fn(),
       findByElection: jest.fn(),
+      findPaginatedByElection: jest.fn(),
       findById: jest.fn(),
+      findByCandidate: jest.fn(),
       update: jest.fn(),
       deleteByElectionAndCandidacyId: jest.fn(),
     };

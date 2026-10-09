@@ -61,7 +61,9 @@ function makeCandidacyRepo(
         }),
     ),
     findByElection: jest.fn(),
+    findPaginatedByElection: jest.fn(),
     findById: jest.fn(),
+    findByCandidate: jest.fn(),
     update: jest.fn(),
     deleteByElectionAndCandidacyId: jest.fn(),
   };
@@ -248,7 +250,9 @@ describe('RegisterCandidacyUseCase', () => {
         findUsedPositions: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockRejectedValue(new CandidacyDuplicateError()),
         findByElection: jest.fn(),
+        findPaginatedByElection: jest.fn(),
         findById: jest.fn(),
+        findByCandidate: jest.fn(),
         update: jest.fn(),
         deleteByElectionAndCandidacyId: jest.fn(),
       };
@@ -270,7 +274,9 @@ describe('RegisterCandidacyUseCase', () => {
         findUsedPositions: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockRejectedValue(new Error('database exploded')),
         findByElection: jest.fn(),
+        findPaginatedByElection: jest.fn(),
         findById: jest.fn(),
+        findByCandidate: jest.fn(),
         update: jest.fn(),
         deleteByElectionAndCandidacyId: jest.fn(),
       };

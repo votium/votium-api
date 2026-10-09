@@ -55,7 +55,9 @@ describe('GetElectionCandidaciesUseCase', () => {
     findUsedPositions: jest.fn(),
     create: jest.fn(),
     findByElection: jest.fn(),
+    findPaginatedByElection: jest.fn(),
     findById: jest.fn(),
+    findByCandidate: jest.fn(),
     update: jest.fn(),
     deleteByElectionAndCandidacyId: jest.fn(),
   };
@@ -63,160 +65,101 @@ describe('GetElectionCandidaciesUseCase', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     elections.findById.mockResolvedValue(buildElection());
-    candidacies.findByElection.mockResolvedValue([buildCandidacy()]);
+    candidacies.findPaginatedByElection.mockResolvedValue({
+      candidacies: [buildCandidacy()],
+      total: 1,
+    });
   });
 
-  it('U-01: returns the election name and all candidacies when no filters are provided', async () => {
+  it('U-01: forwards page, limit and candidateName and returns the paginated result', async () => {
     const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
       electionId: 'election-1',
+      page: 2,
+      limit: 5,
     });
 
-    expect(result).toEqual({
-      electionName: 'Student Council Election 2026',
-      candidacies: [expect.objectContaining({ id: 'candidacy-1' })],
-    });
-    expect(candidacies.findByElection.mock.calls).toStrictEqual([
-      ['election-1', { candidateName: undefined }],
+    expect(candidacies.findPaginatedByElection.mock.calls).toStrictEqual([
+      ['election-1', { page: 2, limit: 5, candidateName: undefined }],
     ]);
-  });
-
-  it('U-02: the election name comes from the persisted election entity', async () => {
-    const election = buildElection();
-    elections.findById.mockResolvedValue(election);
-    candidacies.findByElection.mockResolvedValue([]);
-
-    const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
-      electionId: 'election-1',
+    expect(result).toEqual({
+      candidacies: [expect.objectContaining({ id: 'candidacy-1' })],
+      total: 1,
     });
-
-    expect(result.electionName).toBe(election.name);
   });
 
-  it('U-03: returns the candidacies returned by the repository without reshaping them', async () => {
-    const rows = [buildCandidacy(), buildCandidacy({ id: 'candidacy-2', positionNumber: 2 })];
-    candidacies.findByElection.mockResolvedValue(rows);
-
-    const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
-      electionId: 'election-1',
-    });
-
-    expect(result.candidacies).toBe(rows);
-    expect(result.candidacies).toHaveLength(2);
-  });
-
-  it('U-04: forwards the candidateName filter verbatim to the repository', async () => {
+  it('U-02: forwards the candidateName filter verbatim to the repository', async () => {
     await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
       electionId: 'election-1',
+      page: 1,
+      limit: 10,
       candidateName: 'Juan',
     });
 
-    expect(candidacies.findByElection.mock.calls).toStrictEqual([
-      ['election-1', { candidateName: 'Juan' }],
+    expect(candidacies.findPaginatedByElection.mock.calls).toStrictEqual([
+      ['election-1', { page: 1, limit: 10, candidateName: 'Juan' }],
     ]);
   });
 
-  it('U-05: forwards an empty-string candidateName as-is for repository-side handling', async () => {
+  it('U-03: forwards an empty-string candidateName as-is for repository-side handling', async () => {
     await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
       electionId: 'election-1',
+      page: 1,
+      limit: 10,
       candidateName: '',
     });
 
-    expect(candidacies.findByElection.mock.calls).toStrictEqual([
-      ['election-1', { candidateName: '' }],
+    expect(candidacies.findPaginatedByElection.mock.calls).toStrictEqual([
+      ['election-1', { page: 1, limit: 10, candidateName: '' }],
     ]);
   });
 
-  it('U-06: filters by a partial, case-insensitive election name match', async () => {
+  it('U-04: returns the repository rows and total unreshaped', async () => {
+    const rows = [buildCandidacy(), buildCandidacy({ id: 'candidacy-2', positionNumber: 2 })];
+    candidacies.findPaginatedByElection.mockResolvedValue({ candidacies: rows, total: 7 });
+
     const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
       electionId: 'election-1',
-      electionName: 'council',
+      page: 1,
+      limit: 10,
     });
 
-    expect(result.candidacies).toHaveLength(1);
-    expect(candidacies.findByElection.mock.calls).toHaveLength(1);
+    expect(result.candidacies).toBe(rows);
+    expect(result.total).toBe(7);
   });
 
-  it('U-07: the election name filter is case-insensitive', async () => {
+  it('U-05: returns an empty page with a zero total when the election has no candidacies', async () => {
+    candidacies.findPaginatedByElection.mockResolvedValue({ candidacies: [], total: 0 });
+
     const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
       electionId: 'election-1',
-      electionName: 'STUDENT',
+      page: 1,
+      limit: 10,
     });
 
-    expect(result.candidacies).toHaveLength(1);
-    expect(candidacies.findByElection.mock.calls).toHaveLength(1);
+    expect(result).toEqual({ candidacies: [], total: 0 });
   });
 
-  it('U-08: trims the election name filter before matching', async () => {
-    const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
-      electionId: 'election-1',
-      electionName: '  Student Council  ',
-    });
-
-    expect(result.candidacies).toHaveLength(1);
-    expect(candidacies.findByElection.mock.calls).toHaveLength(1);
-  });
-
-  it('U-09: ignores a whitespace-only election name filter and still queries the repository', async () => {
-    const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
-      electionId: 'election-1',
-      electionName: '   ',
-    });
-
-    expect(result.candidacies).toHaveLength(1);
-    expect(candidacies.findByElection.mock.calls).toHaveLength(1);
-  });
-
-  it('U-10: returns an empty list without querying the repository when the election name does not match', async () => {
-    const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
-      electionId: 'election-1',
-      electionName: 'Football Tournament',
-    });
-
-    expect(result).toEqual({ electionName: 'Student Council Election 2026', candidacies: [] });
-    expect(candidacies.findByElection.mock.calls).toHaveLength(0);
-  });
-
-  it('U-11: applies the candidateName and electionName filters together (AND semantics)', async () => {
-    const result = await new GetElectionCandidaciesUseCase(elections, candidacies).execute({
-      electionId: 'election-1',
-      candidateName: 'Garcia',
-      electionName: 'Student',
-    });
-
-    expect(result.candidacies).toHaveLength(1);
-    expect(candidacies.findByElection.mock.calls).toStrictEqual([
-      ['election-1', { candidateName: 'Garcia' }],
-    ]);
-  });
-
-  it('U-12: throws ElectionNotFoundError and never queries candidacies for a nonexistent election', async () => {
+  it('U-06: throws ElectionNotFoundError and never queries candidacies for a nonexistent election', async () => {
     elections.findById.mockResolvedValue(null);
 
     await expect(
       new GetElectionCandidaciesUseCase(elections, candidacies).execute({
         electionId: 'election-1',
+        page: 1,
+        limit: 10,
       }),
     ).rejects.toBeInstanceOf(ElectionNotFoundError);
-    expect(candidacies.findByElection.mock.calls).toHaveLength(0);
+    expect(candidacies.findPaginatedByElection.mock.calls).toHaveLength(0);
   });
 
-  it('U-13: propagates an unexpected election lookup failure without querying candidacies', async () => {
-    elections.findById.mockRejectedValue(new Error('database exploded'));
+  it('U-07: propagates an unexpected repository failure unchanged', async () => {
+    candidacies.findPaginatedByElection.mockRejectedValue(new Error('database exploded'));
 
     await expect(
       new GetElectionCandidaciesUseCase(elections, candidacies).execute({
         electionId: 'election-1',
-      }),
-    ).rejects.toThrow('database exploded');
-    expect(candidacies.findByElection.mock.calls).toHaveLength(0);
-  });
-
-  it('U-14: propagates an unexpected repository failure unchanged', async () => {
-    candidacies.findByElection.mockRejectedValue(new Error('database exploded'));
-
-    await expect(
-      new GetElectionCandidaciesUseCase(elections, candidacies).execute({
-        electionId: 'election-1',
+        page: 1,
+        limit: 10,
       }),
     ).rejects.toThrow('database exploded');
   });

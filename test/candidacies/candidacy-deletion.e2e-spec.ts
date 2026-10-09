@@ -85,8 +85,11 @@ describe('Candidacy deletion (e2e)', () => {
       .delete(`/api/v1/elections/${electionId}/candidacies/${candidacyId}`)
       .set('Cookie', token);
 
-  const registerCandidacy = (payload: Record<string, unknown>, token: string) =>
-    request(app.getHttpServer()).post('/api/v1/candidacies').set('Cookie', token).send(payload);
+  const registerCandidacy = (electionId: string, payload: Record<string, unknown>, token: string) =>
+    request(app.getHttpServer())
+      .post(`/api/v1/elections/${electionId}/candidacies`)
+      .set('Cookie', token)
+      .send(payload);
 
   async function seedElection(status: ElectionStatus): Promise<string> {
     const row = await prisma.election.create({
@@ -284,7 +287,7 @@ describe('Candidacy deletion (e2e)', () => {
       expect(await prisma.candiday.findUnique({ where: { id: rowB } })).not.toBeNull();
     });
 
-    it.each(['CREATED', 'PUBLISHED', 'ACTIVE', 'CLOSED'] as const)(
+    it.each(['CREATED', 'PUBLISHED', 'ACTIVE', 'CLOSED', 'CANCELLED'] as const)(
       'E2E-D5: a %s election is rejected with 409 and the row is unchanged',
       async (status) => {
         const electionId = await seedElection(status);
@@ -345,7 +348,8 @@ describe('Candidacy deletion (e2e)', () => {
 
       const candidateD = await seedCandidate();
       const res = await registerCandidacy(
-        { electionId, candidateId: candidateD },
+        electionId,
+        { candidateId: candidateD },
         adminToken,
       ).expect(201);
       expect((res.body as { positionNumber: number }).positionNumber).toBe(2);
@@ -362,7 +366,8 @@ describe('Candidacy deletion (e2e)', () => {
 
       const candidateB = await seedCandidate();
       const res = await registerCandidacy(
-        { electionId, candidateId: candidateB },
+        electionId,
+        { candidateId: candidateB },
         adminToken,
       ).expect(201);
       expect((res.body as { positionNumber: number }).positionNumber).toBe(1);

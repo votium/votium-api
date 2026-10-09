@@ -1,10 +1,10 @@
 import { CandidacyEntity } from '../../domain/entities/candidacy.entity';
 import type { CandidacyWithCandidate } from '../../domain/repositories/candidacy.repository.interface';
+import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { CandidacyResponseDto } from '../dtos/candidacy-response.dto';
 import {
   CandidateBriefResponseDto,
   CandidacyWithCandidateResponseDto,
-  ElectionCandidaciesResponseDto,
 } from '../dtos/election-candidacies-response.dto';
 
 export class CandidacyPresenter {
@@ -35,15 +35,18 @@ export class CandidacyPresenter {
     });
   }
 
-  static toElectionCandidacies(result: {
-    electionName: string;
-    candidacies: CandidacyWithCandidate[];
-  }): ElectionCandidaciesResponseDto {
-    return new ElectionCandidaciesResponseDto({
-      electionName: result.electionName,
-      candidacies: result.candidacies.map((candidacy) =>
+  static toElectionCandidaciesList(
+    result: { candidacies: CandidacyWithCandidate[]; total: number },
+    page: number,
+    limit: number,
+  ): PaginatedResponseDto<CandidacyWithCandidateResponseDto> {
+    return new PaginatedResponseDto({
+      data: result.candidacies.map((candidacy) =>
         CandidacyPresenter.toCandidacyWithCandidate(candidacy),
       ),
+      total: result.total,
+      page,
+      limit,
     });
   }
 }

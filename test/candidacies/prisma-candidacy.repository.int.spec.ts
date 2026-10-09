@@ -607,4 +607,132 @@ describe('PrismaCandidacyRepository integration', () => {
     expect(result).toHaveLength(1);
     expect(result[0].candidateId).toBe(candidateId);
   });
+
+  describe('findPaginatedByElection', () => {
+    it('IP-01: returns the first page ordered by position_number ascending with the total count', async () => {
+      const electionId = await seedElection();
+      const a = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
+      const b = await seedCandidate({ firstName: 'Luis', lastName: 'Mora' });
+      const c = await seedCandidate({ firstName: 'Ursula', lastName: 'Ibarra' });
+      await seedCandidacy(electionId, a, 3);
+      await seedCandidacy(electionId, b, 1);
+      await seedCandidacy(electionId, c, 2);
+
+      const result = await repository.findPaginatedByElection(electionId, { page: 1, limit: 2 });
+
+      expect(result.candidacies.map((row) => row.positionNumber)).toEqual([1, 2]);
+      expect(result.total).toBe(3);
+    });
+
+    it('IP-02: the second page returns the remaining rows with the same total', async () => {
+      const electionId = await seedElection();
+      const a = await seedCandidate();
+      const b = await seedCandidate();
+      const c = await seedCandidate();
+      await seedCandidacy(electionId, a, 1);
+      await seedCandidacy(electionId, b, 2);
+      await seedCandidacy(electionId, c, 3);
+
+      const result = await repository.findPaginatedByElection(electionId, { page: 2, limit: 2 });
+
+      expect(result.candidacies.map((row) => row.positionNumber)).toEqual([3]);
+      expect(result.total).toBe(3);
+    });
+
+    it('IP-03: a limit larger than the row count returns every row', async () => {
+      const electionId = await seedElection();
+      const a = await seedCandidate();
+      const b = await seedCandidate();
+      await seedCandidacy(electionId, a, 1);
+      await seedCandidacy(electionId, b, 2);
+
+      const result = await repository.findPaginatedByElection(electionId, { page: 1, limit: 50 });
+
+      expect(result.candidacies).toHaveLength(2);
+      expect(result.total).toBe(2);
+    });
+
+    it('IP-04: candidateName filter applies to the total count, not just the page', async () => {
+      const electionId = await seedElection();
+      const garcia = await seedCandidate({ firstName: 'Juan', lastName: 'Garcia' });
+      const perez = await seedCandidate({ firstName: 'Juan', lastName: 'Perez' });
+      const lopez = await seedCandidate({ firstName: 'Maria', lastName: 'Lopez' });
+      await seedCandidacy(electionId, garcia, 1);
+      await seedCandidacy(electionId, perez, 2);
+      await seedCandidacy(electionId, lopez, 3);
+
+      const result = await repository.findPaginatedByElection(electionId, {
+        page: 1,
+        limit: 1,
+        candidateName: 'juan',
+      });
+
+      expect(result.candidacies).toHaveLength(1);
+      expect(result.total).toBe(2); // garcia + perez match; lopez does not
+    });
+
+    it('IP-05: an empty election returns an empty page with a zero total', async () => {
+      const electionId = await seedElection();
+
+      const result = await repository.findPaginatedByElection(electionId, { page: 1, limit: 10 });
+
+      expect(result).toEqual({ candidacies: [], total: 0 });
+    });
+
+    it('IP-06: is scoped to the requested election only', async () => {
+      const electionA = await seedElection();
+      const electionB = await seedElection();
+      const candidateA = await seedCandidate();
+      const candidateB = await seedCandidate();
+      await seedCandidacy(electionA, candidateA, 1);
+      await seedCandidacy(electionB, candidateB, 1);
+
+      const result = await repository.findPaginatedByElection(electionA, { page: 1, limit: 10 });
+
+      expect(result.total).toBe(1);
+      expect(result.candidacies).toHaveLength(1);
+      expect(result.candidacies[0].candidateId).toBe(candidateA);
+    });
+
+    it('IP-07: excludes INACTIVE and soft-deleted candidates from both the page and the total', async () => {
+      const electionId = await seedElection();
+      const active = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
+      const inactive = await seedCandidate({
+        firstName: 'Luis',
+        lastName: 'Mora',
+        status: 'INACTIVE',
+      });
+      const deleted = await seedCandidate({ firstName: 'Ursula', lastName: 'Ibarra' });
+      await seedCandidacy(electionId, active, 1);
+      await seedCandidacy(electionId, inactive, 2);
+      await seedCandidacy(electionId, deleted, 3);
+      await prisma.candidate.update({ where: { id: deleted }, data: { deleted_at: new Date() } });
+
+      const result = await repository.findPaginatedByElection(electionId, { page: 1, limit: 10 });
+
+      expect(result.total).toBe(1);
+      expect(result.candidacies).toHaveLength(1);
+      expect(result.candidacies[0].candidateId).toBe(active);
+    });
+
+    it('IP-08: returns rows with exactly the CandidacyWithCandidate projection shape', async () => {
+      const electionId = await seedElection();
+      const candidateId = await seedCandidate({ firstName: 'Ana', lastName: 'Lopez' });
+      await seedCandidacy(electionId, candidateId, 1);
+
+      const result = await repository.findPaginatedByElection(electionId, { page: 1, limit: 10 });
+
+      expect(result.candidacies).toHaveLength(1);
+      expect(Object.keys(result.candidacies[0]).sort()).toEqual([
+        'candidateFirstName',
+        'candidateId',
+        'candidateLastName',
+        'createdAt',
+        'electionId',
+        'id',
+        'imageUrl',
+        'positionNumber',
+      ]);
+    });
+  });
 });
