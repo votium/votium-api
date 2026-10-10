@@ -855,10 +855,10 @@ describe('Elections creation (e2e)', () => {
     // fixture, and 403 behavior is already covered by other endpoints. Documented in
     // the test design (plans/task-96-elections-query-endpoint-tests.spec.md).
 
-    it('Q6: the default request returns only schedule-active elections', async () => {
-      const active = `Q6-ACTIVE-${suffix}`;
-      const future = `Q6-FUTURE-${suffix}`;
-      const past = `Q6-PAST-${suffix}`;
+    it('Q6: omitting status/active returns elections of every schedule (active, future, past)', async () => {
+      const active = `Q6-${suffix}-ACTIVE`;
+      const future = `Q6-${suffix}-FUTURE`;
+      const past = `Q6-${suffix}-PAST`;
       await seedElection(active);
       await seedElection(future, {
         start_date: addDays(nextMonth, 15),
@@ -872,13 +872,13 @@ describe('Elections creation (e2e)', () => {
         end_time: new Date(Date.UTC(1970, 0, 1, 0, 0, 0)),
       });
 
-      const res = await getElections(adminToken).expect(200);
+      const res = await getElections(adminToken, `?name=Q6-${suffix}`).expect(200);
       const body = res.body as { data: Array<{ name: string }>; meta: { total: number } };
       const names = body.data.map((e) => e.name);
       expect(names).toContain(active);
-      expect(names).not.toContain(future);
-      expect(names).not.toContain(past);
-      expect(body.meta.total).toBeGreaterThanOrEqual(1);
+      expect(names).toContain(future);
+      expect(names).toContain(past);
+      expect(body.meta.total).toBeGreaterThanOrEqual(3);
     });
 
     it('Q7: the status filter works independently of the active default', async () => {
@@ -904,7 +904,7 @@ describe('Elections creation (e2e)', () => {
       const res = await getElections(adminToken, `?name=Q8-${suffix}`).expect(200);
       const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
       expect(names).toContain(active);
-      expect(names).not.toContain(future);
+      expect(names).toContain(future);
     });
 
     it('Q9: the startDate filter limits to elections starting on/after the date', async () => {
@@ -981,6 +981,53 @@ describe('Elections creation (e2e)', () => {
       expect(names).toContain(future);
       expect(names).toContain(past);
       expect(names).not.toContain(active);
+    });
+
+    it('Q15: the default request orders results by startDate ascending', async () => {
+      await seedElection(`SORT-${suffix}-MID`, {
+        start_date: addDays(today, 5),
+        end_date: addDays(today, 30),
+      });
+      await seedElection(`SORT-${suffix}-EARLY`, {
+        start_date: addDays(today, -5),
+        end_date: addDays(today, 30),
+      });
+      await seedElection(`SORT-${suffix}-LATE`, {
+        start_date: addDays(today, 15),
+        end_date: addDays(today, 30),
+      });
+
+      const res = await getElections(adminToken, `?name=SORT-${suffix}`).expect(200);
+      const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
+      expect(names).toEqual([`SORT-${suffix}-EARLY`, `SORT-${suffix}-MID`, `SORT-${suffix}-LATE`]);
+    });
+
+    it('Q16: ascending startDate ordering composes with a status filter', async () => {
+      await seedElection(`SORTS-${suffix}-MID`, {
+        current_status: 'PENDING',
+        start_date: addDays(today, 5),
+        end_date: addDays(today, 30),
+      });
+      await seedElection(`SORTS-${suffix}-EARLY`, {
+        current_status: 'PENDING',
+        start_date: addDays(today, -5),
+        end_date: addDays(today, 30),
+      });
+      await seedElection(`SORTS-${suffix}-LATE`, {
+        current_status: 'PENDING',
+        start_date: addDays(today, 15),
+        end_date: addDays(today, 30),
+      });
+
+      const res = await getElections(adminToken, `?name=SORTS-${suffix}&status=PENDING`).expect(
+        200,
+      );
+      const names = (res.body as { data: Array<{ name: string }> }).data.map((e) => e.name);
+      expect(names).toEqual([
+        `SORTS-${suffix}-EARLY`,
+        `SORTS-${suffix}-MID`,
+        `SORTS-${suffix}-LATE`,
+      ]);
     });
 
     it('Q13a: unknown query parameters are rejected with 400', async () => {

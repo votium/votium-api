@@ -33,7 +33,7 @@ export class ListElectionsQueryDto {
     example: 'CREATED',
     required: false,
     enum: ELECTION_STATUSES,
-    description: 'Lifecycle status filter.',
+    description: 'Lifecycle status filter. Optional; when omitted, no status filter is applied.',
   })
   @IsOptional()
   @IsIn(ELECTION_STATUSES)
@@ -67,7 +67,7 @@ export class ListElectionsQueryDto {
     example: true,
     required: false,
     description:
-      'Schedule-active filter (now between start and end instants). Defaults to true when neither status nor active is provided.',
+      'Schedule-active filter (now between start and end instants). Optional; when omitted, no schedule filter is applied.',
   })
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>

@@ -70,8 +70,9 @@ export class ElectionsController {
     summary: 'Query elections',
     description:
       'Returns a paginated list of elections with optional filters (status, name, ' +
-      'startDate, endDate, active). Defaults to schedule-active elections. Requires ' +
-      'ADMINISTRATOR or AUDITOR role.',
+      'startDate, endDate, active). When status is omitted, all elections within the ' +
+      "caller's access scope are returned. Results are ordered by start date ascending. " +
+      'Requires ADMINISTRATOR or AUDITOR role.',
   })
   @ApiResponse({
     status: 200,

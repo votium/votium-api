@@ -43,7 +43,8 @@ export interface ElectionRepository {
   // AND. `active` is schedule-based: the election has started (start date+time <=
   // now, UTC) and has not ended yet (end date+time >= now, UTC). When `active` is
   // undefined no schedule filter is applied. `now` is the reference instant for the
-  // schedule window (defaults to the current time). Ordered by created_at desc.
+  // schedule window (defaults to the current time). Ordered by start_date asc, then
+  // id asc (deterministic tie-breaker).
   findAll(params: ElectionListParams): Promise<ElectionListResult>;
 
   // Persists a NEW election. Prisma generates id and created_at, and the
