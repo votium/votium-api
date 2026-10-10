@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { ELECTION_STATUSES } from 'src/modules/elections/domain/entities/election.entity';
 
 export class CandidateElectionDto {
-  @ApiProperty({ example: 'uuid' })
+  @ApiProperty({ example: 'uuid', description: 'Unique identifier of the associated Election.' })
   id!: string;
 
   @ApiProperty({ example: 'Elección 2026' })

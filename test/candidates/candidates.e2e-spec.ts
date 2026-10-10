@@ -1424,6 +1424,105 @@ describe('Candidates registration (e2e)', () => {
       });
       expect(after).toBe(before);
     });
+
+    describe('elections id reference', () => {
+      const createdElectionIds: string[] = [];
+      const createdCandidacyIds: string[] = [];
+
+      const seedElection = async (): Promise<string> => {
+        const created = await prisma.election.create({
+          data: {
+            name: `E2E-CAND-DET-${suffix}-${createdElectionIds.length}-${Math.random()}`,
+            description: 'E2E candidate detail election.',
+            start_date: new Date(Date.UTC(2026, 9, 1)),
+            start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+            end_date: new Date(Date.UTC(2026, 9, 1)),
+            end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+            current_status: 'PUBLISHED',
+            blank_vote_enabled: false,
+          },
+        });
+        createdElectionIds.push(created.id);
+        return created.id;
+      };
+
+      const seedCandidacy = async (
+        candidateId: string,
+        electionId: string,
+        positionNumber: number,
+      ): Promise<string> => {
+        const created = await prisma.candiday.create({
+          data: {
+            candidate_id: candidateId,
+            election_id: electionId,
+            position_number: positionNumber,
+          },
+        });
+        createdCandidacyIds.push(created.id);
+        return created.id;
+      };
+
+      afterAll(async () => {
+        if (createdCandidacyIds.length > 0) {
+          await prisma.candiday.deleteMany({ where: { id: { in: createdCandidacyIds } } });
+        }
+        if (createdElectionIds.length > 0) {
+          await prisma.election.deleteMany({ where: { id: { in: createdElectionIds } } });
+        }
+      });
+
+      it('API-DET-01: returns the Election id, not the candidacy id, in elections[].id', async () => {
+        const { id: candidateId } = await registerSeed('ACTIVE');
+        const electionId = await seedElection();
+        const candidacyId = await seedCandidacy(candidateId, electionId, 1);
+
+        const res = await byId(candidateId).expect(200);
+        const body = res.body as CandidatePayload;
+
+        expect(body.elections).toHaveLength(1);
+        expect(body.elections![0].id).toBe(electionId);
+        expect(body.elections![0].id).not.toBe(candidacyId);
+      });
+
+      it('API-DET-02: preserves the other election fields in the response', async () => {
+        const { id: candidateId } = await registerSeed('ACTIVE');
+        const electionId = await seedElection();
+        await seedCandidacy(candidateId, electionId, 1);
+
+        const res = await byId(candidateId).expect(200);
+        const body = res.body as CandidatePayload;
+
+        expect(body.elections![0]).toMatchObject({
+          id: electionId,
+          name: expect.any(String) as unknown,
+          status: 'PUBLISHED',
+        });
+      });
+
+      it('API-DET-03: returns each associated election with its own identifier', async () => {
+        const { id: candidateId } = await registerSeed('ACTIVE');
+        const electionA = await seedElection();
+        const electionB = await seedElection();
+        await seedCandidacy(candidateId, electionA, 1);
+        await seedCandidacy(candidateId, electionB, 1);
+
+        const res = await byId(candidateId).expect(200);
+        const body = res.body as CandidatePayload;
+
+        expect(body.elections).toHaveLength(2);
+        expect(body.elections!.map((e) => e.id).sort()).toEqual([electionA, electionB].sort());
+      });
+
+      it('API-DET-04: a candidate with no candidacies returns an empty elections array', async () => {
+        const { id: candidateId } = await registerSeed('ACTIVE');
+
+        const res = await byId(candidateId).expect(200);
+        const body = res.body as CandidatePayload;
+
+        expect(body.elections).toEqual([]);
+        expect(body.isCurrentlyActive).toBe(false);
+      });
+    });
   });
 
   describe('PATCH /candidates/:id/deactivate', () => {
