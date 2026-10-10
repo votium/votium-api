@@ -45,7 +45,7 @@ export class CandidatePresenter {
         now,
       );
       return new CandidateElectionDto({
-        id: e.id,
+        id: e.electionId,
         name: e.electionName,
         status: e.electionStatus,
         startDate: e.electionStartDate.toISOString().split('T')[0],

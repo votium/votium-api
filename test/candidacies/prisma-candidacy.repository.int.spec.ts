@@ -735,4 +735,51 @@ describe('PrismaCandidacyRepository integration', () => {
       ]);
     });
   });
+
+  describe('findByCandidate', () => {
+    it('REPO-FC-01: returns the election id for each candidacy of the candidate', async () => {
+      const electionId = await seedElection();
+      const candidateId = await seedCandidate();
+      const candidacy = await seedCandidacy(electionId, candidateId, 1);
+
+      const result = await repository.findByCandidate(candidateId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].electionId).toBe(electionId);
+      expect(result[0].id).toBe(candidacy.id);
+      expect(result[0].id).not.toBe(electionId);
+    });
+
+    it('REPO-FC-02: keeps the candidacy id and the election id as distinct values', async () => {
+      const electionId = await seedElection();
+      const candidateId = await seedCandidate();
+      await seedCandidacy(electionId, candidateId, 1);
+
+      const result = await repository.findByCandidate(candidateId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).not.toBe(result[0].electionId);
+    });
+
+    it('REPO-FC-03: returns one item per associated election for a multi-election candidate', async () => {
+      const electionA = await seedElection();
+      const electionB = await seedElection();
+      const candidateId = await seedCandidate();
+      await seedCandidacy(electionA, candidateId, 1);
+      await seedCandidacy(electionB, candidateId, 1);
+
+      const result = await repository.findByCandidate(candidateId);
+
+      expect(result).toHaveLength(2);
+      expect(result.map((row) => row.electionId).sort()).toEqual([electionA, electionB].sort());
+    });
+
+    it('REPO-FC-04: returns an empty list for a candidate with no candidacies', async () => {
+      const candidateId = await seedCandidate();
+
+      const result = await repository.findByCandidate(candidateId);
+
+      expect(result).toEqual([]);
+    });
+  });
 });
