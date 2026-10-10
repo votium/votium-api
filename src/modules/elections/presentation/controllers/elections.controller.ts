@@ -1,0 +1,373 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiOperation, ApiTags, ApiResponse, ApiParam, ApiCookieAuth } from '@nestjs/swagger';
+import { Request } from 'express';
+import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
+import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guard';
+import { Roles } from 'src/modules/auth/presentation/guards/roles.decorator';
+import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
+import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
+import { CreateElectionDto } from '../../application/dtos/create-election.dto';
+import { UpdateElectionDto } from '../../application/dtos/update-election.dto';
+import { CreateElectionUseCase } from '../../application/use-cases/create-election.use-case';
+import { GetElectionDetailUseCase } from '../../application/use-cases/get-election-detail.use-case';
+import { GetElectionsUseCase } from '../../application/use-cases/get-elections.use-case';
+import { UpdateElectionUseCase } from '../../application/use-cases/update-election.use-case';
+import { DeleteElectionUseCase } from '../../application/use-cases/delete-election.use-case';
+import { StartElectionUseCase } from '../../application/use-cases/start-election.use-case';
+import { FinalizeElectionUseCase } from '../../application/use-cases/finalize-election.use-case';
+import { PublishElectionUseCase } from '../../application/use-cases/publish-election.use-case';
+import { CloseElectionUseCase } from '../../application/use-cases/close-election.use-case';
+import { CancelElectionUseCase } from '../../application/use-cases/cancel-election.use-case';
+import { ElectionPresenter } from '../presenters/election.presenter';
+import { ElectionDetailResponseDto } from '../dtos/election-detail-response.dto';
+import { ElectionResponseDto } from '../dtos/election-response.dto';
+import { ElectionsListResponseDto } from '../dtos/elections-list-response.dto';
+import { ListElectionsQueryDto } from '../dtos/list-elections-query.dto';
+
+type AuthenticatedRequest = Request & {
+  user: {
+    sub: string;
+    email: string;
+    role: RoleName;
+  };
+};
+
+@ApiTags('elections')
+@ApiCookieAuth()
+@Controller('elections')
+export class ElectionsController {
+  constructor(
+    private readonly getElections: GetElectionsUseCase,
+    private readonly getElectionDetail: GetElectionDetailUseCase,
+    private readonly createElection: CreateElectionUseCase,
+    private readonly updateElection: UpdateElectionUseCase,
+    private readonly deleteElection: DeleteElectionUseCase,
+    private readonly startElection: StartElectionUseCase,
+    private readonly finalizeElection: FinalizeElectionUseCase,
+    private readonly publishElection: PublishElectionUseCase,
+    private readonly closeElection: CloseElectionUseCase,
+    private readonly cancelElection: CancelElectionUseCase,
+  ) {}
+
+  @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiOperation({
+    summary: 'Query elections',
+    description:
+      'Returns a paginated list of elections with optional filters (status, name, ' +
+      'startDate, endDate, active). When status is omitted, all elections within the ' +
+      "caller's access scope are returned. Results are ordered by start date ascending. " +
+      'Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Elections retrieved successfully.',
+    type: ElectionsListResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  async list(@Query() query: ListElectionsQueryDto) {
+    const { elections, total } = await this.getElections.execute({
+      page: query.page,
+      limit: query.limit,
+      name: query.name,
+      status: query.status,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      active: query.active,
+    });
+
+    const data = ElectionPresenter.toList(elections);
+    return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiOperation({
+    summary: 'Get election detail',
+    description:
+      'Returns the full detail of a single election: basic information, current status, ' +
+      'persisted status history, associated candidates (INACTIVE candidates are excluded) ' +
+      'and the total number of electors enabled to participate. Read-only. Requires ' +
+      'ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election detail retrieved successfully.',
+    type: ElectionDetailResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  async findById(@Param('id', ParseUUIDPipe) id: string) {
+    const detail = await this.getElectionDetail.execute(id);
+    return ElectionPresenter.toDetail(detail);
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: 'Create a new election',
+    description: 'Creates an election. Requires ADMINISTRATOR role.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Election created successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 409, description: 'Election name conflict.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async create(@Body() dto: CreateElectionDto, @Req() req: AuthenticatedRequest) {
+    const election = await this.createElection.execute({
+      name: dto.name,
+      description: dto.description,
+      startDate: dto.startDate,
+      startTime: dto.startTime,
+      endDate: dto.endDate,
+      endTime: dto.endTime,
+      blankVoteEnabled: dto.blankVoteEnabled,
+      requestingUserId: req.user?.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Put(':id')
+  @ApiOperation({
+    summary: 'Update an existing election',
+    description: 'Updates an election in PENDING state. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election updated successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({ status: 409, description: 'Election not editable or name conflict.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateElectionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const election = await this.updateElection.execute(id, dto, req.user?.sub);
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Delete election',
+    description:
+      'Deletes a pending election only when it has no associated candidates or votes. ' +
+      'This operation is restricted to administrators.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Election successfully deleted.' })
+  @ApiResponse({ status: 400, description: 'Invalid election ID.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Election cannot be deleted because it is not in a deletable state or has associated candidates or votes.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    await this.deleteElection.execute(id, req.user?.sub);
+  }
+
+  @Post(':id/finalize')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Finalize an election',
+    description:
+      'Performs the PENDING -> CREATED transition, freezing the election configuration. ' +
+      'The election must have an associated electoral roll and at least one registered ' +
+      'candidacy. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election finalized successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Election is not PENDING, does not have an electoral roll, or has no registered candidacies.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async finalize(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.finalizeElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':id/start')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually start an election',
+    description:
+      'Performs the CREATED -> ACTIVE transition for an election whose schedule window ' +
+      'includes the current date/time. The electoral roll and candidacies were already ' +
+      'validated at finalization. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election started successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({ status: 409, description: 'Election is not CREATED.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Current date/time is outside the election start and closing range.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async start(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.startElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':id/publish')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Publish a closed election',
+    description:
+      'Performs the CLOSED -> PUBLISHED transition. A closed election is necessarily past ' +
+      'its schedule, so no roll, candidacy or schedule checks apply. Requires ' +
+      'ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election published successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({ status: 409, description: 'Election is not CLOSED.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async publish(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.publishElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':id/close')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Manually close an active election',
+    description:
+      'Performs the ACTIVE -> CLOSED transition for an election whose configured end ' +
+      'date/time has been reached. Reuses the same closing rules as the automatic closure ' +
+      'scheduler. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election closed successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({ status: 409, description: 'Election is not ACTIVE.' })
+  @ApiResponse({
+    status: 422,
+    description: 'Current date/time is before the election end date/time.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async close(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.closeElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel an election',
+    description:
+      'Performs the terminal CANCELLED transition from any non-terminal state ' +
+      '(PENDING, CREATED, ACTIVE or CLOSED). A cancelled election is permanently frozen: ' +
+      'it cannot be edited, started, closed, published, voted on, or returned to an ' +
+      'operational state. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election cancelled successfully.',
+    type: ElectionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Election is PUBLISHED, already CANCELLED, or otherwise not cancellable.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async cancel(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const election = await this.cancelElection.execute({
+      electionId: id,
+      requestingUserId: req.user.sub,
+    });
+    return ElectionPresenter.toResponse(election);
+  }
+}
