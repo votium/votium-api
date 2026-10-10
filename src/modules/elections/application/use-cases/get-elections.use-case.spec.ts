@@ -42,11 +42,11 @@ describe('GetElectionsUseCase', () => {
     elections.findAll.mockResolvedValue({ elections: [], total: 0 });
   });
 
-  it('defaults to schedule-active elections when no status/active filter is provided', async () => {
+  it('applies no default status/active filter when neither is provided', async () => {
     await new GetElectionsUseCase(elections).execute({ page: 1, limit: 10 });
 
     const args = elections.findAll.mock.calls[0][0];
-    expect(args.active).toBe(true);
+    expect(args.active).toBeUndefined();
     expect(args.status).toBeUndefined();
   });
 
@@ -89,12 +89,12 @@ describe('GetElectionsUseCase', () => {
     expect(args.active).toBe(true);
   });
 
-  it('forwards name while still applying the default active filter', async () => {
+  it('forwards name without applying a default active filter', async () => {
     await new GetElectionsUseCase(elections).execute({ page: 1, limit: 10, name: 'Council' });
 
     const args = elections.findAll.mock.calls[0][0];
     expect(args.name).toBe('Council');
-    expect(args.active).toBe(true);
+    expect(args.active).toBeUndefined();
   });
 
   it('parses startDate to a UTC-midnight Date value', async () => {

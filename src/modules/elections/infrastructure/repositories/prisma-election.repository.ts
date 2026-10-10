@@ -32,7 +32,7 @@ export class PrismaElectionRepository implements ElectionRepository {
       this.prisma.election.count({ where }),
       this.prisma.election.findMany({
         where,
-        orderBy: { created_at: 'desc' },
+        orderBy: [{ start_date: 'asc' }, { id: 'asc' }],
         skip,
         take: params.limit,
       }),

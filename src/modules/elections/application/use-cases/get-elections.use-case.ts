@@ -17,13 +17,6 @@ export class GetElectionsUseCase {
     const page = Number.isFinite(params.page) && params.page > 0 ? params.page : 1;
     const limit = Number.isFinite(params.limit) && params.limit > 0 ? params.limit : 10;
 
-    // Default business rule: without an explicit status/active filter, return only
-    // elections that are schedule-active right now.
-    let active = params.active;
-    if (params.active === undefined && params.status === undefined) {
-      active = true;
-    }
-
     return this.elections.findAll({
       page,
       limit,
@@ -31,7 +24,7 @@ export class GetElectionsUseCase {
       status: params.status,
       startDate: params.startDate ? parseElectionDate(params.startDate) : undefined,
       endDate: params.endDate ? parseElectionDate(params.endDate) : undefined,
-      active,
+      active: params.active,
     });
   }
 }

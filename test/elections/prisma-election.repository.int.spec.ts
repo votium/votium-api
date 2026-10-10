@@ -213,7 +213,15 @@ describe('PrismaElectionRepository integration', () => {
 
     it('returns all seeded elections when no filters are provided, with a total count', async () => {
       const names = [`ALL-A-${suffix}`, `ALL-B-${suffix}`, `ALL-C-${suffix}`];
-      for (const name of names) await seedElection(name);
+      // Early start dates keep the seeded rows first under start_date ascending
+      // ordering, isolating this no-filter assertion from other suites' rows in the
+      // shared database.
+      for (const [index, name] of names.entries()) {
+        await seedElection(name, {
+          startDate: new Date(Date.UTC(2000, 0, 1 + index)),
+          endDate: addDays(today, 1),
+        });
+      }
 
       const result = await repository.findAll({ page: 1, limit: 100 });
 
@@ -222,24 +230,50 @@ describe('PrismaElectionRepository integration', () => {
       expect(result.total).toBeGreaterThanOrEqual(names.length);
     });
 
-    it('orders results by created_at desc (deterministic with explicit timestamps)', async () => {
-      const names = [`ORDER-${suffix}-1`, `ORDER-${suffix}-2`, `ORDER-${suffix}-3`];
-      for (const name of names) await seedElection(name);
-
-      const base = Date.UTC(2026, 7, 20, 12, 0, 0);
-      for (const [index, name] of names.entries()) {
-        await prisma.election.update({
-          where: { name },
-          data: { created_at: new Date(base + index * 1000) },
-        });
-      }
+    it('orders results by start_date ascending', async () => {
+      // Inserted in non-chronological order to prove ordering is start-date based,
+      // not insertion or creation-order based.
+      await seedElection(`ORDER-${suffix}-MID`, {
+        startDate: addDays(today, 5),
+        endDate: addDays(today, 30),
+      });
+      await seedElection(`ORDER-${suffix}-EARLY`, {
+        startDate: addDays(today, -5),
+        endDate: addDays(today, 30),
+      });
+      await seedElection(`ORDER-${suffix}-LATE`, {
+        startDate: addDays(today, 15),
+        endDate: addDays(today, 30),
+      });
 
       const result = await repository.findAll({ page: 1, limit: 100, name: `ORDER-${suffix}` });
       expect(result.elections.map((e) => e.name)).toEqual([
-        `ORDER-${suffix}-3`,
-        `ORDER-${suffix}-2`,
-        `ORDER-${suffix}-1`,
+        `ORDER-${suffix}-EARLY`,
+        `ORDER-${suffix}-MID`,
+        `ORDER-${suffix}-LATE`,
       ]);
+    });
+
+    it('uses a deterministic id tie-breaker for equal start dates', async () => {
+      const sharedStart = addDays(today, 10);
+      await seedElection(`TIE-${suffix}-A`, {
+        startDate: sharedStart,
+        endDate: addDays(today, 30),
+      });
+      await seedElection(`TIE-${suffix}-B`, {
+        startDate: sharedStart,
+        endDate: addDays(today, 30),
+      });
+
+      const first = await repository.findAll({ page: 1, limit: 100, name: `TIE-${suffix}` });
+      const second = await repository.findAll({ page: 1, limit: 100, name: `TIE-${suffix}` });
+
+      expect(first.elections.map((e) => e.name).sort()).toEqual([
+        `TIE-${suffix}-A`,
+        `TIE-${suffix}-B`,
+      ]);
+      // Deterministic: the same relative order across independent queries.
+      expect(first.elections.map((e) => e.id)).toEqual(second.elections.map((e) => e.id));
     });
 
     it('paginates with page/limit slicing and reports the total count', async () => {
@@ -261,9 +295,20 @@ describe('PrismaElectionRepository integration', () => {
     });
 
     it('filters by a partial, case-insensitive name and ignores whitespace-only names', async () => {
-      await seedElection(`Student Council A ${suffix}`);
-      await seedElection(`student council B ${suffix}`);
-      await seedElection(`Other ${suffix}`);
+      // Early start dates keep these rows first under ascending ordering, so the
+      // whitespace (no-filter) assertion below stays isolated from other suites' rows.
+      await seedElection(`Student Council A ${suffix}`, {
+        startDate: new Date(Date.UTC(2000, 0, 1)),
+        endDate: addDays(today, 1),
+      });
+      await seedElection(`student council B ${suffix}`, {
+        startDate: new Date(Date.UTC(2000, 0, 2)),
+        endDate: addDays(today, 1),
+      });
+      await seedElection(`Other ${suffix}`, {
+        startDate: new Date(Date.UTC(2000, 0, 3)),
+        endDate: addDays(today, 1),
+      });
 
       const matches = await repository.findAll({ page: 1, limit: 10, name: 'COUNCIL' });
       expect(matches.elections.map((e) => e.name).sort()).toEqual([
