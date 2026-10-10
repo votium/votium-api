@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -21,6 +22,7 @@ import {
   ApiConsumes,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -32,13 +34,17 @@ import { RoleName } from 'src/modules/iam/domain/value-objects/role-name.vo';
 import { ElectorPresenter } from 'src/modules/electors/presentation/presenters/elector.presenter';
 import { ElectorResponseDto } from 'src/modules/electors/presentation/dtos/elector-response.dto';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
+import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { BulkRegisterElectoralRollUseCase } from '../../application/use-cases/bulk-register-electoral-roll.use-case';
 import { GetElectoralRollSummaryUseCase } from '../../application/use-cases/get-electoral-roll-summary.use-case';
+import { ListElectoralRollElectorsUseCase } from '../../application/use-cases/list-electoral-roll-electors.use-case';
 import { ManualRegisterElectoralRollUseCase } from '../../application/use-cases/manual-register-electoral-roll.use-case';
 import { RemoveElectorFromElectoralRollUseCase } from '../../application/use-cases/remove-elector-from-electoral-roll.use-case';
 import { UpdateElectoralRollElectorUseCase } from '../../application/use-cases/update-electoral-roll-elector.use-case';
 import { BulkRegisterElectoralRollResponseDto } from '../dtos/bulk-register-electoral-roll-response.dto';
+import { ElectoralRollElectorsListResponseDto } from '../dtos/electoral-roll-electors-list-response.dto';
 import { ElectoralRollSummaryResponseDto } from '../dtos/electoral-roll-summary-response.dto';
+import { ListElectoralRollElectorsQueryDto } from '../dtos/list-electoral-roll-electors-query.dto';
 import { RegisterElectoralRollDto } from '../dtos/register-electoral-roll.dto';
 import { UpdateElectoralRollElectorDto } from '../dtos/update-electoral-roll-elector.dto';
 import { ElectoralRollPresenter } from '../presenters/electoral-roll.presenter';
@@ -55,20 +61,21 @@ type AuthenticatedRequest = Request & {
 
 @ApiTags('electoral-rolls')
 @ApiCookieAuth()
-@Controller('electoral-rolls')
-export class ElectoralRollsController {
+@Controller('elections/:electionId/electoral-roll')
+export class ElectionsElectoralRollController {
   constructor(
     private readonly bulkRegisterRoll: BulkRegisterElectoralRollUseCase,
     private readonly manualRegisterRoll: ManualRegisterElectoralRollUseCase,
     private readonly getSummary: GetElectoralRollSummaryUseCase,
+    private readonly listRollElectors: ListElectoralRollElectorsUseCase,
     private readonly updateRollElector: UpdateElectoralRollElectorUseCase,
     private readonly removeRollElector: RemoveElectorFromElectoralRollUseCase,
   ) {}
 
-  @Post('bulk-register/:electionId')
+  @Post('import')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Bulk register electors to an election electoral roll',
+    summary: 'Import electors into an election electoral roll from a CSV file',
     description: 'Upload a CSV with student code and program code pairs to register electors.',
   })
   @ApiConsumes('multipart/form-data')
@@ -97,7 +104,7 @@ export class ElectoralRollsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_CSV_FILE_SIZE } }))
-  async bulkRegisterElectoralRoll(
+  async importElectors(
     @Param('electionId', ParseUUIDPipe) electionId: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: AuthenticatedRequest,
@@ -116,7 +123,7 @@ export class ElectoralRollsController {
     return ElectoralRollPresenter.toBulkRegisterResponse(result);
   }
 
-  @Post('register/:electionId')
+  @Post()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Manually register existing electors to an election electoral roll',
@@ -165,7 +172,7 @@ export class ElectoralRollsController {
     return ElectoralRollPresenter.toBulkRegisterResponse(result);
   }
 
-  @Get(':electionId')
+  @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Get electoral roll summary for an election',
@@ -190,7 +197,84 @@ export class ElectoralRollsController {
     return ElectoralRollPresenter.toSummary(result);
   }
 
-  @Patch(':electionId/electors/:electorId')
+  @Get('electors')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'List electors enabled in an election electoral roll',
+    description:
+      'Returns a paginated, filterable list of electors associated with the given election ' +
+      'electoral roll. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiParam({ name: 'electionId', description: 'UUID of the target election.', example: 'uuid' })
+  @ApiQuery({ name: 'page', required: false, example: 1, description: '1-based page number.' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    example: 10,
+    description: 'Page size (number of electors per page).',
+  })
+  @ApiQuery({
+    name: 'programCode',
+    required: false,
+    example: '2710',
+    description: 'Partial match on the program code.',
+  })
+  @ApiQuery({
+    name: 'studentCode',
+    required: false,
+    example: '202012345',
+    description: 'Partial match on the student code.',
+  })
+  @ApiQuery({
+    name: 'name',
+    required: false,
+    example: 'Jane',
+    description: 'Partial, case-insensitive match on the first or last name.',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    example: 'ACTIVE',
+    enum: ['ACTIVE', 'INACTIVE'],
+    description: 'Exact match on the elector status.',
+  })
+  @ApiQuery({
+    name: 'identification',
+    required: false,
+    example: '123456789',
+    description: 'Partial match on the identification number.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Electoral roll electors retrieved successfully.',
+    type: ElectoralRollElectorsListResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  async listElectors(
+    @Param('electionId', ParseUUIDPipe) electionId: string,
+    @Query() query: ListElectoralRollElectorsQueryDto,
+  ) {
+    const { electors, total } = await this.listRollElectors.execute({
+      electionId,
+      page: query.page,
+      limit: query.limit,
+      programCode: query.programCode,
+      studentCode: query.studentCode,
+      name: query.name,
+      status: query.status,
+      identification: query.identification,
+    });
+
+    const data = ElectoralRollPresenter.toElectorList(electors);
+    return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
+  }
+
+  @Patch('electors/:electorId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Update an elector in an election electoral roll',
@@ -246,7 +330,7 @@ export class ElectoralRollsController {
     return ElectorPresenter.toResponse(updated);
   }
 
-  @Delete(':electionId/electors/:electorId')
+  @Delete('electors/:electorId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Remove an elector from an election electoral roll',

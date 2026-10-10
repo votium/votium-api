@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { CandidaciesModule } from 'src/modules/candidacies/candidacies.module';
 import { ElectionsModule } from 'src/modules/elections/elections.module';
-import { ElectoralRollsModule } from 'src/modules/electoral-rolls/electoral-rolls.module';
 import { IamModule } from 'src/modules/iam/iam.module';
 import {
   CANDIDACY_REPOSITORY,
@@ -15,7 +14,7 @@ import {
 import {
   ELECTORAL_ROLL_REPOSITORY,
   type ElectoralRollRepository,
-} from 'src/modules/electoral-rolls/domain/repositories/electoral-roll.repository.interface';
+} from 'src/modules/elections/domain/repositories/electoral-roll.repository.interface';
 import { RegisterVoteUseCase } from './application/use-cases/register-vote.use-case';
 import {
   VOTE_REPOSITORY,
@@ -25,7 +24,7 @@ import { PrismaVoteRepository } from './infrastructure/repositories/prisma-vote.
 import { VotesController } from './presentation/controllers/votes.controller';
 
 @Module({
-  imports: [IamModule, AuthModule, ElectionsModule, CandidaciesModule, ElectoralRollsModule],
+  imports: [IamModule, AuthModule, ElectionsModule, CandidaciesModule],
   controllers: [VotesController],
   providers: [
     { provide: VOTE_REPOSITORY, useClass: PrismaVoteRepository },

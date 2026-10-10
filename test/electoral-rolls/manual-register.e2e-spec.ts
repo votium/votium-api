@@ -126,7 +126,7 @@ describe('Manual electoral roll registration (e2e)', () => {
   ) => jwt.sign(payload, envs.jwtSecret, { expiresIn });
 
   const manualRegister = (electionId: string, body: Record<string, unknown>, token?: string) => {
-    const req = request(app.getHttpServer()).post(`/api/v1/electoral-rolls/register/${electionId}`);
+    const req = request(app.getHttpServer()).post(`/api/v1/elections/${electionId}/electoral-roll`);
     if (token) req.set('Cookie', token);
     return req.send(body);
   };
@@ -401,7 +401,7 @@ describe('Manual electoral roll registration (e2e)', () => {
       const electionId = await seedElection('PENDING');
 
       const res = await request(app.getHttpServer())
-        .post(`/api/v1/electoral-rolls/register/${electionId}`)
+        .post(`/api/v1/elections/${electionId}/electoral-roll`)
         .set('Cookie', electorToken)
         .set('x-role', 'ADMINISTRATOR')
         .send(entries([codeA, '2710']))
@@ -416,7 +416,7 @@ describe('Manual electoral roll registration (e2e)', () => {
       const electionId = await seedElection('PENDING');
 
       const res = await request(app.getHttpServer())
-        .post(`/api/v1/electoral-rolls/register/${electionId}`)
+        .post(`/api/v1/elections/${electionId}/electoral-roll`)
         .set('Cookie', adminToken)
         .expect(400);
 
@@ -1118,7 +1118,7 @@ describe('Manual electoral roll registration (e2e)', () => {
 
       // MS1: the path exists and the post operation is defined.
       const pathKey = Object.keys(document.paths).find((p) =>
-        p.endsWith('/electoral-rolls/register/{electionId}'),
+        p.endsWith('/elections/{electionId}/electoral-roll'),
       );
       expect(pathKey).toBeDefined();
       const operation = document.paths[pathKey!].post as unknown as SwaggerOperationShape;

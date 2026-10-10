@@ -108,7 +108,7 @@ describe('Electoral roll summary (e2e)', () => {
   };
 
   const getSummary = (electionId: string, token?: string) => {
-    const req = request(app.getHttpServer()).get(`/api/v1/electoral-rolls/${electionId}`);
+    const req = request(app.getHttpServer()).get(`/api/v1/elections/${electionId}/electoral-roll`);
     if (token) req.set('Cookie', token);
     return req;
   };
@@ -344,7 +344,7 @@ describe('Electoral roll summary (e2e)', () => {
       const electionId = await seedElection();
 
       const res = await request(app.getHttpServer())
-        .get(`/api/v1/electoral-rolls/${electionId}`)
+        .get(`/api/v1/elections/${electionId}/electoral-roll`)
         .set('Cookie', electorToken)
         .set('x-role', 'ADMINISTRATOR')
         .expect(403);
@@ -534,7 +534,7 @@ describe('Electoral roll summary (e2e)', () => {
       // SW1: the path exists (global prefix may or may not be prefixed depending
       // on the running NestJS/swagger version).
       const pathKey = Object.keys(document.paths).find((p) =>
-        p.endsWith('/electoral-rolls/{electionId}'),
+        p.endsWith('/elections/{electionId}/electoral-roll'),
       );
       expect(pathKey).toBeDefined();
       const operation = document.paths[pathKey!].get as unknown as SwaggerOperationShape;

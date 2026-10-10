@@ -96,7 +96,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
     filename = 'padron.csv',
   ) =>
     request(app.getHttpServer())
-      .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
+      .post(`/api/v1/elections/${electionId}/electoral-roll/import`)
       .set('Cookie', token)
       .attach('file', buffer, { filename, contentType: 'text/csv' });
 
@@ -282,7 +282,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const electionId = await seedElection('PENDING');
 
       await request(app.getHttpServer())
-        .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
+        .post(`/api/v1/elections/${electionId}/electoral-roll/import`)
         .attach('file', toCsv(row(codeA, '2710')), { filename: 'padron.csv' })
         .expect(401);
     });
@@ -297,7 +297,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const electionId = await seedElection('PENDING');
 
       const res = await request(app.getHttpServer())
-        .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
+        .post(`/api/v1/elections/${electionId}/electoral-roll/import`)
         .attach('file', toCsv(row(codeA, '2710')), { filename: 'padron.csv' })
         .expect(401);
 
@@ -310,7 +310,7 @@ describe('Electoral roll bulk registration (e2e)', () => {
       const electionId = await seedElection('PENDING');
 
       const res = await request(app.getHttpServer())
-        .post(`/api/v1/electoral-rolls/bulk-register/${electionId}`)
+        .post(`/api/v1/elections/${electionId}/electoral-roll/import`)
         .set('Cookie', adminToken)
         .expect(400);
 

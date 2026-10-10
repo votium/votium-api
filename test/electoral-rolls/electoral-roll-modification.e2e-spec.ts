@@ -130,7 +130,7 @@ describe('Electoral roll modification (e2e)', () => {
     token?: string,
   ) => {
     const req = request(app.getHttpServer()).patch(
-      `/api/v1/electoral-rolls/${electionId}/electors/${electorId}`,
+      `/api/v1/elections/${electionId}/electoral-roll/electors/${electorId}`,
     );
     if (token) req.set('Cookie', token);
     return req.send(body ?? {});
@@ -138,7 +138,7 @@ describe('Electoral roll modification (e2e)', () => {
 
   const removeElector = (electionId: string, electorId: string, token?: string) => {
     const req = request(app.getHttpServer()).delete(
-      `/api/v1/electoral-rolls/${electionId}/electors/${electorId}`,
+      `/api/v1/elections/${electionId}/electoral-roll/electors/${electorId}`,
     );
     if (token) req.set('Cookie', token);
     return req.send();
@@ -451,7 +451,7 @@ describe('Electoral roll modification (e2e)', () => {
       await createDirectRoll(electionId, electorIds[updCode]);
 
       const res = await request(app.getHttpServer())
-        .patch(`/api/v1/electoral-rolls/${electionId}/electors/${electorIds[updCode]}`)
+        .patch(`/api/v1/elections/${electionId}/electoral-roll/electors/${electorIds[updCode]}`)
         .set('Cookie', electorToken)
         .set('x-role', 'ADMINISTRATOR')
         .send({ firstName: 'Maria' })
@@ -935,7 +935,7 @@ describe('Electoral roll modification (e2e)', () => {
 
       // US1: the path exists with both patch and delete operations.
       const pathKey = Object.keys(document.paths).find((p) =>
-        p.endsWith('/electoral-rolls/{electionId}/electors/{electorId}'),
+        p.endsWith('/elections/{electionId}/electoral-roll/electors/{electorId}'),
       );
       expect(pathKey).toBeDefined();
       const pathItem = document.paths[pathKey!] as {

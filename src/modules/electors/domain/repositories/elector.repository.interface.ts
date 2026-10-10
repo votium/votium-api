@@ -17,6 +17,17 @@ export interface ElectorSearchResult {
   total: number;
 }
 
+export interface ElectorElectionSearchParams {
+  electionId: string;
+  page: number;
+  limit: number;
+  programCode?: string;
+  studentCode?: string;
+  name?: string;
+  status?: ElectorStatus;
+  identification?: string;
+}
+
 export interface ElectorElectionParticipation {
   electionId: string;
   electionName: string;
@@ -72,6 +83,14 @@ export interface ElectorRepository {
   findByStudentCodeAndProgramCode(
     pairs: Array<{ studentCode: string; programCode: string }>,
   ): Promise<ElectorEntity[]>;
+
+  // Returns a paginated, filtered page of electors that belong to the given
+  // election's electoral roll (a persisted electoral_rolls row). Reuses the
+  // same filter fields and semantics as search() (partial program/student code,
+  // case-insensitive partial name, exact status, partial identification).
+  // Filters combine with AND and are scoped to the election. Logically deleted
+  // electors are always excluded. Read-only; returns { electors, total }.
+  findByElection(params: ElectorElectionSearchParams): Promise<ElectorSearchResult>;
 
   // Returns the elections the elector is part of (electoral-roll membership ==
   // eligibility), including their voting status. Read-only. Empty when the
