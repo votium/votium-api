@@ -8,7 +8,7 @@ import type {
   CandidacyRepository,
   CandidacyWithCandidate,
 } from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
-import type { ElectoralRollRepository } from 'src/modules/electoral-rolls/domain/repositories/electoral-roll.repository.interface';
+import type { ElectoralRollRepository } from '../../domain/repositories/electoral-roll.repository.interface';
 
 export interface ElectionDetailResult {
   election: ElectionEntity;

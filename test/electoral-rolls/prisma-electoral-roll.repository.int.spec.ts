@@ -1,5 +1,5 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
-import { PrismaElectoralRollRepository } from '../../src/modules/electoral-rolls/infrastructure/repositories/prisma-electoral-roll.repository';
+import { PrismaElectoralRollRepository } from '../../src/modules/elections/infrastructure/repositories/prisma-electoral-roll.repository';
 
 describe('PrismaElectoralRollRepository integration', () => {
   let prisma: PrismaService;

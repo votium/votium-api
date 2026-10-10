@@ -7,9 +7,9 @@ import { ElectionEntity } from 'src/modules/elections/domain/entities/election.e
 import { ElectionNotFoundError } from 'src/modules/elections/domain/errors/election-not-found.error';
 import { ElectionNotWithinScheduleError } from 'src/modules/elections/domain/errors/election-not-within-schedule.error';
 import type { ElectionRepository } from 'src/modules/elections/domain/repositories/election.repository.interface';
-import { ElectoralRollEntity } from 'src/modules/electoral-rolls/domain/entities/electoral-roll.entity';
-import { ElectoralRollNotFoundError } from 'src/modules/electoral-rolls/domain/errors/electoral-roll-not-found.error';
-import type { ElectoralRollRepository } from 'src/modules/electoral-rolls/domain/repositories/electoral-roll.repository.interface';
+import { ElectoralRollEntity } from 'src/modules/elections/domain/entities/electoral-roll.entity';
+import { ElectoralRollNotFoundError } from 'src/modules/elections/domain/errors/electoral-roll-not-found.error';
+import type { ElectoralRollRepository } from 'src/modules/elections/domain/repositories/electoral-roll.repository.interface';
 import { BlankVoteDisabledError } from '../../domain/errors/blank-vote-disabled.error';
 import { ElectionNotActiveError } from '../../domain/errors/election-not-active.error';
 import { IdempotencyKeyConflictError } from '../../domain/errors/idempotency-key-conflict.error';

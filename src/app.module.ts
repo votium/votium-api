@@ -6,7 +6,6 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ElectorsModule } from './modules/electors/electors.module';
 import { CandidatesModule } from './modules/candidates/candidates.module';
 import { ElectionsModule } from './modules/elections/elections.module';
-import { ElectoralRollsModule } from './modules/electoral-rolls/electoral-rolls.module';
 import { CandidaciesModule } from './modules/candidacies/candidacies.module';
 import { VotingModule } from './modules/voting/voting.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -19,7 +18,6 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     ElectorsModule,
     CandidatesModule,
     ElectionsModule,
-    ElectoralRollsModule,
     CandidaciesModule,
     VotingModule,
     DashboardModule,

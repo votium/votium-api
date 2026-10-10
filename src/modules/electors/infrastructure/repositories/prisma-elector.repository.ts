@@ -4,6 +4,7 @@ import { ElectorEntity } from '../../domain/entities/elector.entity';
 import { ElectorDuplicateError } from '../../domain/errors/elector-duplicate.error';
 import {
   ElectorElectionParticipation,
+  ElectorElectionSearchParams,
   ElectorSearchParams,
   ElectorSearchResult,
   ElectorRepository,
@@ -16,6 +17,7 @@ type PrismaElectorWhere = {
   student_code?: string | { contains: string };
   identification?: { contains: string };
   status?: string;
+  electoralRolls?: { some: { election_id: string } };
   OR?: Array<{
     first_name?: { contains: string; mode: 'insensitive' };
     last_name?: { contains: string; mode: 'insensitive' };
@@ -162,6 +164,46 @@ export class PrismaElectorRepository implements ElectorRepository {
     });
 
     return rows.map((row) => PrismaElectorMapper.toDomain(row));
+  }
+
+  async findByElection(params: ElectorElectionSearchParams): Promise<ElectorSearchResult> {
+    const skip = (params.page - 1) * params.limit;
+
+    const programCode = params.programCode?.trim();
+    const studentCode = params.studentCode?.trim();
+    const name = params.name?.trim();
+    const identification = params.identification?.trim();
+
+    const where: PrismaElectorWhere = {
+      deleted_at: null,
+      // Membership scoping: only electors with a persisted electoral_rolls row for
+      // the requested election are returned (and counted).
+      electoralRolls: { some: { election_id: params.electionId } },
+      ...(programCode ? { program_code: { contains: programCode } } : {}),
+      ...(studentCode ? { student_code: { contains: studentCode } } : {}),
+      ...(identification ? { identification: { contains: identification } } : {}),
+      ...(params.status ? { status: params.status } : {}),
+      ...(name
+        ? {
+            OR: [
+              { first_name: { contains: name, mode: 'insensitive' } },
+              { last_name: { contains: name, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.elector.count({ where }),
+      this.prisma.elector.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: params.limit,
+      }),
+    ]);
+
+    return { electors: rows.map((row) => PrismaElectorMapper.toDomain(row)), total };
   }
 
   async findElectionParticipation(electorId: string): Promise<ElectorElectionParticipation[]> {
