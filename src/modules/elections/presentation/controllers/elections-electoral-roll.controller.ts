@@ -11,6 +11,7 @@ import {
   Post,
   Query,
   Req,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -22,6 +23,7 @@ import {
   ApiConsumes,
   ApiOperation,
   ApiParam,
+  ApiProduces,
   ApiQuery,
   ApiResponse,
   ApiTags,
@@ -37,10 +39,12 @@ import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exce
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { BulkRegisterElectoralRollUseCase } from '../../application/use-cases/bulk-register-electoral-roll.use-case';
 import { GetElectoralRollSummaryUseCase } from '../../application/use-cases/get-electoral-roll-summary.use-case';
+import { GetElectoralRollTemplateUseCase } from '../../application/use-cases/get-electoral-roll-template.use-case';
 import { ListElectoralRollElectorsUseCase } from '../../application/use-cases/list-electoral-roll-electors.use-case';
 import { ManualRegisterElectoralRollUseCase } from '../../application/use-cases/manual-register-electoral-roll.use-case';
 import { RemoveElectorFromElectoralRollUseCase } from '../../application/use-cases/remove-elector-from-electoral-roll.use-case';
 import { UpdateElectoralRollElectorUseCase } from '../../application/use-cases/update-electoral-roll-elector.use-case';
+import { ELECTORAL_ROLL_TEMPLATE_FILENAME } from '../../application/electoral-roll-csv-template';
 import { BulkRegisterElectoralRollResponseDto } from '../dtos/bulk-register-electoral-roll-response.dto';
 import { ElectoralRollElectorsListResponseDto } from '../dtos/electoral-roll-electors-list-response.dto';
 import { ElectoralRollSummaryResponseDto } from '../dtos/electoral-roll-summary-response.dto';
@@ -70,7 +74,40 @@ export class ElectionsElectoralRollController {
     private readonly listRollElectors: ListElectoralRollElectorsUseCase,
     private readonly updateRollElector: UpdateElectoralRollElectorUseCase,
     private readonly removeRollElector: RemoveElectorFromElectoralRollUseCase,
+    private readonly getTemplate: GetElectoralRollTemplateUseCase,
   ) {}
+
+  @Get('template')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Download the electoral roll CSV template for an election',
+    description:
+      'Returns the CSV template accepted by the election electoral roll import. Row 1 holds ' +
+      'the machine-readable headers (studentCode, programCode); row 2 holds a Spanish ' +
+      'description per column. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'electionId', description: 'UUID of the target election.', example: 'uuid' })
+  @ApiProduces('text/csv')
+  @ApiResponse({
+    status: 200,
+    description: 'Electoral roll CSV template downloaded.',
+    content: { 'text/csv': { schema: { type: 'string', format: 'binary' } } },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async downloadTemplate(
+    @Param('electionId', ParseUUIDPipe) electionId: string,
+  ): Promise<StreamableFile> {
+    const csv = await this.getTemplate.execute(electionId);
+    return new StreamableFile(Buffer.from(csv, 'utf8'), {
+      type: 'text/csv',
+      disposition: `attachment; filename="${ELECTORAL_ROLL_TEMPLATE_FILENAME}"`,
+    });
+  }
 
   @Post('import')
   @HttpCode(HttpStatus.OK)

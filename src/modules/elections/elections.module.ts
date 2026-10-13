@@ -28,6 +28,7 @@ import { CancelElectionUseCase } from './application/use-cases/cancel-election.u
 import { CloseExpiredElectionsUseCase } from './application/use-cases/close-expired-elections.use-case';
 import { BulkRegisterElectoralRollUseCase } from './application/use-cases/bulk-register-electoral-roll.use-case';
 import { GetElectoralRollSummaryUseCase } from './application/use-cases/get-electoral-roll-summary.use-case';
+import { GetElectoralRollTemplateUseCase } from './application/use-cases/get-electoral-roll-template.use-case';
 import { ListElectoralRollElectorsUseCase } from './application/use-cases/list-electoral-roll-electors.use-case';
 import { ManualRegisterElectoralRollUseCase } from './application/use-cases/manual-register-electoral-roll.use-case';
 import { RemoveElectorFromElectoralRollUseCase } from './application/use-cases/remove-elector-from-electoral-roll.use-case';
@@ -162,6 +163,12 @@ import { ElectionsElectoralRollController } from './presentation/controllers/ele
       useFactory: (electionRepo: ElectionRepository, electoralRollRepo: ElectoralRollRepository) =>
         new GetElectoralRollSummaryUseCase(electionRepo, electoralRollRepo),
       inject: [ELECTION_REPOSITORY, ELECTORAL_ROLL_REPOSITORY],
+    },
+    {
+      provide: GetElectoralRollTemplateUseCase,
+      useFactory: (electionRepo: ElectionRepository) =>
+        new GetElectoralRollTemplateUseCase(electionRepo),
+      inject: [ELECTION_REPOSITORY],
     },
     {
       provide: ListElectoralRollElectorsUseCase,
