@@ -60,6 +60,55 @@ describe('ElectoralRollCsvFileParserService', () => {
     });
   });
 
+  describe('guidance row (template compatibility)', () => {
+    const guidance =
+      '"# Código del estudiante. Campo obligatorio. Se combina con el código del programa.",' +
+      '"# Código del programa académico. Campo obligatorio. Debe contener cuatro dígitos (0-9)."';
+
+    it('should skip the header and guidance rows and parse only data rows', () => {
+      const csv = `studentCode,programCode\n${guidance}\n12345678,1234\n87654321,5678`;
+      const rows = parser.parse(toBuffer(csv));
+
+      expect(rows).toEqual([
+        { studentCode: '12345678', programCode: '1234' },
+        { studentCode: '87654321', programCode: '5678' },
+      ]);
+    });
+
+    it('should return an empty array when only header and guidance rows are present', () => {
+      const csv = `studentCode,programCode\n${guidance}`;
+      const rows = parser.parse(toBuffer(csv));
+
+      expect(rows).toEqual([]);
+    });
+
+    it('should skip a guidance row whose quoted cells contain commas', () => {
+      const csv =
+        'studentCode,programCode\n"# Código, del estudiante. Campo obligatorio",' +
+        '"# Código del programa, cuatro dígitos"\n12345678,1234';
+      const rows = parser.parse(toBuffer(csv));
+
+      expect(rows).toEqual([{ studentCode: '12345678', programCode: '1234' }]);
+    });
+
+    it('should NOT skip a non-numeric studentCode data row following the header', () => {
+      const csv = 'studentCode,programCode\nROLL-A-123,2710';
+      const rows = parser.parse(toBuffer(csv));
+
+      expect(rows).toEqual([{ studentCode: 'ROLL-A-123', programCode: '2710' }]);
+    });
+
+    it('should NOT skip a non-numeric studentCode row that appears after data begins', () => {
+      const csv = '12345678,1234\nSOME_CODE,1234';
+      const rows = parser.parse(toBuffer(csv));
+
+      expect(rows).toEqual([
+        { studentCode: '12345678', programCode: '1234' },
+        { studentCode: 'SOME_CODE', programCode: '1234' },
+      ]);
+    });
+  });
+
   describe('column count validation', () => {
     it('should reject a row with 3 columns', () => {
       const csv = '12345678,1234,extra';

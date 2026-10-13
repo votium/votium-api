@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { parse } from 'csv-parse/sync';
 import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exception';
+import { ELECTORAL_ROLL_GUIDANCE_ROW_PREFIX } from '../../application/electoral-roll-csv-template';
 import {
   type ElectoralRollCsvParserPort,
   type ElectoralRollCsvRow,
@@ -25,12 +26,24 @@ export class ElectoralRollCsvFileParserService implements ElectoralRollCsvParser
 
     const rows: ElectoralRollCsvRow[] = [];
 
+    // Structural rows are skipped deterministically while still leading:
+    //   - the optional header: the first record, with a non-empty non-numeric first cell;
+    //   - the guidance row: any leading record whose first cell carries the guidance marker.
+    // Data rows never carry the marker and are therefore never skipped.
+    let dataStarted = false;
+
     for (const [index, record] of records.entries()) {
       const cells = record.map((cell) => cell.trim());
 
-      if (index === 0 && looksLikeHeader(cells)) {
+      if (!dataStarted && index === 0 && looksLikeHeader(cells)) {
         continue;
       }
+
+      if (!dataStarted && looksLikeGuidanceRow(cells)) {
+        continue;
+      }
+
+      dataStarted = true;
 
       if (cells.length !== 2) {
         throw new BadRequestException('Each CSV row must contain exactly two columns.');
@@ -61,7 +74,13 @@ export class ElectoralRollCsvFileParserService implements ElectoralRollCsvParser
   }
 }
 
+// The optional header row: the first cell is non-empty and non-numeric.
 function looksLikeHeader(cells: string[]): boolean {
   const studentCodeCell = cells[0] ?? '';
   return studentCodeCell !== '' && !/^\d+$/.test(studentCodeCell);
+}
+
+// The template's guidance row: its first cell is marked with the guidance prefix.
+function looksLikeGuidanceRow(cells: string[]): boolean {
+  return (cells[0] ?? '').startsWith(ELECTORAL_ROLL_GUIDANCE_ROW_PREFIX);
 }
