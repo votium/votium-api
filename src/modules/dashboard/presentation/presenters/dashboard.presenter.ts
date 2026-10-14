@@ -26,6 +26,7 @@ export class DashboardPresenter {
     return results.map(
       (result) =>
         new UpcomingElectionResponseDto({
+          id: result.id,
           name: result.name,
           startDate: result.startDate.toISOString(),
           timeUntilStart: result.timeUntilStart,
