@@ -2,6 +2,7 @@ import { ElectionEntity } from 'src/modules/elections/domain/entities/election.e
 import type { DashboardRepository } from '../../domain/repositories/dashboard.repository.interface';
 
 export interface UpcomingElectionResult {
+  id: string;
   name: string;
   startDate: Date;
   timeUntilStart: string;
@@ -25,6 +26,7 @@ export class GetUpcomingElectionsUseCase {
       const startInstant = ElectionEntity.toInstant(row.startDate, row.startTime);
 
       return {
+        id: row.id,
         name: row.name,
         startDate: new Date(startInstant),
         timeUntilStart: formatTimeUntilStart(startInstant - now.getTime()),
