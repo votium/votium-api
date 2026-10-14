@@ -23,7 +23,7 @@ describe('GetUserUseCase', () => {
         lastName: 'Doe',
         email: 'john@example.com',
         passwordHash: 'hash',
-        roleName: RoleName.ADMINISTRADOR,
+        role: RoleName.ADMINISTRATOR,
         roleId: 'role-1',
         status: UserStatus.ACTIVE,
         createdAt: new Date('2026-01-01T00:00:00Z'),

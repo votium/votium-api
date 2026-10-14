@@ -25,7 +25,9 @@ import { NodeCryptoPasswordHasherService } from './infrastructure/services/node-
 import { PrismaAuditLogService } from './infrastructure/services/prisma-audit-log.service';
 import { GetUsersUseCase } from './application/use-cases/get-users.use-case';
 import { GetUserUseCase } from './application/use-cases/get-user.use-case';
-import { DisableUserUseCase } from './application/use-cases/disable-user.use-case';
+import { ActivateUserUseCase } from './application/use-cases/activate-user.use-case';
+import { DeactivateUserUseCase } from './application/use-cases/deactivate-user.use-case';
+import { DeleteUserUseCase } from './application/use-cases/delete-user.use-case';
 
 @Module({
   imports: [forwardRef(() => AuthModule)],
@@ -63,16 +65,30 @@ import { DisableUserUseCase } from './application/use-cases/disable-user.use-cas
       inject: [USER_REPOSITORY],
     },
     {
-      provide: DisableUserUseCase,
+      provide: ActivateUserUseCase,
       useFactory: (users: UserRepository, audit: AuditLogPort) =>
-        new DisableUserUseCase(users, audit),
+        new ActivateUserUseCase(users, audit),
+      inject: [USER_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: DeactivateUserUseCase,
+      useFactory: (users: UserRepository, audit: AuditLogPort) =>
+        new DeactivateUserUseCase(users, audit),
+      inject: [USER_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: DeleteUserUseCase,
+      useFactory: (users: UserRepository, audit: AuditLogPort) =>
+        new DeleteUserUseCase(users, audit),
       inject: [USER_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
   exports: [
     EnsureDefaultRolesUseCase,
+    PrismaService,
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     { provide: PASSWORD_HASHER_PORT, useClass: NodeCryptoPasswordHasherService },
+    { provide: AUDIT_LOG_PORT, useClass: PrismaAuditLogService },
     { provide: IAM_GATEWAY, useClass: PrismaIamGateway },
   ],
 })

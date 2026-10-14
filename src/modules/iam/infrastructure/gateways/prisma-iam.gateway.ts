@@ -24,6 +24,7 @@ export class PrismaIamGateway implements IamGateway {
 
     if (!row) return null;
     if (row.status === 'DISABLED') return null;
+    if (row.deleted_at !== null) return null;
 
     const valid = await this.hasher.verify(password, row.password_hash);
     if (!valid) return null;
