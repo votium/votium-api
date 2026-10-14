@@ -36,6 +36,9 @@ export class ListElectionsQueryDto {
     description: 'Lifecycle status filter. Optional; when omitted, no status filter is applied.',
   })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
   @IsIn(ELECTION_STATUSES)
   status?: ElectionStatus;
 
