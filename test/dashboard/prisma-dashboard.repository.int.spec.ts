@@ -1,6 +1,7 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
 import { PrismaDashboardRepository } from '../../src/modules/dashboard/infrastructure/repositories/prisma-dashboard.repository';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 describe('PrismaDashboardRepository integration', () => {
   let prisma: PrismaService;
@@ -58,6 +59,7 @@ describe('PrismaDashboardRepository integration', () => {
   ): Promise<{ id: string; name: string; status: ElectionStatus }> {
     const created = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name: over.name ?? unique('EL'),
         description: 'Integration test election.',
         start_date: over.startDate ?? new Date(Date.UTC(2099, 0, 1)),

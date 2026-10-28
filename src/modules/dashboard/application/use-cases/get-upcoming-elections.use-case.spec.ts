@@ -116,5 +116,6 @@ describe('GetUpcomingElectionsUseCase', () => {
     const results = await new GetUpcomingElectionsUseCase(dashboard).execute({ days: 30 });
 
     expect(results.map((r) => r.name)).toEqual(['First', 'Second', 'Third']);
+    expect(results.map((r) => r.id)).toEqual(['election-1', 'election-2', 'election-3']);
   });
 });

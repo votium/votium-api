@@ -30,7 +30,10 @@ export class CreateElectionUseCase {
 
     assertElectionInterval(startDate, startTime, endDate, endTime);
 
+    const electionCode = await this.elections.nextElectionCode(new Date());
+
     const entity = ElectionEntity.create({
+      electionCode,
       name: input.name,
       description: input.description,
       startDate,

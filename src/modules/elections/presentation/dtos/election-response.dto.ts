@@ -5,6 +5,9 @@ export class ElectionResponseDto {
   @ApiProperty({ example: 'uuid' })
   id!: string;
 
+  @ApiProperty({ example: 'ELECTION-102026-0001' })
+  electionCode!: string;
+
   @ApiProperty({ example: 'Student Council Election' })
   name!: string;
 

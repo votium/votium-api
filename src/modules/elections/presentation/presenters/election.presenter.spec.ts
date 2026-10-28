@@ -5,6 +5,7 @@ import { ElectionPresenter } from './election.presenter';
 describe('ElectionPresenter', () => {
   const entity = ElectionEntity.restore({
     id: 'election-1',
+    electionCode: 'ELECTION-102026-0001',
     name: 'Student Council Election 2026',
     description: 'Election for the 2026 student council.',
     startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -44,6 +45,7 @@ describe('ElectionPresenter', () => {
     expect(Object.keys(dto).sort()).toEqual(
       [
         'id',
+        'electionCode',
         'name',
         'description',
         'startDate',
@@ -124,6 +126,7 @@ describe('ElectionPresenter', () => {
       expect(Object.keys(detail).sort()).toEqual(
         [
           'id',
+          'electionCode',
           'name',
           'description',
           'startDate',

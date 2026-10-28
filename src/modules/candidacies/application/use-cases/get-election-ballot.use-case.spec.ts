@@ -48,6 +48,7 @@ function buildCandidacy(overrides: Partial<CandidacyWithCandidate> = {}): Candid
 
 describe('GetElectionBallotUseCase', () => {
   const elections: jest.Mocked<ElectionRepository> = {
+    nextElectionCode: jest.fn(),
     findAll: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),

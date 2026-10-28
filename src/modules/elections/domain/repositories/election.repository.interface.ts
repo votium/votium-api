@@ -38,6 +38,12 @@ export interface ElectionStatusHistoryEntry {
 }
 
 export interface ElectionRepository {
+  // Atomically reserves the next sequence for the election's UTC MMYYYY period and
+  // returns the formatted ELECTION-MMYYYY-XXXX code. Throws ElectionCodeExhaustedError
+  // when the period has already reached 9999. Gaps caused by later persistence failures
+  // are acceptable.
+  nextElectionCode(now?: Date): Promise<string>;
+
   // Returns a paginated list of elections matching the optional filters, with a
   // count of the total matches (used for pagination metadata). Filters combine with
   // AND. `active` is schedule-based: the election has started (start date+time <=

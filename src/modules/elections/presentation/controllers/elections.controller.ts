@@ -136,7 +136,11 @@ export class ElectionsController {
   @ApiResponse({ status: 400, description: 'Invalid request data.' })
   @ApiResponse({ status: 401, description: 'Authentication is required.' })
   @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
-  @ApiResponse({ status: 409, description: 'Election name conflict.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Election name conflict, election code conflict, or no election codes available for the current period.',
+  })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
   async create(@Body() dto: CreateElectionDto, @Req() req: AuthenticatedRequest) {
