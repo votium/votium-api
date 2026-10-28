@@ -1,5 +1,6 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { PrismaElectoralRollRepository } from '../../src/modules/elections/infrastructure/repositories/prisma-electoral-roll.repository';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 describe('PrismaElectoralRollRepository integration', () => {
   let prisma: PrismaService;
@@ -34,6 +35,7 @@ describe('PrismaElectoralRollRepository integration', () => {
   async function seedElection(): Promise<string> {
     const created = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name: `ROLL-INT-${suffix}-${Math.random()}`,
         description: 'Integration test election.',
         start_date: new Date(Date.UTC(2026, 9, 1)),

@@ -1,5 +1,6 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { PrismaVoteRepository } from '../../src/modules/voting/infrastructure/repositories/prisma-vote.repository';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 describe('PrismaVoteRepository integration', () => {
   let prisma: PrismaService;
@@ -41,6 +42,7 @@ describe('PrismaVoteRepository integration', () => {
   async function seedElection(status: 'ACTIVE' | 'CANCELLED' = 'ACTIVE'): Promise<string> {
     const created = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name: `VOTE-INT-${suffix}-${Math.random()}`,
         description: 'Integration test election.',
         start_date: new Date(Date.UTC(2026, 9, 1)),

@@ -1,4 +1,5 @@
 import { ElectionStatusTransitionError } from '../errors/election-status-transition.error';
+import { ElectionCodeVO } from '../value-objects/election-code.vo';
 
 export const ELECTION_STATUSES = [
   'PENDING',
@@ -30,6 +31,7 @@ export const ELECTION_TRANSITIONS: Readonly<Record<ElectionStatus, readonly Elec
 };
 
 export interface CreateElectionInput {
+  electionCode: string;
   name: string;
   description: string;
   startDate: Date;
@@ -41,6 +43,7 @@ export interface CreateElectionInput {
 
 export interface RestoreElectionInput {
   id: string;
+  electionCode: string;
   name: string;
   description: string;
   startDate: Date;
@@ -71,6 +74,7 @@ export class ElectionEntity {
 
   private constructor(
     public readonly id: string | null,
+    public readonly electionCode: string,
     public name: string,
     public description: string,
     public startDate: Date,
@@ -124,6 +128,7 @@ export class ElectionEntity {
   static create(input: CreateElectionInput): ElectionEntity {
     return new ElectionEntity(
       null,
+      ElectionCodeVO.from(input.electionCode).value,
       input.name.trim(),
       input.description.trim(),
       input.startDate,
@@ -139,6 +144,7 @@ export class ElectionEntity {
   static restore(input: RestoreElectionInput): ElectionEntity {
     return new ElectionEntity(
       input.id,
+      input.electionCode,
       input.name,
       input.description,
       input.startDate,

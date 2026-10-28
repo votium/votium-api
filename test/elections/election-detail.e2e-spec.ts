@@ -16,9 +16,11 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import { extractAuthCookie } from '../auth/auth-cookie.utils';
+import { nextTestElectionCode } from './election-code.utils';
 
 interface ElectionDetailResponseBody {
   id: string;
+  electionCode: string;
   name: string;
   description: string;
   startDate: string;
@@ -134,6 +136,7 @@ describe('Election detail (e2e)', () => {
     const name = `E2E-DETAIL-${suffix}-${electionCounter++}`;
     const created = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name,
         description: 'E2E election detail test.',
         start_date: over.startDate ?? addDays(today, -1),
@@ -323,6 +326,7 @@ describe('Election detail (e2e)', () => {
       const body = toDetailBody(res);
 
       expect(body.id).toBe(electionId);
+      expect(body.electionCode).toMatch(/^ELECTION-\d{6}-\d{4}$/);
       expect(typeof body.name).toBe('string');
       expect(typeof body.description).toBe('string');
       expect(typeof body.startDate).toBe('string');
@@ -339,6 +343,7 @@ describe('Election detail (e2e)', () => {
       expect(Object.keys(body).sort()).toEqual(
         [
           'id',
+          'electionCode',
           'name',
           'description',
           'startDate',

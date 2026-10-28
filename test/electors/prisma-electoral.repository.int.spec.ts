@@ -2,6 +2,7 @@ import { PrismaService } from '../../src/shared/database/prisma.service';
 import { ElectorEntity } from '../../src/modules/electors/domain/entities/elector.entity';
 import { ElectorDuplicateError } from '../../src/modules/electors/domain/errors/elector-duplicate.error';
 import { PrismaElectorRepository } from '../../src/modules/electors/infrastructure/repositories/prisma-elector.repository';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 describe('PrismaElectorRepository integration', () => {
   let prisma: PrismaService;
@@ -340,6 +341,7 @@ describe('PrismaElectorRepository integration', () => {
 
       const election = await prisma.election.create({
         data: {
+          electionCode: await nextTestElectionCode(prisma),
           name: `Election ${code}`,
           description: 'Integration test election',
           start_date: new Date('2026-09-01T00:00:00.000Z'),
@@ -1261,6 +1263,7 @@ describe('PrismaElectorRepository integration', () => {
       const elector = await repository.create(buildEntity(code, email));
       const election = await prisma.election.create({
         data: {
+          electionCode: await nextTestElectionCode(prisma),
           name: `Election ${code}`,
           description: 'Integration test election',
           start_date: new Date('2026-09-01T00:00:00.000Z'),
@@ -1277,6 +1280,7 @@ describe('PrismaElectorRepository integration', () => {
       const { elector, election } = await seedElectronWithRoll(code, `part-${suffix}@example.com`);
       const election2 = await prisma.election.create({
         data: {
+          electionCode: await nextTestElectionCode(prisma),
           name: `Election Two ${code}`,
           description: 'Integration test election 2',
           start_date: new Date('2026-09-01T00:00:00.000Z'),

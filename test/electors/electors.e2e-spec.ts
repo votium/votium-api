@@ -16,6 +16,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -891,6 +892,7 @@ describe('Electors import (e2e)', () => {
       const elector = await seedElector();
       const election1 = await prisma.election.create({
         data: {
+          electionCode: await nextTestElectionCode(prisma),
           name: `E2E-DETAIL-ELECTION-1-${suffix}`,
           description: 'Detail election participation test 1.',
           start_date: new Date(Date.UTC(2026, 9, 1)),
@@ -904,6 +906,7 @@ describe('Electors import (e2e)', () => {
 
       const election2 = await prisma.election.create({
         data: {
+          electionCode: await nextTestElectionCode(prisma),
           name: `E2E-DETAIL-ELECTION-2-${suffix}`,
           description: 'Detail election participation test 2.',
           start_date: new Date(Date.UTC(2026, 9, 2)),

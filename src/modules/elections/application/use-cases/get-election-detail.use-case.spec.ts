@@ -52,6 +52,7 @@ function buildStatusHistoryEntry(
 
 describe('GetElectionDetailUseCase', () => {
   const elections: jest.Mocked<ElectionRepository> = {
+    nextElectionCode: jest.fn(),
     findAll: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),

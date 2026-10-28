@@ -13,6 +13,7 @@ import { DashboardPresenter } from './dashboard.presenter';
 describe('DashboardPresenter', () => {
   it('PR-01: serializes an upcoming election start date to ISO-8601 and passes the rest through', () => {
     const result: UpcomingElectionResult = {
+      id: '550e8400-e29b-41d4-a716-446655440000',
       name: 'Student Council Election 2026',
       startDate: new Date('2026-10-15T08:00:00.000Z'),
       timeUntilStart: '12d 23h 5m',
@@ -23,6 +24,7 @@ describe('DashboardPresenter', () => {
 
     expect(dto).toBeInstanceOf(UpcomingElectionResponseDto);
     expect(dto).toEqual({
+      id: '550e8400-e29b-41d4-a716-446655440000',
       name: 'Student Council Election 2026',
       startDate: '2026-10-15T08:00:00.000Z',
       timeUntilStart: '12d 23h 5m',

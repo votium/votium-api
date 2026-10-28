@@ -1,6 +1,7 @@
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { ElectorEntity } from '../../src/modules/electors/domain/entities/elector.entity';
 import { PrismaElectorRepository } from '../../src/modules/electors/infrastructure/repositories/prisma-elector.repository';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 describe('PrismaElectorRepository integration - findByStudentCodeAndProgramCode', () => {
   let prisma: PrismaService;
@@ -180,6 +181,7 @@ describe('PrismaElectorRepository integration - findByElection', () => {
   async function seedElection(): Promise<string> {
     const created = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name: `INT-ROLL-${suffix}-${usedElectionIds.length}`,
         description: 'Integration findByElection election.',
         start_date: new Date(Date.UTC(2026, 9, 1)),

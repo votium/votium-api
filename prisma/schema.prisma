@@ -85,6 +85,7 @@ model AuditLog {
 
 model Election {
   id                 String         @id @default(uuid())
+  electionCode       String         @unique @map("election_code") @db.VarChar(20)
   name               String
   description        String
   start_date         DateTime       @db.Date()
@@ -106,6 +107,13 @@ model Election {
 
   @@unique([name])
   @@map("elections")
+}
+
+model ElectionCodeCounter {
+  period    String @id @db.Char(6)
+  lastValue Int    @map("last_value")
+
+  @@map("election_code_counters")
 }
 
 model ElectionStatusHistory {

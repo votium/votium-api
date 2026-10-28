@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../../../../generated/prisma/client';
 import { PrismaService } from 'src/shared/database/prisma.service';
 import { ElectionEntity, type ElectionStatus } from '../../domain/entities/election.entity';
+import { ElectionCodeConflictError } from '../../domain/errors/election-code-conflict.error';
+import { ElectionCodeExhaustedError } from '../../domain/errors/election-code-exhausted.error';
 import { ElectionNameConflictError } from '../../domain/errors/election-name-conflict.error';
 import { ElectionNotFoundError } from '../../domain/errors/election-not-found.error';
 import {
@@ -10,11 +12,31 @@ import {
   type ElectionRepository,
   type ElectionStatusHistoryEntry,
 } from '../../domain/repositories/election.repository.interface';
+import { ElectionCodeVO } from '../../domain/value-objects/election-code.vo';
 import { PrismaElectionMapper } from '../mappers/prisma-election.mapper';
 
 @Injectable()
 export class PrismaElectionRepository implements ElectionRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  async nextElectionCode(now: Date = new Date()): Promise<string> {
+    const period = ElectionCodeVO.periodFor(now);
+
+    const rows = await this.prisma.$queryRaw<Array<{ last_value: number }>>`
+      INSERT INTO "election_code_counters" ("period", "last_value")
+      VALUES (${period}, 1)
+      ON CONFLICT ("period") DO UPDATE
+        SET "last_value" = "election_code_counters"."last_value" + 1
+        WHERE "election_code_counters"."last_value" < 9999
+      RETURNING "last_value"
+    `;
+
+    if (rows.length === 0) {
+      throw new ElectionCodeExhaustedError(period);
+    }
+
+    return ElectionCodeVO.generate(period, rows[0].last_value).value;
+  }
 
   async findAll(params: ElectionListParams): Promise<ElectionListResult> {
     const skip = (params.page - 1) * params.limit;
@@ -48,9 +70,7 @@ export class PrismaElectionRepository implements ElectionRepository {
       });
       return PrismaElectionMapper.toDomain(row);
     } catch (error) {
-      if (isUniqueConstraintError(error)) {
-        throw new ElectionNameConflictError();
-      }
+      throwUniqueConstraint(error);
       throw error;
     }
   }
@@ -82,7 +102,7 @@ export class PrismaElectionRepository implements ElectionRepository {
       return PrismaElectionMapper.toDomain(row);
     } catch (error) {
       if (isRecordNotFoundError(error)) throw new ElectionNotFoundError(entity.id as string);
-      if (isUniqueConstraintError(error)) throw new ElectionNameConflictError();
+      throwUniqueConstraint(error);
       throw error;
     }
   }
@@ -230,6 +250,46 @@ function isUniqueConstraintError(error: unknown): boolean {
     'code' in error &&
     (error as { code?: unknown }).code === 'P2002'
   );
+}
+
+// Distinguish the two unique constraints on elections. Prisma reports the target
+// differently depending on the driver: the classic client exposes `meta.target`, while
+// the pg driver adapter nests the violated fields under
+// `meta.driverAdapterError.cause.constraint.fields`. Accept both forms.
+function uniqueConstraintTargets(error: unknown): string[] {
+  const meta = (error as { meta?: Record<string, unknown> }).meta;
+  if (!meta) return [];
+
+  const targets: string[] = [];
+  const direct = meta.target;
+  if (Array.isArray(direct)) {
+    targets.push(...direct.map(String));
+  } else if (typeof direct === 'string') {
+    targets.push(direct);
+  }
+
+  const adapterError = meta.driverAdapterError as
+    | { cause?: { constraint?: { fields?: unknown } } }
+    | undefined;
+  const fields = adapterError?.cause?.constraint?.fields;
+  if (Array.isArray(fields)) {
+    targets.push(...fields.filter((field): field is string => typeof field === 'string'));
+  }
+
+  return targets;
+}
+
+function throwUniqueConstraint(error: unknown): void {
+  if (!isUniqueConstraintError(error)) return;
+
+  const targets = uniqueConstraintTargets(error);
+
+  if (targets.some((name) => name.includes('election_code'))) {
+    throw new ElectionCodeConflictError();
+  }
+  if (targets.some((name) => name === 'name' || name.includes('elections_name_key'))) {
+    throw new ElectionNameConflictError();
+  }
 }
 
 // Schedule-based "active" window (UTC): start_instant <= now <= end_instant.
