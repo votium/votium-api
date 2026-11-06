@@ -32,15 +32,15 @@ model Role {
 }
 
 model User {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   first_name    String
   last_name     String
-  email         String   @unique
+  email         String    @unique
   password_hash String
   role_id       String
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-  status        String   @default("ACTIVE")
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  status        String    @default("ACTIVE")
   deleted_at    DateTime?
 
   role          Role                    @relation(fields: [role_id], references: [id])
@@ -96,14 +96,18 @@ model Election {
   blank_vote_enabled Boolean        @default(false)
   created_at         DateTime       @default(now())
 
-  reports        Report[]
-  notifications  Notification[]
-  candidacies    Candiday[]
-  results        Result[]
-  electoralRolls ElectoralRoll[]
-  certificates   Certificate[]
-  statusHistory  ElectionStatusHistory[]
-  voteMetadata   VoteMetadata[]
+  reports              Report[]
+  notifications        Notification[]
+  candidacies          Candiday[]
+  results              Result[]
+  electoralRolls       ElectoralRoll[]
+  certificates         Certificate[]
+  statusHistory        ElectionStatusHistory[]
+  voteMetadata         VoteMetadata[]
+  anonymousElectionKey AnonymousElectionKey?
+  anonymousCredentials AnonymousCredential[]
+  anonymousCommitments AnonymousCommitment[]
+  anonymousVotes       AnonymousVote[]
 
   @@unique([name])
   @@map("elections")
@@ -169,12 +173,12 @@ model Report {
 }
 
 model Candidate {
-  id                       String   @id @default(uuid())
+  id                       String    @id @default(uuid())
   first_name               String
   last_name                String
-  student_code             String   @unique
+  student_code             String    @unique
   program_code             String
-  identification_number    String   @unique
+  identification_number    String    @unique
   status                   String
   companion_first_name     String?
   companion_last_name      String?
@@ -183,7 +187,7 @@ model Candidate {
   companion_identification String?
   email                    String?
   phone                    String?
-  created_at               DateTime @default(now())
+  created_at               DateTime  @default(now())
   deleted_at               DateTime?
 
   candidays Candiday[]
@@ -236,8 +240,9 @@ model Elector {
   updated_at     DateTime  @updatedAt
   deleted_at     DateTime?
 
-  electoralRolls ElectoralRoll[]
-  mfaChallenges  ElectorMfaChallenge[]
+  electoralRolls       ElectoralRoll[]
+  mfaChallenges        ElectorMfaChallenge[]
+  anonymousCredentials AnonymousCredential[]
 
   @@map("electors")
 }
@@ -290,4 +295,65 @@ model Certificate {
   election      Election      @relation(fields: [election_id], references: [id])
 
   @@map("certificates")
+}
+
+// ---------------------------------------------------------------------------
+// Anonymous voting (blind signature + Schnorr proof). Additive tables only.
+// Deliberately no foreign key links a credential to a vote, and no table joins
+// anonymous_credentials with anonymous_votes. See specs/anonymous-voting-spec.md.
+// ---------------------------------------------------------------------------
+
+// One RSA key pair per election. The private key is AES-256-GCM encrypted (base64 iv||tag||ciphertext).
+model AnonymousElectionKey {
+  election_id     String   @id
+  public_key_pem  String   @db.Text
+  private_key_enc String   @db.Text
+  created_at      DateTime @default(now())
+
+  election Election @relation(fields: [election_id], references: [id])
+
+  @@map("anonymous_election_keys")
+}
+
+// An elector obtained a blind-signed credential for an election. Holds no ballot identifier.
+model AnonymousCredential {
+  id          String   @id @default(uuid())
+  election_id String
+  elector_id  String
+  issued_at   DateTime @default(now())
+
+  election Election @relation(fields: [election_id], references: [id])
+  elector  Elector  @relation(fields: [elector_id], references: [id])
+
+  @@unique([election_id, elector_id])
+  @@map("anonymous_credentials")
+}
+
+// Registered Schnorr public keys y. No foreign key to electors: a row cannot be joined to a person.
+model AnonymousCommitment {
+  id          String   @id @default(uuid())
+  election_id String
+  y           String   @db.VarChar(64)
+  created_at  DateTime @default(now())
+
+  election Election @relation(fields: [election_id], references: [id])
+
+  @@unique([election_id, y])
+  @@map("anonymous_commitments")
+}
+
+// Anonymous ballot ledger. payload holds the JSON record of the vote, with no identity data.
+// candidacy_id NULL means a blank vote.
+model AnonymousVote {
+  id           String   @id @default(uuid())
+  election_id  String
+  ballot_id    String   @unique @db.VarChar(36)
+  candidacy_id String?
+  payload      Json     @db.Json
+  created_at   DateTime @default(now())
+
+  election Election @relation(fields: [election_id], references: [id])
+
+  @@index([election_id, candidacy_id])
+  @@map("anonymous_votes")
 }

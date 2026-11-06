@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync } from 'fs';
+import { randomBytes } from 'crypto';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import 'dotenv/config';
 
 process.env.PORT = process.env.PORT ?? '3000';
@@ -18,3 +22,12 @@ process.env.CORS_ORIGINS = process.env.CORS_ORIGINS ?? 'http://localhost:5173';
 // Keep the automatic-closure cron inert during unit/integration/e2e runs so it can
 // never mutate fixtures mid-test; the e2e drives closure explicitly via DI.
 process.env.ELECTION_AUTO_CLOSE_ENABLED = process.env.ELECTION_AUTO_CLOSE_ENABLED ?? 'false';
+
+// Per-run election-key file in a temp directory (never committed). Used only when the environment
+// does not already point at a key file.
+if (!process.env.ELECTION_KEY_ENCRYPTION_KEY_FILE) {
+  const keyDir = mkdtempSync(join(tmpdir(), 'votium-test-key-'));
+  const keyFile = join(keyDir, 'election_key_enc');
+  writeFileSync(keyFile, randomBytes(32).toString('base64'));
+  process.env.ELECTION_KEY_ENCRYPTION_KEY_FILE = keyFile;
+}

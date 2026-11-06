@@ -64,6 +64,15 @@ const DOMAIN_CODE_TO_HTTP: Record<string, HttpStatus> = {
   ELECTION_NO_VALID_CANDIDATES: HttpStatus.CONFLICT,
   ELECTION_NOT_ACTIVE: HttpStatus.CONFLICT,
   BLANK_VOTE_DISABLED: HttpStatus.CONFLICT,
+  BALLOT_CREDENTIAL_ALREADY_ISSUED: HttpStatus.CONFLICT,
+  COMMITMENT_ALREADY_REGISTERED: HttpStatus.CONFLICT,
+  BALLOT_ALREADY_USED: HttpStatus.CONFLICT,
+  BALLOT_RECEIPT_NOT_FOUND: HttpStatus.NOT_FOUND,
+  RESULTS_NOT_AVAILABLE: HttpStatus.CONFLICT,
+  NOT_ELIGIBLE: HttpStatus.FORBIDDEN,
+  INVALID_PROOF: HttpStatus.UNPROCESSABLE_ENTITY,
+  INVALID_SIGNATURE: HttpStatus.UNPROCESSABLE_ENTITY,
+  INVALID_BLINDED_MESSAGE: HttpStatus.UNPROCESSABLE_ENTITY,
   VOTE_ALREADY_REGISTERED: HttpStatus.CONFLICT,
   IDEMPOTENCY_KEY_CONFLICT: HttpStatus.CONFLICT,
   INTERNAL_SERVER_ERROR: HttpStatus.INTERNAL_SERVER_ERROR,
@@ -89,7 +98,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (statusCode >= 500) {
       this.logger.error(exception);
     } else {
-      this.logger.warn(`${request.method} ${request.originalUrl} -> ${statusCode} ${message}`);
+      // Log the route template, never the concrete URL: the receipt route carries a ballotId in its
+      // path, and ballot identifiers must not reach application logs.
+      const routeInfo: { path?: unknown } | undefined = (request as { route?: { path?: unknown } })
+        .route;
+      const loggedPath =
+        typeof routeInfo?.path === 'string'
+          ? `${request.baseUrl ?? ''}${routeInfo.path}`
+          : request.path;
+      this.logger.warn(`${request.method} ${loggedPath} -> ${statusCode} ${message}`);
     }
 
     response.status(statusCode).json(errorResponse);
