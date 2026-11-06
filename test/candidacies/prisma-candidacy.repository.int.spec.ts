@@ -2,6 +2,7 @@ import { PrismaService } from '../../src/shared/database/prisma.service';
 import { CandidacyEntity } from '../../src/modules/candidacies/domain/entities/candidacy.entity';
 import { CandidacyDuplicateError } from '../../src/modules/candidacies/domain/errors/candidacy-duplicate.error';
 import { PrismaCandidacyRepository } from '../../src/modules/candidacies/infrastructure/repositories/prisma-candidacy.repository';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 describe('PrismaCandidacyRepository integration', () => {
   let prisma: PrismaService;
@@ -35,6 +36,7 @@ describe('PrismaCandidacyRepository integration', () => {
   async function seedElection(name?: string): Promise<string> {
     const row = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name: name ?? `INT-CAND-${suffix}-${Math.random()}`,
         description: 'Integration test election.',
         start_date: new Date(Date.UTC(2026, 9, 1)),

@@ -3,6 +3,7 @@ import { ElectionEntity, type ElectionStatus } from '../../domain/entities/elect
 
 export type PrismaElectionRow = {
   id: string;
+  electionCode: string;
   name: string;
   description: string;
   start_date: Date;
@@ -18,6 +19,7 @@ export class PrismaElectionMapper {
   static toDomain(row: PrismaElectionRow): ElectionEntity {
     return ElectionEntity.restore({
       id: row.id,
+      electionCode: row.electionCode,
       name: row.name,
       description: row.description,
       startDate: row.start_date,
@@ -32,6 +34,7 @@ export class PrismaElectionMapper {
 
   static toPersistence(entity: ElectionEntity): Prisma.ElectionUncheckedCreateInput {
     return {
+      electionCode: entity.electionCode,
       name: entity.name,
       description: entity.description,
       start_date: entity.startDate,
@@ -45,8 +48,9 @@ export class PrismaElectionMapper {
     };
   }
 
-  // Maps ONLY the editable columns. `id`, `current_status`, and `created_at` are
-  // intentionally omitted so they can never be overwritten by an update operation.
+  // Maps ONLY the editable columns. `id`, `election_code`, `current_status`, and
+  // `created_at` are intentionally omitted so they can never be overwritten by an
+  // update operation.
   static toUpdateData(entity: ElectionEntity): Prisma.ElectionUpdateInput {
     return {
       name: entity.name,

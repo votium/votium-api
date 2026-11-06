@@ -17,6 +17,7 @@ import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.v
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
 import { extractAuthCookie } from '../auth/auth-cookie.utils';
+import { nextTestElectionCode } from './election-code.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -184,6 +185,23 @@ describe('Elections creation (e2e)', () => {
         currentStatus: 'PENDING',
         blankVoteEnabled: false,
       });
+      expect((res.body as { electionCode: string }).electionCode).toMatch(/^ELECTION-\d{6}-\d{4}$/);
+    });
+
+    it('E3a: two consecutive creations share the current period and differ', async () => {
+      const first = `CONSEC-A-${suffix}`;
+      const second = `CONSEC-B-${suffix}`;
+      usedNames.push(first, second);
+
+      const firstRes = await createElection(validElection(first), adminToken).expect(201);
+      const secondRes = await createElection(validElection(second), adminToken).expect(201);
+      const firstCode = (firstRes.body as { electionCode: string }).electionCode;
+      const secondCode = (secondRes.body as { electionCode: string }).electionCode;
+
+      expect(firstCode).toMatch(/^ELECTION-\d{6}-\d{4}$/);
+      expect(secondCode).toMatch(/^ELECTION-\d{6}-\d{4}$/);
+      expect(firstCode.slice(0, 15)).toBe(secondCode.slice(0, 15));
+      expect(firstCode).not.toBe(secondCode);
     });
 
     it('E2: the response represents the created election without extra fields', async () => {
@@ -197,6 +215,7 @@ describe('Elections creation (e2e)', () => {
       expect(Object.keys(body).sort()).toEqual(
         [
           'id',
+          'electionCode',
           'name',
           'description',
           'startDate',
@@ -222,6 +241,7 @@ describe('Elections creation (e2e)', () => {
       expect(row!.current_status).toBe('PENDING');
       expect(row!.blank_vote_enabled).toBe(false);
       expect(row!.created_at).toBeInstanceOf(Date);
+      expect(row!.electionCode).toBe(body.electionCode);
     });
 
     it('E4: rejects unauthenticated requests with 401', async () => {
@@ -322,6 +342,13 @@ describe('Elections creation (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 400 });
     });
 
+    it('E20: rejects a client-supplied electionCode with 400', async () => {
+      const payload: Record<string, unknown> = { ...validElection(`CODE-${suffix}`) };
+      payload.electionCode = 'ELECTION-102026-0001';
+      const res = await createElection(payload, adminToken).expect(400);
+      expect(res.body).toMatchObject({ statusCode: 400 });
+    });
+
     it('E18: rejects a duplicate election name with 409 and does not overwrite', async () => {
       const name = `DUP-${suffix}`;
       usedNames.push(name);
@@ -330,6 +357,37 @@ describe('Elections creation (e2e)', () => {
       expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_NAME_CONFLICT' });
       const rows = await prisma.election.findMany({ where: { name } });
       expect(rows).toHaveLength(1);
+    });
+
+    it('E21: returns 409 when the current period has exhausted its codes', async () => {
+      const now = new Date();
+      const period = `${String(now.getUTCMonth() + 1).padStart(2, '0')}${now.getUTCFullYear()}`;
+      const previous = await prisma.electionCodeCounter.findUnique({ where: { period } });
+
+      await prisma.electionCodeCounter.upsert({
+        where: { period },
+        update: { lastValue: 9999 },
+        create: { period, lastValue: 9999 },
+      });
+
+      try {
+        const res = await createElection(validElection(`EXHAUST-${suffix}`), adminToken).expect(
+          409,
+        );
+        expect(res.body).toMatchObject({
+          statusCode: 409,
+          error: 'ELECTION_CODE_EXHAUSTED',
+        });
+      } finally {
+        if (previous) {
+          await prisma.electionCodeCounter.update({
+            where: { period },
+            data: { lastValue: previous.lastValue },
+          });
+        } else {
+          await prisma.electionCodeCounter.deleteMany({ where: { period } });
+        }
+      }
     });
 
     it('E19: failed requests do not create unrelated records', async () => {
@@ -421,6 +479,7 @@ describe('Elections creation (e2e)', () => {
       expect(Object.keys(body).sort()).toEqual(
         [
           'id',
+          'electionCode',
           'name',
           'description',
           'startDate',
@@ -563,6 +622,22 @@ describe('Elections creation (e2e)', () => {
       expect(after!.current_status).toBe(before!.current_status);
       expect(after!.created_at.toISOString()).toBe(before!.created_at.toISOString());
     });
+
+    it('U-23: a successful edit does not alter electionCode', async () => {
+      const before = await prisma.election.findUnique({ where: { id: editableId } });
+      const res = await putElection(editableId, validUpdate(editableName), adminToken).expect(200);
+      const after = await prisma.election.findUnique({ where: { id: editableId } });
+      expect(after!.electionCode).toBe(before!.electionCode);
+      expect((res.body as { electionCode: string }).electionCode).toBe(before!.electionCode);
+    });
+
+    it('U-24: rejects a client-supplied electionCode with 400', async () => {
+      await putElection(
+        editableId,
+        { ...validUpdate(editableName), electionCode: 'ELECTION-102026-0001' },
+        adminToken,
+      ).expect(400);
+    });
   });
 
   describe('Swagger / OpenAPI', () => {
@@ -581,6 +656,9 @@ describe('Elections creation (e2e)', () => {
         (p) =>
           p.endsWith('/elections/{id}') && !p.includes('/start') && !p.includes('/candidacies'),
       );
+
+    const findCollectionPath = (document: ReturnType<typeof buildDocument>) =>
+      Object.keys(document.paths).find((p) => p.endsWith('/elections'));
 
     it('SW-01: the update operation is exposed as PUT and PATCH is removed', () => {
       const document = buildDocument();
@@ -627,7 +705,7 @@ describe('Elections creation (e2e)', () => {
         | { properties?: Record<string, unknown> }
         | undefined;
       expect(schema).toBeDefined();
-      for (const forbidden of ['id', 'currentStatus', 'createdAt']) {
+      for (const forbidden of ['id', 'currentStatus', 'createdAt', 'electionCode']) {
         expect(schema!.properties?.[forbidden]).toBeUndefined();
       }
     });
@@ -644,6 +722,36 @@ describe('Elections creation (e2e)', () => {
       for (const status of ['200', '400', '401', '403', '404', '409']) {
         expect(operation.responses[status]).toBeDefined();
       }
+    });
+
+    it('SW-06: POST documents 409 for code and name conflicts', () => {
+      const document = buildDocument();
+      const pathKey = findCollectionPath(document);
+      expect(pathKey).toBeDefined();
+      const operation = document.paths[pathKey!].post as unknown as SwaggerOperationShape;
+      expect(operation.responses['409']).toBeDefined();
+    });
+
+    it('SW-07: ElectionResponseDto documents electionCode as a string with an example', () => {
+      const document = buildDocument();
+      const schema = document.components?.schemas?.['ElectionResponseDto'] as
+        | { properties?: Record<string, { type?: string; example?: string }> }
+        | undefined;
+      expect(schema).toBeDefined();
+      expect(schema!.properties?.electionCode).toMatchObject({
+        type: 'string',
+        example: 'ELECTION-102026-0001',
+      });
+    });
+
+    it('SW-08: the dashboard upcoming schema does not expose electionCode', () => {
+      const document = buildDocument();
+      const schema = document.components?.schemas?.['UpcomingElectionResponseDto'] as
+        | { properties?: Record<string, unknown>; required?: string[] }
+        | undefined;
+      expect(schema).toBeDefined();
+      expect(schema!.properties?.electionCode).toBeUndefined();
+      expect(schema!.required ?? []).not.toContain('electionCode');
     });
   });
 
@@ -788,6 +896,7 @@ describe('Elections creation (e2e)', () => {
       usedNames.push(name);
       await prisma.election.create({
         data: {
+          electionCode: await nextTestElectionCode(prisma),
           name,
           description: 'E2E query seed.',
           start_date: addDays(today, -1),
@@ -823,6 +932,7 @@ describe('Elections creation (e2e)', () => {
         expect(Object.keys(item).sort()).toEqual(
           [
             'id',
+            'electionCode',
             'name',
             'description',
             'startDate',
@@ -834,6 +944,7 @@ describe('Elections creation (e2e)', () => {
             'createdAt',
           ].sort(),
         );
+        expect(item.electionCode).toMatch(/^ELECTION-\d{6}-\d{4}$/);
       }
     });
 

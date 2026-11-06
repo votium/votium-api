@@ -44,6 +44,7 @@ describe('DeleteCandidacyUseCase', () => {
 
   beforeEach(() => {
     elections = {
+      nextElectionCode: jest.fn(),
       findAll: jest.fn(),
       create: jest.fn(),
       findById: jest.fn(),

@@ -16,6 +16,7 @@ import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-stat
 import { CloseExpiredElectionsUseCase } from '../../src/modules/elections/application/use-cases/close-expired-elections.use-case';
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
 import { extractAuthCookie } from '../auth/auth-cookie.utils';
+import { nextTestElectionCode } from './election-code.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -92,6 +93,7 @@ describe('Automatic election closure (e2e)', () => {
     const name = `E2E-ACLOSE-${suffix}-${electionCounter++}`;
     const created = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name,
         description: 'E2E automatic closure election.',
         start_date: over.startDate ?? addDays(today, -1),

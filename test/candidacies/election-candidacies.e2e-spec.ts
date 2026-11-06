@@ -17,6 +17,7 @@ import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.v
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
 import { extractAuthCookie } from '../auth/auth-cookie.utils';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -100,6 +101,7 @@ describe('Election candidacies query (e2e)', () => {
   async function seedElection(status: ElectionStatus, name?: string): Promise<string> {
     const row = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name: name ?? `E2E-CQ-${suffix}-${Math.random()}`,
         description: 'E2E candidacy query seed.',
         start_date: new Date(Date.UTC(2026, 9, 1)),

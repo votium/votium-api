@@ -47,8 +47,15 @@ describe('PrismaElectionRepository integration - updateStatus', () => {
     await prisma.$disconnect();
   });
 
+  let electionCodeSequence = Math.floor(Math.random() * 9000) + 1;
+  function nextElectionCode(): string {
+    electionCodeSequence += 1;
+    return `ELECTION-122098-${String(electionCodeSequence).padStart(4, '0')}`;
+  }
+
   function buildElection(name: string): ElectionEntity {
     return ElectionEntity.create({
+      electionCode: nextElectionCode(),
       name,
       description: 'Integration test election.',
       startDate: new Date(Date.UTC(2026, 9, 1)),

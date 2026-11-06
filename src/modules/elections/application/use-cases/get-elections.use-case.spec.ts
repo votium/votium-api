@@ -24,6 +24,7 @@ function date(y: number, m: number, d: number): Date {
 
 describe('GetElectionsUseCase', () => {
   const elections: jest.Mocked<ElectionRepository> = {
+    nextElectionCode: jest.fn(),
     findAll: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),

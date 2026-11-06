@@ -3,6 +3,7 @@ import { ElectionStatusTransitionError } from '../errors/election-status-transit
 
 describe('ElectionEntity', () => {
   const baseInput = {
+    electionCode: 'ELECTION-102026-0001',
     name: 'Student Council Election 2026',
     description: 'Election for the 2026 student council.',
     startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -43,6 +44,15 @@ describe('ElectionEntity', () => {
       const entity = ElectionEntity.create({ ...baseInput, blankVoteEnabled: true });
       expect(entity.blankVoteEnabled).toBe(true);
     });
+
+    it('stores the provided electionCode', () => {
+      const entity = ElectionEntity.create(baseInput);
+      expect(entity.electionCode).toBe('ELECTION-102026-0001');
+    });
+
+    it('rejects an invalid electionCode', () => {
+      expect(() => ElectionEntity.create({ ...baseInput, electionCode: 'INVALID' })).toThrow();
+    });
   });
 
   describe('restore', () => {
@@ -56,6 +66,7 @@ describe('ElectionEntity', () => {
         createdAt,
       });
       expect(entity.id).toBe('election-1');
+      expect(entity.electionCode).toBe('ELECTION-102026-0001');
       expect(entity.createdAt).toBe(createdAt);
       expect(entity.name).toBe('Student Council Election 2026');
       expect(entity.currentStatus).toBe('CREATED');
@@ -65,6 +76,7 @@ describe('ElectionEntity', () => {
     it('preserves values without re-normalizing them', () => {
       const entity = ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: '  Election Name  ',
         description: '  Some description  ',
         startDate: baseInput.startDate,
@@ -77,6 +89,7 @@ describe('ElectionEntity', () => {
       });
       expect(entity.name).toBe('  Election Name  ');
       expect(entity.id).toBe('election-1');
+      expect(entity.electionCode).toBe('ELECTION-102026-0001');
     });
   });
 
@@ -86,6 +99,7 @@ describe('ElectionEntity', () => {
     ): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'Original Name',
         description: 'Original description',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -126,13 +140,15 @@ describe('ElectionEntity', () => {
       expect(e.endTime.getUTCHours()).toBe(18);
     });
 
-    it('never alters immutable fields (id, currentStatus, createdAt)', () => {
+    it('never alters immutable fields (id, electionCode, currentStatus, createdAt)', () => {
       const e = makeElection();
       const id = e.id;
+      const electionCode = e.electionCode;
       const status = e.currentStatus;
       const createdAt = e.createdAt;
       e.update({ name: 'Changed' });
       expect(e.id).toBe(id);
+      expect(e.electionCode).toBe(electionCode);
       expect(e.currentStatus).toBe(status);
       expect(e.createdAt).toBe(createdAt);
     });
@@ -142,6 +158,7 @@ describe('ElectionEntity', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -169,6 +186,7 @@ describe('ElectionEntity', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -196,6 +214,7 @@ describe('ElectionEntity', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -237,6 +256,7 @@ describe('ElectionEntity', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -278,6 +298,7 @@ describe('ElectionEntity', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -463,6 +484,7 @@ describe('ElectionEntity', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -487,6 +509,7 @@ describe('ElectionEntity', () => {
     function makeElection(currentStatus: string): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -514,6 +537,7 @@ describe('ElectionEntity', () => {
     ): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -582,6 +606,7 @@ describe('ElectionEntity', () => {
     ): ElectionEntity {
       return ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -629,6 +654,7 @@ describe('ElectionEntity', () => {
     it('TS11: exposes the status through the public getter after privatization', () => {
       const e = ElectionEntity.restore({
         id: 'election-1',
+        electionCode: 'ELECTION-102026-0001',
         name: 'n',
         description: 'd',
         startDate: new Date(Date.UTC(2026, 9, 1)),

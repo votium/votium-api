@@ -14,6 +14,7 @@ import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastru
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
 import { extractAuthCookie } from '../auth/auth-cookie.utils';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -99,6 +100,7 @@ describe('Dashboard endpoints (e2e)', () => {
   const seedElection = async (name: string, startAt: Date): Promise<string> => {
     const created = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name,
         description: 'E2E dashboard election.',
         start_date: new Date(
@@ -400,8 +402,9 @@ describe('Dashboard endpoints (e2e)', () => {
         (e) => e.name === row.name,
       );
       expect(upcoming).toBeTruthy();
+      expect(upcoming!.id).toBe(upcomingId);
       expect(Object.keys(upcoming as object).sort()).toEqual(
-        ['name', 'startDate', 'timeUntilStart', 'configurationPercentage'].sort(),
+        ['id', 'name', 'startDate', 'timeUntilStart', 'configurationPercentage'].sort(),
       );
     });
 

@@ -18,6 +18,7 @@ import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-stat
 import type { ElectionStatus } from '../../src/modules/elections/domain/entities/election.entity';
 import { envs } from '../../src/config';
 import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
 class FakeEmailService implements AsyncEmailServicePort {
   sent: Array<{ to: string; code: string }> = [];
@@ -127,6 +128,7 @@ describe('Election ballot retrieval (e2e)', () => {
   ): Promise<string> {
     const row = await prisma.election.create({
       data: {
+        electionCode: await nextTestElectionCode(prisma),
         name: overrides.name ?? `E2E-BT-${suffix}-${Math.random()}`,
         description: 'E2E ballot seed.',
         start_date: new Date(Date.UTC(2026, 9, 1)),

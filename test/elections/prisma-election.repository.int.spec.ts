@@ -3,6 +3,8 @@ import {
   ElectionEntity,
   type ElectionStatus,
 } from '../../src/modules/elections/domain/entities/election.entity';
+import { ElectionCodeConflictError } from '../../src/modules/elections/domain/errors/election-code-conflict.error';
+import { ElectionCodeExhaustedError } from '../../src/modules/elections/domain/errors/election-code-exhausted.error';
 import { ElectionNameConflictError } from '../../src/modules/elections/domain/errors/election-name-conflict.error';
 import { ElectionNotFoundError } from '../../src/modules/elections/domain/errors/election-not-found.error';
 import { PrismaElectionRepository } from '../../src/modules/elections/infrastructure/repositories/prisma-election.repository';
@@ -13,6 +15,7 @@ describe('PrismaElectionRepository integration', () => {
 
   const suffix = Date.now();
   const usedNames: string[] = [];
+  const usedCodePeriods: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaService();
@@ -25,14 +28,27 @@ describe('PrismaElectionRepository integration', () => {
       await prisma.election.deleteMany({ where: { name: { in: usedNames } } });
       usedNames.length = 0;
     }
+    if (usedCodePeriods.length > 0) {
+      await prisma.electionCodeCounter.deleteMany({
+        where: { period: { in: usedCodePeriods } },
+      });
+      usedCodePeriods.length = 0;
+    }
   });
 
   afterAll(async () => {
     await prisma.$disconnect();
   });
 
-  function buildEntity(name: string): ElectionEntity {
+  let electionCodeSequence = Math.floor(Math.random() * 9000) + 1;
+  function nextElectionCode(): string {
+    electionCodeSequence += 1;
+    return `ELECTION-122099-${String(electionCodeSequence).padStart(4, '0')}`;
+  }
+
+  function buildEntity(name: string, electionCode = nextElectionCode()): ElectionEntity {
     return ElectionEntity.create({
+      electionCode,
       name,
       description: 'Integration test election.',
       startDate: new Date(Date.UTC(2026, 9, 1)),
@@ -51,6 +67,7 @@ describe('PrismaElectionRepository integration', () => {
     expect(saved.id).toBeTruthy();
     expect(saved.id).not.toBeNull();
     expect(saved.createdAt).toBeInstanceOf(Date);
+    expect(saved.electionCode).toMatch(/^ELECTION-122099-\d{4}$/);
   });
 
   it('stores all provided fields and defaults correctly', async () => {
@@ -122,6 +139,7 @@ describe('PrismaElectionRepository integration', () => {
       expect(found).not.toBeNull();
       expect(found!.id).toBe(saved.id);
       expect(found!.name).toBe(name);
+      expect(found!.electionCode).toBe(saved.electionCode);
     });
 
     it('returns null for a missing election', async () => {
@@ -149,6 +167,7 @@ describe('PrismaElectionRepository integration', () => {
       expect(updated.id).toBe(saved.id);
       expect(updated.currentStatus).toBe('PENDING');
       expect(updated.createdAt).toEqual(saved.createdAt);
+      expect(updated.electionCode).toBe(saved.electionCode);
     });
 
     it('rejects a duplicate name with ElectionNameConflictError (P2002)', async () => {
@@ -180,6 +199,121 @@ describe('PrismaElectionRepository integration', () => {
     });
   });
 
+  describe('election code allocation', () => {
+    it('starts at 0001 for a new period and increments sequentially', async () => {
+      const period = '012081';
+      usedCodePeriods.push(period);
+      const now = new Date(Date.UTC(2081, 0, 15, 12, 0, 0));
+
+      await expect(repository.nextElectionCode(now)).resolves.toBe(`ELECTION-${period}-0001`);
+      await expect(repository.nextElectionCode(now)).resolves.toBe(`ELECTION-${period}-0002`);
+    });
+
+    it('keeps independent counters for different periods', async () => {
+      usedCodePeriods.push('022081', '032081');
+      const january = new Date(Date.UTC(2081, 1, 10));
+      const february = new Date(Date.UTC(2081, 2, 10));
+
+      await expect(repository.nextElectionCode(january)).resolves.toBe('ELECTION-022081-0001');
+      await expect(repository.nextElectionCode(february)).resolves.toBe('ELECTION-032081-0001');
+      await expect(repository.nextElectionCode(january)).resolves.toBe('ELECTION-022081-0002');
+    });
+
+    it('allocates unique sequential codes under concurrent calls', async () => {
+      const period = '042081';
+      usedCodePeriods.push(period);
+      const now = new Date(Date.UTC(2081, 3, 10));
+
+      const codes = await Promise.all(
+        Array.from({ length: 20 }, () => repository.nextElectionCode(now)),
+      );
+
+      expect(new Set(codes).size).toBe(20);
+      expect([...codes].sort()).toEqual(
+        Array.from(
+          { length: 20 },
+          (_, i) => `ELECTION-${period}-${String(i + 1).padStart(4, '0')}`,
+        ),
+      );
+    });
+
+    it('throws ElectionCodeExhaustedError when the period reaches 9999', async () => {
+      const period = '052081';
+      usedCodePeriods.push(period);
+      await prisma.electionCodeCounter.create({ data: { period, lastValue: 9999 } });
+
+      await expect(
+        repository.nextElectionCode(new Date(Date.UTC(2081, 4, 10))),
+      ).rejects.toBeInstanceOf(ElectionCodeExhaustedError);
+    });
+
+    it('maps a duplicate election code to ElectionCodeConflictError', async () => {
+      const a = `CODE-A-${suffix}`;
+      const b = `CODE-B-${suffix}`;
+      const code = nextElectionCode();
+      usedNames.push(a, b);
+
+      await repository.create(buildEntity(a, code));
+
+      await expect(repository.create(buildEntity(b, code))).rejects.toBeInstanceOf(
+        ElectionCodeConflictError,
+      );
+      expect(await prisma.election.findMany({ where: { electionCode: code } })).toHaveLength(1);
+    });
+
+    it('maps electionCode through create, findById and findAll', async () => {
+      const name = `CODE-MAP-${suffix}`;
+      usedNames.push(name);
+      const code = nextElectionCode();
+
+      const saved = await repository.create(buildEntity(name, code));
+      const found = await repository.findById(saved.id as string);
+      const listed = await repository.findAll({ page: 1, limit: 10, name });
+
+      expect(saved.electionCode).toBe(code);
+      expect(found!.electionCode).toBe(code);
+      expect(listed.elections).toHaveLength(1);
+      expect(listed.elections[0].electionCode).toBe(code);
+    });
+
+    it('keeps rejecting after exhaustion without overflowing the counter', async () => {
+      const period = '062081';
+      usedCodePeriods.push(period);
+      await prisma.electionCodeCounter.create({ data: { period, lastValue: 9999 } });
+      const now = new Date(Date.UTC(2081, 5, 10));
+
+      await expect(repository.nextElectionCode(now)).rejects.toBeInstanceOf(
+        ElectionCodeExhaustedError,
+      );
+      await expect(repository.nextElectionCode(now)).rejects.toBeInstanceOf(
+        ElectionCodeExhaustedError,
+      );
+
+      const counter = await prisma.electionCodeCounter.findUnique({ where: { period } });
+      expect(counter!.lastValue).toBe(9999);
+    });
+
+    it('enforces election_code uniqueness at the database level', async () => {
+      const name = `UNIQUE-${suffix}`;
+      const duplicateName = `UNIQUE-DUP-${suffix}`;
+      const code = nextElectionCode();
+      usedNames.push(name, duplicateName);
+
+      await repository.create(buildEntity(name, code));
+
+      await expect(
+        prisma.$executeRaw`
+          INSERT INTO "elections"
+            ("id", "election_code", "name", "description", "start_date", "start_time",
+             "end_date", "end_time")
+          VALUES
+            (gen_random_uuid(), ${code}, ${duplicateName}, 'duplicate', CURRENT_DATE,
+             '08:00:00', CURRENT_DATE, '18:00:00')
+        `,
+      ).rejects.toThrow();
+    });
+  });
+
   describe('findAll', () => {
     const now = new Date();
     const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -200,6 +334,7 @@ describe('PrismaElectionRepository integration', () => {
       usedNames.push(name);
       return repository.create(
         ElectionEntity.create({
+          electionCode: nextElectionCode(),
           name,
           description: 'findAll integration test election.',
           startDate: addDays(today, -1),
@@ -873,6 +1008,7 @@ describe('PrismaElectionRepository integration', () => {
       usedNames.push(name);
       const saved = await repository.create(
         ElectionEntity.create({
+          electionCode: nextElectionCode(),
           name,
           description: 'findExpiredActive integration test election.',
           startDate: refYesterday,

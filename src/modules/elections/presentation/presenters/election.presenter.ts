@@ -11,6 +11,7 @@ export class ElectionPresenter {
   static toResponse(entity: ElectionEntity): ElectionResponseDto {
     return new ElectionResponseDto({
       id: entity.id as string,
+      electionCode: entity.electionCode,
       name: entity.name,
       description: entity.description,
       startDate: formatDate(entity.startDate),
