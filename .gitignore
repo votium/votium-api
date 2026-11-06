@@ -53,3 +53,6 @@ Thumbs.db
 
 
 /generated/prisma
+
+### Local secrets (election key encryption, see scripts/generate-election-key.sh)
+.secrets/

@@ -1,0 +1,53 @@
+{
+  "description": "Shared Schnorr/Ristretto255 vectors.",
+  "cases": [
+    {
+      "name": "cand-vote",
+      "secret": "00000000000000000000000000000000000000000000000000000000075bcd15",
+      "nonce": "000000000000000000000000000000000000000000000000000000003ade68b1",
+      "transcript": {
+        "electionId": "election-2026",
+        "ballotId": "5b1e8a3c-6f2d-4c1a-9b7e-0d3f2a1c9e10",
+        "candidacyId": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+      },
+      "expected": {
+        "y": "2c96eb89bbb2e9892e8e8a23e866c27a97df00bd7de2ad92cb61a78442b0a92e",
+        "t": "887cea99116e3c8d880902a14124602ba104610821c91ee30dab9da60354eb20",
+        "c": "0d799f825f4708800a05e706c680ef9252fab9f131f7b25b2f5605d4de38f12c",
+        "s": "03a84b79386bf3f1db5276e5b132d54fa6373333e1cb3ddf6bf58b6e9478b3c1"
+      }
+    },
+    {
+      "name": "blank-vote",
+      "secret": "000000000000000000000000000000000000000000000000000000000000002a",
+      "nonce": "0000000000000000000000000000000000000000000000000000000000000007",
+      "transcript": {
+        "electionId": "election-2026",
+        "ballotId": "00000000-0000-4000-8000-000000000001",
+        "candidacyId": "blank"
+      },
+      "expected": {
+        "y": "e00af9c74d9edb8ebcc160ceec97d531cbd6e2956f9e9162b8e9eda260e82e43",
+        "t": "44f53520926ec81fbd5a387845beb7df85a96a24ece18738bdcfa6a7822a176d",
+        "c": "0940e412bb8d7a361688913a9699b33a34bb48d31bcb3332cf92ecb5fd7ce5bd",
+        "s": "04a56b12c5360cdfb267d39cb537678ab1d285c3481fb23dcc618b62df71d2d1"
+      }
+    },
+    {
+      "name": "large-scalars",
+      "secret": "0aababababababababababababababababababababababababababababababab",
+      "nonce": "0bcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "transcript": {
+        "electionId": "e",
+        "ballotId": "b",
+        "candidacyId": "c"
+      },
+      "expected": {
+        "y": "36201b4e5ac63cc8f5548887643af758bb9e66889a55fe9ea50fc468d2022d20",
+        "t": "42ffa310511e48da45eaccfde0f7e823cdb51fed576d48ee6cb7bb27dfe26b7c",
+        "c": "092fc5b1965d3e6686f94beee9baeb8471397e0e3659f657eb79fd29e709e385",
+        "s": "0809e711a1ace041f70d5a0097f7b7b2c57ef4e5e0769ea7b5851f85bbbc25c9"
+      }
+    }
+  ]
+}

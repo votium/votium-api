@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import * as joi from 'joi';
+import { readFileSync } from 'fs';
 
 interface EnvVars {
   PORT: number;
@@ -18,6 +19,7 @@ interface EnvVars {
   AUTH_COOKIE_DOMAIN?: string;
   CORS_ORIGINS: string;
   ELECTION_AUTO_CLOSE_ENABLED: boolean;
+  ELECTION_KEY_ENCRYPTION_KEY_FILE: string;
 }
 
 const envsSchema = joi
@@ -38,6 +40,7 @@ const envsSchema = joi
     AUTH_COOKIE_DOMAIN: joi.string().optional(),
     CORS_ORIGINS: joi.string().default('http://localhost:5173'),
     ELECTION_AUTO_CLOSE_ENABLED: joi.boolean().default(true),
+    ELECTION_KEY_ENCRYPTION_KEY_FILE: joi.string().required(),
   })
   .unknown(true);
 
@@ -61,6 +64,38 @@ if (process.env.NODE_ENV === 'production' && !envsVars.AUTH_COOKIE_SECURE) {
   throw new Error('Config validation error: production requires AUTH_COOKIE_SECURE=true');
 }
 
+// AES-256 key that encrypts the per-election RSA private keys at rest. It lives in a file (created
+// by scripts/generate-election-key.sh; a Docker secret in deployment), never in the database.
+// Read once at startup. Anything that is not exactly 32 bytes of base64 aborts the boot.
+export function decodeElectionKeyEncryptionKey(raw: string): Buffer {
+  const text = raw.trim();
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(text)) {
+    throw new Error('Config validation error: election encryption key is not valid base64');
+  }
+  const key = Buffer.from(text, 'base64');
+  if (key.length !== 32) {
+    throw new Error('Config validation error: election encryption key must decode to 32 bytes');
+  }
+  return key;
+}
+
+function loadElectionKeyEncryptionKey(filePath: string): Buffer {
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, 'utf8');
+  } catch {
+    throw new Error(
+      `Config validation error: cannot read ELECTION_KEY_ENCRYPTION_KEY_FILE (${filePath}). ` +
+        'Create it with: npm run keys:generate',
+    );
+  }
+  return decodeElectionKeyEncryptionKey(raw);
+}
+
+const electionKeyEncryptionKey = loadElectionKeyEncryptionKey(
+  envsVars.ELECTION_KEY_ENCRYPTION_KEY_FILE,
+);
+
 export const envs = {
   port: envsVars.PORT,
   databaseUrl: envsVars.DATABASE_URL,
@@ -80,4 +115,5 @@ export const envs = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   electionAutoCloseEnabled: envsVars.ELECTION_AUTO_CLOSE_ENABLED,
+  electionKeyEncryptionKey,
 };
