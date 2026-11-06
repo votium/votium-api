@@ -1,5 +1,20 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Request } from 'express';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiCookieAuth } from '@nestjs/swagger';
 import { CreateUserDto } from '../../application/dtos/create-user.dto';
 import { CreateUserUseCase } from '../../application/use-cases/create-user.use-case';
 import { UserPresenter } from '../presenters/user.presenter';
@@ -8,12 +23,16 @@ import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guar
 import { RolesGuard } from 'src/modules/auth/presentation/guards/roles.guard';
 import { RoleName } from '../../domain/value-objects/role-name.vo';
 import { UserStatus } from '../../domain/value-objects/user-status.vo';
-import { DisableUserResponseDto } from '../dtos/disable-user-response.dto';
+import { UserActionResponseDto } from '../dtos/user-action-response.dto';
 import { ListUsersQueryDto } from '../dtos/list-users-query.dto';
+import { UserResponseDto } from '../dtos/user-response.dto';
+import { UsersListResponseDto } from '../dtos/users-list-response.dto';
 import { GetUsersUseCase } from '../../application/use-cases/get-users.use-case';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { GetUserUseCase } from '../../application/use-cases/get-user.use-case';
-import { DisableUserUseCase } from '../../application/use-cases/disable-user.use-case';
+import { ActivateUserUseCase } from '../../application/use-cases/activate-user.use-case';
+import { DeactivateUserUseCase } from '../../application/use-cases/deactivate-user.use-case';
+import { DeleteUserUseCase } from '../../application/use-cases/delete-user.use-case';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -23,18 +42,31 @@ type AuthenticatedRequest = Request & {
   };
 };
 
+@ApiTags('Users')
+@ApiCookieAuth()
 @Controller('users')
 export class UsersController {
   constructor(
     private readonly createUser: CreateUserUseCase,
     private readonly getUsers: GetUsersUseCase,
     private readonly getUser: GetUserUseCase,
-    private readonly disableUser: DisableUserUseCase,
+    private readonly activateUser: ActivateUserUseCase,
+    private readonly deactivateUser: DeactivateUserUseCase,
+    private readonly deleteUser: DeleteUserUseCase,
   ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
+  @ApiOperation({
+    summary: 'Create a user',
+    description: 'Creates a new user. Requires ADMINISTRATOR role.',
+  })
+  @ApiResponse({ status: 201, description: 'User created successfully.', type: UserResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 409, description: 'Email already registered.' })
   async create(@Body() dto: CreateUserDto, @Req() req: AuthenticatedRequest) {
     const user = await this.createUser.execute({
       firstName: dto.firstName,
@@ -51,6 +83,18 @@ export class UsersController {
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiOperation({
+    summary: 'List users',
+    description: 'Returns a paginated list of users. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Users retrieved successfully.',
+    type: UsersListResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
   async list(@Query() query: ListUsersQueryDto) {
     const { users, total } = await this.getUsers.execute({
       page: query.page,
@@ -67,16 +111,83 @@ export class UsersController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiOperation({
+    summary: 'Get user by id',
+    description:
+      'Returns a single user by its unique identifier. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the user.', example: 'uuid' })
+  @ApiResponse({ status: 200, description: 'User retrieved successfully.', type: UserResponseDto })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
   async byId(@Param('id') id: string) {
     const user = await this.getUser.execute(id);
     return UserPresenter.toResponse(user);
   }
 
-  @Patch(':id/disable')
+  @Patch(':id/activate')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
-  async disable(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    await this.disableUser.execute(id, req.user.sub);
-    return new DisableUserResponseDto('User disabled successfully');
+  @ApiOperation({
+    summary: 'Activate a user',
+    description: 'Activates a user. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the user.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'User activated successfully.',
+    type: UserResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  @ApiResponse({ status: 409, description: 'User is already active.' })
+  async activate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    const user = await this.activateUser.execute(id, req.user.sub);
+    return UserPresenter.toResponse(user);
+  }
+
+  @Patch(':id/deactivate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  @ApiOperation({
+    summary: 'Deactivate a user',
+    description: 'Deactivates a user. Requires ADMINISTRATOR. Self-deactivation is rejected.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the user.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'User deactivated successfully.',
+    type: UserActionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  @ApiResponse({ status: 409, description: 'User is already deactivated or is the last Auditor.' })
+  async deactivate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    await this.deactivateUser.execute(id, req.user.sub);
+    return new UserActionResponseDto('User deactivated successfully.');
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  @ApiOperation({
+    summary: 'Logically delete a user',
+    description: 'Marks a user as deleted. Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the user.', example: 'uuid' })
+  @ApiResponse({ status: 204, description: 'User deleted successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'User not found.' })
+  @ApiResponse({ status: 409, description: 'User is already deleted or is the last Auditor.' })
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    await this.deleteUser.execute(id, req.user.sub);
   }
 }

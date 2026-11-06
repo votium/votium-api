@@ -11,6 +11,7 @@ type PrismaUserRow = {
   status: string;
   created_at: Date;
   updated_at: Date;
+  deleted_at: Date | null;
   role: { id: string; name: string };
 };
 
@@ -27,6 +28,7 @@ export class PrismaUserMapper {
       status: UserStatus.from(row.status),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      deletedAt: row.deleted_at,
     });
   }
 
@@ -40,6 +42,7 @@ export class PrismaUserMapper {
       status: entity.status.value,
       created_at: entity.createdAt,
       updated_at: entity.updatedAt,
+      deleted_at: entity.deletedAt,
       role: { id: entity.roleId, name: entity.role.value },
     };
   }

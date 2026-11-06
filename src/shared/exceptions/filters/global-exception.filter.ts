@@ -17,10 +17,65 @@ const DOMAIN_CODE_TO_HTTP: Record<string, HttpStatus> = {
   CONFLICT: HttpStatus.CONFLICT,
   EMAIL_CONFLICT: HttpStatus.CONFLICT,
   USER_ALREADY_DISABLED: HttpStatus.CONFLICT,
+  USER_ALREADY_ACTIVE: HttpStatus.CONFLICT,
+  USER_ALREADY_DELETED: HttpStatus.CONFLICT,
+  LAST_AUDITOR: HttpStatus.CONFLICT,
   VALIDATION_ERROR: HttpStatus.UNPROCESSABLE_ENTITY,
   INVALID_CREDENTIALS: HttpStatus.UNAUTHORIZED,
   INVALID_TOKEN: HttpStatus.UNAUTHORIZED,
   USER_SELF_DISABLE: HttpStatus.FORBIDDEN,
+  USER_SELF_DELETE: HttpStatus.FORBIDDEN,
+  BAD_REQUEST: HttpStatus.BAD_REQUEST,
+  UNAUTHORIZED: HttpStatus.UNAUTHORIZED,
+  FORBIDDEN: HttpStatus.FORBIDDEN,
+  GONE: HttpStatus.GONE,
+  TOO_MANY_REQUESTS: HttpStatus.TOO_MANY_REQUESTS,
+  EMAIL_DELIVERY_ERROR: HttpStatus.INTERNAL_SERVER_ERROR,
+  ELECTOR_CONFLICT: HttpStatus.CONFLICT,
+  ELECTOR_NOT_FOUND: HttpStatus.NOT_FOUND,
+  CANDIDATE_CONFLICT: HttpStatus.CONFLICT,
+  CANDIDATE_ALREADY_ACTIVE: HttpStatus.CONFLICT,
+  CANDIDATE_COMPANION_INCOMPLETE: HttpStatus.BAD_REQUEST,
+  CANDIDATE_NOT_FOUND: HttpStatus.NOT_FOUND,
+  ELECTOR_ALREADY_INACTIVE: HttpStatus.CONFLICT,
+  ELECTION_NAME_CONFLICT: HttpStatus.CONFLICT,
+  ELECTION_CODE_EXHAUSTED: HttpStatus.CONFLICT,
+  ELECTION_CODE_CONFLICT: HttpStatus.CONFLICT,
+  ELECTION_NOT_FOUND: HttpStatus.NOT_FOUND,
+  ELECTION_NOT_EDITABLE: HttpStatus.CONFLICT,
+  ELECTION_NOT_DELETABLE: HttpStatus.CONFLICT,
+  ELECTION_NOT_REGISTERABLE: HttpStatus.CONFLICT,
+  ELECTION_NOT_MODIFIABLE: HttpStatus.CONFLICT,
+  ELECTORAL_ROLL_NOT_FOUND: HttpStatus.NOT_FOUND,
+  ELECTION_STATUS_TRANSITION_INVALID: HttpStatus.CONFLICT,
+  ELECTION_NOT_WITHIN_SCHEDULE: HttpStatus.UNPROCESSABLE_ENTITY,
+  ELECTION_NOT_ENDED: HttpStatus.UNPROCESSABLE_ENTITY,
+  ELECTION_MISSING_ELECTORAL_ROLL: HttpStatus.CONFLICT,
+  ELECTION_NO_CANDIDATES: HttpStatus.CONFLICT,
+  ELECTION_START_REQUIRES_USER: HttpStatus.UNPROCESSABLE_ENTITY,
+  ELECTION_HAS_CANDIDATES: HttpStatus.CONFLICT,
+  ELECTION_HAS_VOTES: HttpStatus.CONFLICT,
+  ELECTION_INVALID_DATE_RANGE: HttpStatus.BAD_REQUEST,
+  ELECTION_INVALID_DATE: HttpStatus.BAD_REQUEST,
+  ELECTION_INVALID_TIME: HttpStatus.BAD_REQUEST,
+  CANDIDACY_DUPLICATE: HttpStatus.CONFLICT,
+  CANDIDACY_NOT_FOUND: HttpStatus.NOT_FOUND,
+  ELECTION_NOT_ELIGIBLE_FOR_CANDIDACY: HttpStatus.CONFLICT,
+  ELECTION_NO_VALID_CANDIDATES: HttpStatus.CONFLICT,
+  ELECTION_NOT_ACTIVE: HttpStatus.CONFLICT,
+  BLANK_VOTE_DISABLED: HttpStatus.CONFLICT,
+  BALLOT_CREDENTIAL_ALREADY_ISSUED: HttpStatus.CONFLICT,
+  COMMITMENT_ALREADY_REGISTERED: HttpStatus.CONFLICT,
+  BALLOT_ALREADY_USED: HttpStatus.CONFLICT,
+  BALLOT_RECEIPT_NOT_FOUND: HttpStatus.NOT_FOUND,
+  RESULTS_NOT_AVAILABLE: HttpStatus.CONFLICT,
+  NOT_ELIGIBLE: HttpStatus.FORBIDDEN,
+  INVALID_PROOF: HttpStatus.UNPROCESSABLE_ENTITY,
+  INVALID_SIGNATURE: HttpStatus.UNPROCESSABLE_ENTITY,
+  INVALID_BLINDED_MESSAGE: HttpStatus.UNPROCESSABLE_ENTITY,
+  VOTE_ALREADY_REGISTERED: HttpStatus.CONFLICT,
+  IDEMPOTENCY_KEY_CONFLICT: HttpStatus.CONFLICT,
+  INTERNAL_SERVER_ERROR: HttpStatus.INTERNAL_SERVER_ERROR,
 };
 
 @Catch()
@@ -43,7 +98,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     if (statusCode >= 500) {
       this.logger.error(exception);
     } else {
-      this.logger.warn(`${request.method} ${request.originalUrl} -> ${statusCode} ${message}`);
+      // Log the route template, never the concrete URL: the receipt route carries a ballotId in its
+      // path, and ballot identifiers must not reach application logs.
+      const routeInfo: { path?: unknown } | undefined = (request as { route?: { path?: unknown } })
+        .route;
+      const loggedPath =
+        typeof routeInfo?.path === 'string'
+          ? `${request.baseUrl ?? ''}${routeInfo.path}`
+          : request.path;
+      this.logger.warn(`${request.method} ${loggedPath} -> ${statusCode} ${message}`);
     }
 
     response.status(statusCode).json(errorResponse);

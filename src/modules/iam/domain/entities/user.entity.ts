@@ -1,5 +1,6 @@
 import { RoleName } from '../value-objects/role-name.vo';
 import { UserStatus } from '../value-objects/user-status.vo';
+import { UserAlreadyActiveError } from '../errors/user-already-active.error';
 import { UserAlreadyDisabledError } from '../errors/user-already-disabled.error';
 
 export interface CreateUserInput {
@@ -23,6 +24,7 @@ export interface RestoreUserInput {
   status: UserStatus;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt?: Date | null;
 }
 
 export class UserEntity {
@@ -37,6 +39,7 @@ export class UserEntity {
     private _status: UserStatus,
     public readonly createdAt: Date,
     private _updatedAt: Date,
+    private _deletedAt: Date | null,
   ) {}
 
   static create(input: CreateUserInput): UserEntity {
@@ -54,6 +57,7 @@ export class UserEntity {
       input.status ?? UserStatus.ACTIVE,
       now,
       now,
+      null,
     );
   }
 
@@ -69,6 +73,7 @@ export class UserEntity {
       input.status,
       input.createdAt,
       input.updatedAt,
+      input.deletedAt ?? null,
     );
   }
 
@@ -80,8 +85,24 @@ export class UserEntity {
     return this._updatedAt;
   }
 
+  get deletedAt(): Date | null {
+    return this._deletedAt;
+  }
+
   isDisabled(): boolean {
     return this._status === UserStatus.DISABLED;
+  }
+
+  isDeleted(): boolean {
+    return this._deletedAt !== null;
+  }
+
+  isActive(): boolean {
+    return this._status === UserStatus.ACTIVE && this._deletedAt === null;
+  }
+
+  isAuditor(): boolean {
+    return this.role.equals(RoleName.AUDITOR);
   }
 
   disable(): void {
@@ -91,5 +112,18 @@ export class UserEntity {
 
     this._status = UserStatus.DISABLED;
     this._updatedAt = new Date();
+  }
+
+  activate(): void {
+    if (this._status === UserStatus.ACTIVE) {
+      throw new UserAlreadyActiveError(this.id);
+    }
+
+    this._status = UserStatus.ACTIVE;
+    this._updatedAt = new Date();
+  }
+
+  delete(now: Date = new Date()): void {
+    this._deletedAt = now;
   }
 }
