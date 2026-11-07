@@ -10,6 +10,7 @@ import { CandidaciesModule } from './modules/candidacies/candidacies.module';
 import { VotingModule } from './modules/voting/voting.module';
 import { AnonymousVotingModule } from './modules/anonymous-voting/anonymous-voting.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { FabricModule } from './fabric';
 
 @Module({
   imports: [
@@ -23,8 +24,9 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     VotingModule,
     AnonymousVotingModule,
     DashboardModule,
+    FabricModule,
   ],
   controllers: [AppController],
   providers: [],
 })
-export class AppModule {}
+export class AppModule { }
