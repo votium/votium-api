@@ -21,7 +21,8 @@
     "test:watch": "jest --watch",
     "keys:generate": "bash scripts/generate-election-key.sh",
     "test:e2e": "node --experimental-vm-modules node_modules/.bin/jest --selectProjects e2e --runInBand",
-    "fabric:smoke": "ts-node src/fabric/cli/smoke.ts"
+    "fabric:smoke": "ts-node src/fabric/cli/smoke.ts",
+    "fabric:it": "ts-node src/fabric/cli/integration.ts"
   },
   "dependencies": {
     "@cloudflare/blindrsa-ts": "^0.4.4",

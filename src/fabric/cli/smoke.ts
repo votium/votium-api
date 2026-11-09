@@ -13,7 +13,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SmokeModule, {
     logger: ['error', 'warn', 'log'],
   });
-  const registry = app.get(FabricClientRegistry);
+  const registry = app.get(FabricClientRegistry, { strict: false });
   let failed = 0;
 
   for (const profile of registry.profiles()) {

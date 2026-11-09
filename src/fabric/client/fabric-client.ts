@@ -4,16 +4,22 @@ import { createPrivateKey } from 'node:crypto';
 import { FabricConfig } from '../config/fabric.config';
 import { FabricCredentials } from '../credentials/credentials.loader';
 import { FabricConfigError } from '../errors/fabric-config.error';
+import { FabricPhaseError } from '../errors/fabric-phase.error';
+import { commitFailure } from '../errors/fabric.error';
 import { FabricProfile, SYSTEM_CONTRACT } from '../fabric.constants';
 
 export interface FabricMetadata {
   contracts: Record<string, { transactions?: Array<{ name: string }> }>;
 }
-
 export interface FabricPing {
   ok: boolean;
   latencyMs: number;
   reason?: string;
+}
+export interface SubmitOutcome {
+  result: Uint8Array;
+  txId: string;
+  blockNumber: number;
 }
 
 /** One gRPC connection + one Gateway per identity. Internal to the fabric module. */
@@ -73,6 +79,41 @@ export class FabricClient {
     if (!this.network)
       throw new FabricConfigError(`Fabric client "${this.profile}" is not connected`);
     return this.network.getContract(chaincode, contract);
+  }
+
+  /**
+   * Endorse -> submit -> wait for the commit. Raw failures come back tagged with their phase
+   * (FabricPhaseError); a transaction invalidated by the ledger comes back as a FabricError.
+   */
+  async submit(
+    chaincode: string,
+    contract: string,
+    fn: string,
+    args: string[],
+  ): Promise<SubmitOutcome> {
+    const proposal = this.getContract(chaincode, contract).newProposal(fn, { arguments: args });
+    const txId = proposal.getTransactionId();
+    const transaction = await proposal.endorse().catch((err: unknown) => {
+      throw new FabricPhaseError('endorse', txId, err);
+    });
+    const result = transaction.getResult();
+    const status = await transaction
+      .submit()
+      .then((commit) => commit.getStatus())
+      .catch((err: unknown) => {
+        throw new FabricPhaseError('submit', txId, err);
+      });
+    if (!status.successful) throw commitFailure(txId, Number(status.code));
+    return { result, txId, blockNumber: Number(status.blockNumber) };
+  }
+
+  async evaluate(
+    chaincode: string,
+    contract: string,
+    fn: string,
+    args: string[],
+  ): Promise<Uint8Array> {
+    return this.getContract(chaincode, contract).evaluateTransaction(fn, ...args);
   }
 
   connectivity(): string {
