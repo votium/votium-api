@@ -143,4 +143,93 @@ describe('ElectionPresenter', () => {
       );
     });
   });
+
+  describe('toVoterDetail', () => {
+    const participationDate = new Date('2026-09-15T10:00:00.000Z');
+
+    it('P-05: preserves every base and nested detail field', () => {
+      const item = {
+        election: entity,
+        statusHistory: [{ status: 'ACTIVE' as const, timestamp: participationDate }],
+        candidacies: [],
+        registeredVoters: 42,
+        hasVoted: true,
+        participationDate,
+      };
+
+      const detail = ElectionPresenter.toVoterDetail(item);
+      const base = ElectionPresenter.toDetail(item);
+
+      expect(detail.id).toBe(base.id);
+      expect(detail.electionCode).toBe(base.electionCode);
+      expect(detail.startDate).toBe('2026-10-01');
+      expect(detail.startTime).toBe('08:00:00');
+      expect(detail.currentStatus).toBe('CREATED');
+      expect(detail.statusHistory).toEqual([
+        { status: 'ACTIVE', timestamp: '2026-09-15T10:00:00.000Z' },
+      ]);
+      expect(detail.registeredVoters).toBe(42);
+    });
+
+    it('P-06: serializes participationDate as ISO and keeps hasVoted boolean', () => {
+      const detail = ElectionPresenter.toVoterDetail({
+        election: entity,
+        statusHistory: [],
+        candidacies: [],
+        registeredVoters: 0,
+        hasVoted: true,
+        participationDate,
+      });
+
+      expect(detail.hasVoted).toBe(true);
+      expect(detail.participationDate).toBe('2026-09-15T10:00:00.000Z');
+    });
+
+    it('P-07: maps a missing participationDate to null', () => {
+      const detail = ElectionPresenter.toVoterDetail({
+        election: entity,
+        statusHistory: [],
+        candidacies: [],
+        registeredVoters: 0,
+        hasVoted: false,
+        participationDate: null,
+      });
+
+      expect(detail.hasVoted).toBe(false);
+      expect(detail.participationDate).toBeNull();
+    });
+
+    it('P-08: exposes the voter detail contract without vote content', () => {
+      const detail = ElectionPresenter.toVoterDetail({
+        election: entity,
+        statusHistory: [],
+        candidacies: [],
+        registeredVoters: 0,
+        hasVoted: false,
+        participationDate: null,
+      });
+
+      expect(Object.keys(detail).sort()).toEqual(
+        [
+          'id',
+          'electionCode',
+          'name',
+          'description',
+          'startDate',
+          'startTime',
+          'endDate',
+          'endTime',
+          'currentStatus',
+          'blankVoteEnabled',
+          'createdAt',
+          'statusHistory',
+          'candidacies',
+          'registeredVoters',
+          'hasVoted',
+          'participationDate',
+        ].sort(),
+      );
+      expect(detail).not.toHaveProperty('lastVoteCandidacyId');
+    });
+  });
 });

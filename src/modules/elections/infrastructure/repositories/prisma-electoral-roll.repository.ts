@@ -44,6 +44,20 @@ export class PrismaElectoralRollRepository implements ElectoralRollRepository {
     });
   }
 
+  async countByElectionIds(
+    electionIds: string[],
+  ): Promise<Array<{ electionId: string; total: number }>> {
+    if (electionIds.length === 0) return [];
+
+    const rows = await this.prisma.electoralRoll.groupBy({
+      by: ['election_id'],
+      where: { election_id: { in: electionIds } },
+      _count: { _all: true },
+    });
+
+    return rows.map((row) => ({ electionId: row.election_id, total: row._count._all }));
+  }
+
   async deleteByElectionAndElectorId(electionId: string, electorId: string): Promise<boolean> {
     const result = await this.prisma.electoralRoll.deleteMany({
       where: {
