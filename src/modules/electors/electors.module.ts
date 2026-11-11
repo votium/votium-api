@@ -1,6 +1,20 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { IamModule } from 'src/modules/iam/iam.module';
+import { CandidaciesModule } from 'src/modules/candidacies/candidacies.module';
+import {
+  CANDIDACY_REPOSITORY,
+  type CandidacyRepository,
+} from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
+import { ElectionsModule } from 'src/modules/elections/elections.module';
+import {
+  ELECTION_REPOSITORY,
+  type ElectionRepository,
+} from 'src/modules/elections/domain/repositories/election.repository.interface';
+import {
+  ELECTORAL_ROLL_REPOSITORY,
+  type ElectoralRollRepository,
+} from 'src/modules/elections/domain/repositories/electoral-roll.repository.interface';
 import {
   PASSWORD_HASHER_PORT,
   type PasswordHasherPort,
@@ -13,6 +27,7 @@ import { ActivateElectorUseCase } from './application/use-cases/activate-elector
 import { DeactivateElectorUseCase } from './application/use-cases/deactivate-elector.use-case';
 import { DeleteElectorUseCase } from './application/use-cases/delete-elector.use-case';
 import { GetElectorUseCase } from './application/use-cases/get-elector.use-case';
+import { GetElectorElectionsUseCase } from './application/use-cases/get-elector-elections.use-case';
 import { GetElectoralRegistryTemplateUseCase } from './application/use-cases/get-electoral-registry-template.use-case';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
@@ -25,10 +40,16 @@ import {
 import { CsvFileParserService } from './infrastructure/services/csv-file-parser.service';
 import { PrismaElectorRepository } from './infrastructure/repositories/prisma-elector.repository';
 import { ElectorsController } from './presentation/controllers/electors.controller';
+import { ElectorElectionsController } from './presentation/controllers/elector-elections.controller';
 
 @Module({
-  imports: [forwardRef(() => IamModule), forwardRef(() => AuthModule)],
-  controllers: [ElectorsController],
+  imports: [
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
+    forwardRef(() => ElectionsModule),
+    forwardRef(() => CandidaciesModule),
+  ],
+  controllers: [ElectorsController, ElectorElectionsController],
   providers: [
     { provide: ELECTOR_REPOSITORY, useClass: PrismaElectorRepository },
     { provide: CSV_PARSER_PORT, useClass: CsvFileParserService },
@@ -68,6 +89,21 @@ import { ElectorsController } from './presentation/controllers/electors.controll
       provide: GetElectorUseCase,
       useFactory: (electors: ElectorRepository) => new GetElectorUseCase(electors),
       inject: [ELECTOR_REPOSITORY],
+    },
+    {
+      provide: GetElectorElectionsUseCase,
+      useFactory: (
+        elections: ElectionRepository,
+        electoralRolls: ElectoralRollRepository,
+        candidacies: CandidacyRepository,
+        electors: ElectorRepository,
+      ) => new GetElectorElectionsUseCase(elections, electoralRolls, candidacies, electors),
+      inject: [
+        ELECTION_REPOSITORY,
+        ELECTORAL_ROLL_REPOSITORY,
+        CANDIDACY_REPOSITORY,
+        ELECTOR_REPOSITORY,
+      ],
     },
     {
       provide: GetElectoralRegistryTemplateUseCase,

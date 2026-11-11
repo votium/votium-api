@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ElectionDetailResponseDto } from './election-detail-response.dto';
+import { ElectionDetailResponseDto } from 'src/modules/elections/presentation/dtos/election-detail-response.dto';
 
-export class VoterElectionDetailResponseDto extends ElectionDetailResponseDto {
+export class ElectorElectionDetailResponseDto extends ElectionDetailResponseDto {
   @ApiProperty({ example: true })
   hasVoted!: boolean;
 
@@ -13,7 +13,7 @@ export class VoterElectionDetailResponseDto extends ElectionDetailResponseDto {
   })
   participationDate!: string | null;
 
-  constructor(partial: Partial<VoterElectionDetailResponseDto>) {
+  constructor(partial: Partial<ElectorElectionDetailResponseDto>) {
     super(partial);
     Object.assign(this, partial);
   }

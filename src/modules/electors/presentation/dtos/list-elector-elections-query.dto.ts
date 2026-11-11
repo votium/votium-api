@@ -1,11 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
-import { ELECTION_STATUSES, type ElectionStatus } from '../../domain/entities/election.entity';
+import {
+  ELECTION_STATUSES,
+  type ElectionStatus,
+} from 'src/modules/elections/domain/entities/election.entity';
 
 const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/;
 
-export class ListVoterElectionsQueryDto {
+export class ListElectorElectionsQueryDto {
   @ApiProperty({ example: 1, required: false })
   @IsOptional()
   @Type(() => Number)

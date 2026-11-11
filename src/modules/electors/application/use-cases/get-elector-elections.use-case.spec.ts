@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import type { CandidacyRepository } from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
-import { ElectorNotFoundError } from 'src/modules/electors/domain/errors/elector-not-found.error';
-import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
-import { ElectionEntity } from '../../domain/entities/election.entity';
+import { ElectionEntity } from 'src/modules/elections/domain/entities/election.entity';
 import type {
   ElectionRepository,
   VoterElectionListResult,
-} from '../../domain/repositories/election.repository.interface';
-import type { ElectoralRollRepository } from '../../domain/repositories/electoral-roll.repository.interface';
-import { GetVoterElectionsUseCase } from './get-voter-elections.use-case';
+} from 'src/modules/elections/domain/repositories/election.repository.interface';
+import type { ElectoralRollRepository } from 'src/modules/elections/domain/repositories/electoral-roll.repository.interface';
+import { ElectorNotFoundError } from '../../domain/errors/elector-not-found.error';
+import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
+import { GetElectorElectionsUseCase } from './get-elector-elections.use-case';
 
 const date = (y: number, m: number, d: number): Date => new Date(Date.UTC(y, m - 1, d));
 
@@ -28,12 +28,12 @@ function buildElection(id: string): ElectionEntity {
   });
 }
 
-describe('GetVoterElectionsUseCase', () => {
+describe('GetElectorElectionsUseCase', () => {
   let elections: jest.Mocked<ElectionRepository>;
   let electoralRolls: jest.Mocked<ElectoralRollRepository>;
   let candidacies: jest.Mocked<CandidacyRepository>;
   let electors: jest.Mocked<Pick<ElectorRepository, 'findById'>>;
-  let useCase: GetVoterElectionsUseCase;
+  let useCase: GetElectorElectionsUseCase;
 
   const eligible = (overrides: Partial<VoterElectionListResult> = {}): VoterElectionListResult => ({
     rows: [
@@ -58,8 +58,9 @@ describe('GetVoterElectionsUseCase', () => {
     candidacies = {
       findByElectionIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<CandidacyRepository>;
-    electors = { findById: jest.fn().mockResolvedValue({ id: 'elector-1' }) };
-    useCase = new GetVoterElectionsUseCase(elections, electoralRolls, candidacies, electors);
+    electors = { findById: jest.fn() };
+    electors.findById.mockResolvedValue({ id: 'elector-1' });
+    useCase = new GetElectorElectionsUseCase(elections, electoralRolls, candidacies, electors);
   });
 
   it('resolves the elector and scopes eligibility to electorId', async () => {

@@ -1,17 +1,17 @@
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { ListVoterElectionsQueryDto } from './list-voter-elections-query.dto';
+import { ListElectorElectionsQueryDto } from './list-elector-elections-query.dto';
 
-describe('ListVoterElectionsQueryDto', () => {
+describe('ListElectorElectionsQueryDto', () => {
   function validate(input: Record<string, unknown>) {
-    return validateSync(plainToInstance(ListVoterElectionsQueryDto, input), {
+    return validateSync(plainToInstance(ListElectorElectionsQueryDto, input), {
       whitelist: true,
       forbidNonWhitelisted: true,
     });
   }
 
   it('VQ-01: accepts an empty query and applies pagination defaults', () => {
-    const dto = plainToInstance(ListVoterElectionsQueryDto, {});
+    const dto = plainToInstance(ListElectorElectionsQueryDto, {});
 
     expect(validate({})).toHaveLength(0);
     expect(dto.page).toBe(1);
@@ -37,7 +37,7 @@ describe('ListVoterElectionsQueryDto', () => {
   });
 
   it('VQ-05: normalizes a lowercase status to uppercase', () => {
-    const dto = plainToInstance(ListVoterElectionsQueryDto, { status: 'active' });
+    const dto = plainToInstance(ListElectorElectionsQueryDto, { status: 'active' });
 
     expect(validate({ status: 'active' })).toHaveLength(0);
     expect(dto.status).toBe('ACTIVE');

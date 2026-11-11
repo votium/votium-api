@@ -3,17 +3,20 @@ import type {
   CandidacyRepository,
   CandidacyWithCandidate,
 } from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
-import { ElectorNotFoundError } from 'src/modules/electors/domain/errors/elector-not-found.error';
-import type { ElectorRepository } from 'src/modules/electors/domain/repositories/elector.repository.interface';
-import type { ElectionEntity, ElectionStatus } from '../../domain/entities/election.entity';
+import { ElectorNotFoundError } from '../../domain/errors/elector-not-found.error';
+import type { ElectorRepository } from '../../domain/repositories/elector.repository.interface';
+import type {
+  ElectionEntity,
+  ElectionStatus,
+} from 'src/modules/elections/domain/entities/election.entity';
 import type {
   ElectionRepository,
   ElectionStatusHistoryEntry,
-} from '../../domain/repositories/election.repository.interface';
-import type { ElectoralRollRepository } from '../../domain/repositories/electoral-roll.repository.interface';
-import { parseElectionDate } from '../election-date.util';
+} from 'src/modules/elections/domain/repositories/election.repository.interface';
+import type { ElectoralRollRepository } from 'src/modules/elections/domain/repositories/electoral-roll.repository.interface';
+import { parseElectionDate } from 'src/modules/elections/application/election-date.util';
 
-export interface VoterElectionListItem {
+export interface ElectorElectionListItem {
   election: ElectionEntity;
   statusHistory: ElectionStatusHistoryEntry[];
   candidacies: CandidacyWithCandidate[];
@@ -22,15 +25,15 @@ export interface VoterElectionListItem {
   participationDate: Date | null;
 }
 
-export interface VoterElectionList {
-  items: VoterElectionListItem[];
+export interface ElectorElectionList {
+  items: ElectorElectionListItem[];
   total: number;
 }
 
-// POCO use case, registered via useFactory in ElectionsModule (project convention).
-// The only elector identity it accepts is `electorId`, supplied by the controller from
-// the authenticated JWT; there is no client-provided identity path.
-export class GetVoterElectionsUseCase {
+// POCO use case, registered via useFactory in ElectorsModule (project convention).
+// The only elector identity it accepts is `electorId`, supplied by the controller after
+// verifying it matches the authenticated JWT `sub`; there is no client-provided identity.
+export class GetElectorElectionsUseCase {
   constructor(
     private readonly elections: ElectionRepository,
     private readonly electoralRolls: ElectoralRollRepository,
@@ -46,7 +49,7 @@ export class GetVoterElectionsUseCase {
     status?: ElectionStatus;
     startDateFrom?: string;
     startDateTo?: string;
-  }): Promise<VoterElectionList> {
+  }): Promise<ElectorElectionList> {
     const page = Number.isFinite(params.page) && params.page > 0 ? params.page : 1;
     const limit = Number.isFinite(params.limit) && params.limit > 0 ? params.limit : 10;
 

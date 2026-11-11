@@ -9,9 +9,9 @@ import { envs } from '../../src/config';
 import { PrismaService } from '../../src/shared/database/prisma.service';
 import { GlobalExceptionFilter } from '../../src/shared/exceptions/filters/global-exception.filter';
 import { buildAuthCookie } from '../auth/auth-cookie.utils';
-import { nextTestElectionCode } from './election-code.utils';
+import { nextTestElectionCode } from '../elections/election-code.utils';
 
-interface VoterElectionBody {
+interface ElectorElectionBody {
   id: string;
   electionCode: string;
   hasVoted: boolean;
@@ -21,12 +21,12 @@ interface VoterElectionBody {
   registeredVoters: number;
 }
 
-interface PaginatedVoterBody {
-  data: VoterElectionBody[];
+interface PaginatedElectorBody {
+  data: ElectorElectionBody[];
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
 
-describe('GET /elections/mine (e2e)', () => {
+describe('GET /electors/:id/elections (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
 
@@ -103,7 +103,7 @@ describe('GET /elections/mine (e2e)', () => {
       data: {
         electionCode: await nextTestElectionCode(prisma),
         name: options.name,
-        description: 'Voter e2e election.',
+        description: 'Elector e2e election.',
         start_date: options.startDate ?? new Date(Date.UTC(2026, 9, 1)),
         start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
         end_date: new Date(Date.UTC(2026, 11, 31)),
@@ -147,14 +147,14 @@ describe('GET /elections/mine (e2e)', () => {
     return row.id;
   }
 
-  function getMine(cookie?: string) {
-    const req = request(app.getHttpServer()).get('/api/v1/elections/mine');
+  function getElectorElections(id: string, cookie?: string) {
+    const req = request(app.getHttpServer()).get(`/api/v1/electors/${id}/elections`);
     if (cookie) req.set('Cookie', cookie);
     return req;
   }
 
   it('E2E-01: rejects a request without a JWT with 401', async () => {
-    await getMine().expect(401);
+    await getElectorElections(elector.id).expect(401);
   });
 
   it('E2E-02: rejects a non-elector principal with 403', async () => {
@@ -164,20 +164,27 @@ describe('GET /elections/mine (e2e)', () => {
       { expiresIn: envs.jwtExpiresIn },
     );
 
-    await getMine(buildAuthCookie(token)).expect(403);
+    await getElectorElections(elector.id, buildAuthCookie(token)).expect(403);
   });
 
   it('E2E-03: an unresolvable elector identity returns 404', async () => {
+    const orphanSub = crypto.randomUUID();
     const orphan = jwt.sign(
-      { sub: crypto.randomUUID(), email: 'nobody@example.com', actorType: 'ELECTOR' },
+      { sub: orphanSub, email: 'nobody@example.com', actorType: 'ELECTOR' },
       envs.jwtSecret,
       { expiresIn: envs.jwtExpiresIn },
     );
 
-    await getMine(buildAuthCookie(orphan)).expect(404);
+    await getElectorElections(orphanSub, buildAuthCookie(orphan)).expect(404);
   });
 
-  it('E2E-04: returns only eligible elections with full detail and participation', async () => {
+  it('E2E-04: rejects access to another elector id with 403', async () => {
+    const otherId = await seedOtherElector('other');
+
+    await getElectorElections(otherId, electorCookie).expect(403);
+  });
+
+  it('E2E-05: returns only eligible elections with full detail and participation', async () => {
     const eligible = await seedElection({ name: `MINE-ELIGIBLE-${suffix}`, status: 'ACTIVE' });
     const notEligible = await seedElection({ name: `MINE-OTHER-${suffix}`, status: 'ACTIVE' });
     const otherElectorId = await seedOtherElector('elig');
@@ -207,8 +214,8 @@ describe('GET /elections/mine (e2e)', () => {
       },
     });
 
-    const res = await getMine(electorCookie).expect(200);
-    const body = res.body as PaginatedVoterBody;
+    const res = await getElectorElections(elector.id, electorCookie).expect(200);
+    const body = res.body as PaginatedElectorBody;
 
     expect(body.data).toHaveLength(1);
     expect(body.data[0].id).toBe(eligible);
@@ -224,9 +231,10 @@ describe('GET /elections/mine (e2e)', () => {
     expect(body.meta).toEqual({ page: 1, limit: 10, total: 1, totalPages: 1 });
   });
 
-  it('E2E-05: applies filters and pagination', async () => {
-    const baseline = (await getMine(electorCookie).query({ page: 1, limit: 1 }).expect(200))
-      .body as PaginatedVoterBody;
+  it('E2E-06: applies filters and pagination', async () => {
+    const baseline = (
+      await getElectorElections(elector.id, electorCookie).query({ page: 1, limit: 1 }).expect(200)
+    ).body as PaginatedElectorBody;
 
     const first = await seedElection({
       name: `MINE-FILTER-A-${suffix}`,
@@ -251,13 +259,15 @@ describe('GET /elections/mine (e2e)', () => {
       })),
     });
 
-    const filtered = await getMine(electorCookie)
+    const filtered = await getElectorElections(elector.id, electorCookie)
       .query({ status: 'active', startDateFrom: '2026-10-02', startDateTo: '2026-10-02' })
       .expect(200);
-    expect((filtered.body as PaginatedVoterBody).data.map((row) => row.id)).toEqual([second]);
+    expect((filtered.body as PaginatedElectorBody).data.map((row) => row.id)).toEqual([second]);
 
-    const paged = await getMine(electorCookie).query({ page: 2, limit: 1 }).expect(200);
-    const pagedBody = paged.body as PaginatedVoterBody;
+    const paged = await getElectorElections(elector.id, electorCookie)
+      .query({ page: 2, limit: 1 })
+      .expect(200);
+    const pagedBody = paged.body as PaginatedElectorBody;
     expect(pagedBody.data).toHaveLength(1);
     expect(pagedBody.meta).toEqual({
       page: 2,
@@ -267,8 +277,8 @@ describe('GET /elections/mine (e2e)', () => {
     });
   });
 
-  it('E2E-06: rejects an inverted date range with 400 and does not collide with /elections/:id', async () => {
-    const res = await getMine(electorCookie)
+  it('E2E-07: rejects an inverted date range with 400', async () => {
+    const res = await getElectorElections(elector.id, electorCookie)
       .query({ startDateFrom: '2026-12-31', startDateTo: '2026-01-01' })
       .expect(400);
 

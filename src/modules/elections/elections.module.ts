@@ -18,7 +18,6 @@ import {
 import { CreateElectionUseCase } from './application/use-cases/create-election.use-case';
 import { GetElectionDetailUseCase } from './application/use-cases/get-election-detail.use-case';
 import { GetElectionsUseCase } from './application/use-cases/get-elections.use-case';
-import { GetVoterElectionsUseCase } from './application/use-cases/get-voter-elections.use-case';
 import { UpdateElectionUseCase } from './application/use-cases/update-election.use-case';
 import { DeleteElectionUseCase } from './application/use-cases/delete-election.use-case';
 import { StartElectionUseCase } from './application/use-cases/start-election.use-case';
@@ -53,11 +52,15 @@ import { ElectoralRollCsvFileParserService } from './infrastructure/services/ele
 import { ElectionClosureSchedulerService } from './infrastructure/services/election-closure-scheduler.service';
 import { ElectionsController } from './presentation/controllers/elections.controller';
 import { ElectionsElectoralRollController } from './presentation/controllers/elections-electoral-roll.controller';
-import { VoterElectionsController } from './presentation/controllers/voter-elections.controller';
 
 @Module({
-  imports: [IamModule, AuthModule, forwardRef(() => CandidaciesModule), ElectorsModule],
-  controllers: [VoterElectionsController, ElectionsController, ElectionsElectoralRollController],
+  imports: [
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
+    forwardRef(() => CandidaciesModule),
+    forwardRef(() => ElectorsModule),
+  ],
+  controllers: [ElectionsController, ElectionsElectoralRollController],
   providers: [
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },
     { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
@@ -81,21 +84,6 @@ import { VoterElectionsController } from './presentation/controllers/voter-elect
       provide: GetElectionsUseCase,
       useFactory: (elections: ElectionRepository) => new GetElectionsUseCase(elections),
       inject: [ELECTION_REPOSITORY],
-    },
-    {
-      provide: GetVoterElectionsUseCase,
-      useFactory: (
-        elections: ElectionRepository,
-        electoralRolls: ElectoralRollRepository,
-        candidacies: CandidacyRepository,
-        electors: ElectorRepository,
-      ) => new GetVoterElectionsUseCase(elections, electoralRolls, candidacies, electors),
-      inject: [
-        ELECTION_REPOSITORY,
-        ELECTORAL_ROLL_REPOSITORY,
-        CANDIDACY_REPOSITORY,
-        ELECTOR_REPOSITORY,
-      ],
     },
     {
       provide: UpdateElectionUseCase,
