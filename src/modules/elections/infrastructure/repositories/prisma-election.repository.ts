@@ -11,6 +11,8 @@ import {
   type ElectionListResult,
   type ElectionRepository,
   type ElectionStatusHistoryEntry,
+  type VoterElectionListParams,
+  type VoterElectionListResult,
 } from '../../domain/repositories/election.repository.interface';
 import { ElectionCodeVO } from '../../domain/value-objects/election-code.vo';
 import { PrismaElectionMapper } from '../mappers/prisma-election.mapper';
@@ -88,6 +90,73 @@ export class PrismaElectionRepository implements ElectionRepository {
     // `new_status as ElectionStatus` mirrors the mapper's cast technique: the
     // Prisma StatusElection enum is assignable to the domain literal union.
     return rows.map((row) => ({
+      status: row.new_status,
+      timestamp: row.changed_at,
+    }));
+  }
+
+  async findEligibleByElector(params: VoterElectionListParams): Promise<VoterElectionListResult> {
+    const skip = (params.page - 1) * params.limit;
+    const electionCode = params.electionCode?.trim();
+
+    const where: Prisma.ElectionWhereInput = {
+      electoralRolls: { some: { elector_id: params.electorId } },
+      ...(electionCode ? { electionCode: { contains: electionCode, mode: 'insensitive' } } : {}),
+      ...(params.status ? { current_status: params.status } : {}),
+      ...(params.startDateFrom || params.startDateTo
+        ? {
+            start_date: {
+              ...(params.startDateFrom ? { gte: params.startDateFrom } : {}),
+              ...(params.startDateTo ? { lte: params.startDateTo } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.election.count({ where }),
+      this.prisma.election.findMany({
+        where,
+        include: {
+          // Only the authenticated elector's own roll, and only participation
+          // metadata. last_vote_candidacy_id (vote content) is never selected.
+          electoralRolls: {
+            where: { elector_id: params.electorId },
+            select: { has_voted: true, last_vote_registered_at: true },
+            take: 1,
+          },
+        },
+        orderBy: [{ start_date: 'asc' }, { id: 'asc' }],
+        skip,
+        take: params.limit,
+      }),
+    ]);
+
+    return {
+      rows: rows.map((row) => {
+        const roll = row.electoralRolls[0];
+        return {
+          election: PrismaElectionMapper.toDomain(row),
+          hasVoted: roll?.has_voted ?? false,
+          participationDate: roll?.last_vote_registered_at ?? null,
+        };
+      }),
+      total,
+    };
+  }
+
+  async findStatusHistoryByElectionIds(
+    electionIds: string[],
+  ): Promise<Array<ElectionStatusHistoryEntry & { electionId: string }>> {
+    if (electionIds.length === 0) return [];
+
+    const rows = await this.prisma.electionStatusHistory.findMany({
+      where: { election_id: { in: electionIds } },
+      orderBy: [{ election_id: 'asc' }, { changed_at: 'asc' }],
+    });
+
+    return rows.map((row) => ({
+      electionId: row.election_id,
       status: row.new_status,
       timestamp: row.changed_at,
     }));

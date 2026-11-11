@@ -27,6 +27,35 @@ export type ElectionListResult = {
   total: number;
 };
 
+// Voter-facing eligibility listing. Eligibility is defined exclusively by the
+// presence of an electoral_rolls row for (election_id, elector_id).
+export type VoterElectionListParams = {
+  electorId: string;
+  page: number;
+  limit: number;
+  // Partial, case-insensitive match on electionCode.
+  electionCode?: string;
+  // Lifecycle status filter.
+  status?: ElectionStatus;
+  // Election start_date >= startDateFrom (UTC midnight).
+  startDateFrom?: Date;
+  // Election start_date <= startDateTo (UTC midnight).
+  startDateTo?: Date;
+};
+
+// One voter-eligible election plus the authenticated elector's participation.
+// participationDate is the last_vote_registered_at of that elector's roll.
+export type VoterElectionRow = {
+  election: ElectionEntity;
+  hasVoted: boolean;
+  participationDate: Date | null;
+};
+
+export type VoterElectionListResult = {
+  rows: VoterElectionRow[];
+  total: number;
+};
+
 // Read-model for one persisted election status transition. Only persisted rows
 // are returned; the initial CREATED state (recorded at creation, not in the
 // history table) is never fabricated.
@@ -65,6 +94,18 @@ export interface ElectionRepository {
   // chronologically from oldest to newest (changed_at asc). Empty when the
   // election has no recorded transitions. Never fabricates entries.
   findStatusHistory(electionId: string): Promise<ElectionStatusHistoryEntry[]>;
+
+  // Returns a page of elections where the elector is eligible (exists an
+  // electoral_rolls row for election_id + elector_id), ordered by start_date
+  // asc then id asc, together with the elector's participation state. Never
+  // reads or exposes vote content (e.g. last_vote_candidacy_id).
+  findEligibleByElector(params: VoterElectionListParams): Promise<VoterElectionListResult>;
+
+  // Batch variant of findStatusHistory for the given elections, ordered by
+  // election_id then changed_at asc. Used to avoid N+1 reads on list endpoints.
+  findStatusHistoryByElectionIds(
+    electionIds: string[],
+  ): Promise<Array<ElectionStatusHistoryEntry & { electionId: string }>>;
 
   // Updates ONLY the editable fields present on the entity. Returns the updated
   // election. Throws ElectionNotFoundError when the row no longer exists (P2025)

@@ -255,4 +255,35 @@ describe('PrismaElectoralRollRepository integration', () => {
       expect(row!.elector_id).toBe(electorId);
     });
   });
+
+  describe('countByElectionIds', () => {
+    it('IC1: returns the roll count per election and omits elections without rolls', async () => {
+      const electionA = await seedElection();
+      const electionB = await seedElection();
+      const electionWithoutRolls = await seedElection();
+      const electorA = await seedElector();
+      const electorB = await seedElector();
+
+      await repository.createMany(electionA, [electorA, electorB]);
+      await repository.createMany(electionB, [electorA]);
+
+      const counts = await repository.countByElectionIds([
+        electionA,
+        electionB,
+        electionWithoutRolls,
+      ]);
+
+      expect(counts).toEqual(
+        expect.arrayContaining([
+          { electionId: electionA, total: 2 },
+          { electionId: electionB, total: 1 },
+        ]),
+      );
+      expect(counts).toHaveLength(2);
+    });
+
+    it('IC2: returns an empty array without querying for an empty id list', async () => {
+      await expect(repository.countByElectionIds([])).resolves.toEqual([]);
+    });
+  });
 });
