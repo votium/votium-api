@@ -2,6 +2,8 @@ import { ElectoralRollEntity } from '../entities/electoral-roll.entity';
 
 export const ELECTORAL_ROLL_REPOSITORY = 'ElectoralRollRepository';
 
+export type ElectionParticipationCount = { electionId: string; total: number };
+
 export interface ElectoralRollRepository {
   // Find all rolls for a given election matching any of the provided elector IDs.
   findByElectionAndElectorIds(
@@ -27,4 +29,9 @@ export interface ElectoralRollRepository {
   // Returns the has_voted flag of the (election, elector) roll row, or null when the
   // elector is not registered in the election's roll. Reads ONLY has_voted, never vote data.
   findHasVoted(electionId: string, electorId: string): Promise<boolean | null>;
+
+  // Batch count of rolls with has_voted = true per election (unique voters thanks to
+  // @@unique([election_id, elector_id])). Elections with no voters are omitted.
+  // Returns [] for an empty input. Read-only; never reads vote content.
+  countVotedByElectionIds(electionIds: string[]): Promise<ElectionParticipationCount[]>;
 }

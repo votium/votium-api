@@ -13,6 +13,8 @@ import {
   type ElectionStatusHistoryEntry,
   type VoterElectionListParams,
   type VoterElectionListResult,
+  type VoterElectionRow,
+  type VoterUpcomingElectionParams,
 } from '../../domain/repositories/election.repository.interface';
 import { ElectionCodeVO } from '../../domain/value-objects/election-code.vo';
 import { PrismaElectionMapper } from '../mappers/prisma-election.mapper';
@@ -143,6 +145,67 @@ export class PrismaElectionRepository implements ElectionRepository {
       }),
       total,
     };
+  }
+
+  async findUpcomingAndActiveByElector(
+    params: VoterUpcomingElectionParams,
+  ): Promise<VoterElectionRow[]> {
+    const now = params.now ?? new Date();
+    const windowDays = params.windowDays ?? UPCOMING_WINDOW_DAYS;
+    const horizon = new Date(now.getTime() + windowDays * MS_PER_DAY);
+
+    const today = currentElectionDate(now);
+    const nowTime = currentElectionTime(now);
+    const horizonDate = currentElectionDate(horizon);
+    const horizonTime = currentElectionTime(horizon);
+
+    const upcomingCreated: Prisma.ElectionWhereInput = {
+      current_status: 'CREATED',
+      AND: [
+        {
+          OR: [
+            { start_date: { gt: today } },
+            { AND: [{ start_date: today }, { start_time: { gt: nowTime } }] },
+          ],
+        },
+        {
+          OR: [
+            { start_date: { lt: horizonDate } },
+            { AND: [{ start_date: horizonDate }, { start_time: { lte: horizonTime } }] },
+          ],
+        },
+      ],
+    };
+    const activeInCourse: Prisma.ElectionWhereInput = {
+      current_status: 'ACTIVE',
+      ...buildActiveFilter(true, now),
+    };
+
+    const rows = await this.prisma.election.findMany({
+      where: {
+        electoralRolls: { some: { elector_id: params.electorId } },
+        OR: [upcomingCreated, activeInCourse],
+      },
+      include: {
+        // Only the authenticated elector's own roll, and only participation
+        // metadata. last_vote_candidacy_id (vote content) is never selected.
+        electoralRolls: {
+          where: { elector_id: params.electorId },
+          select: { has_voted: true, last_vote_registered_at: true },
+          take: 1,
+        },
+      },
+      orderBy: [{ start_date: 'asc' }, { start_time: 'asc' }, { id: 'asc' }],
+    });
+
+    return rows.map((row) => {
+      const roll = row.electoralRolls[0];
+      return {
+        election: PrismaElectionMapper.toDomain(row),
+        hasVoted: roll?.has_voted ?? false,
+        participationDate: roll?.last_vote_registered_at ?? null,
+      };
+    });
   }
 
   async findStatusHistoryByElectionIds(
@@ -302,6 +365,9 @@ export class PrismaElectionRepository implements ElectionRepository {
     }
   }
 }
+
+const UPCOMING_WINDOW_DAYS = 30;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function isRecordNotFoundError(error: unknown): boolean {
   return (

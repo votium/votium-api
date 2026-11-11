@@ -50,6 +50,7 @@ describe('GetElectorElectionsUseCase', () => {
   beforeEach(() => {
     elections = {
       findEligibleByElector: jest.fn(),
+      findUpcomingAndActiveByElector: jest.fn(),
       findStatusHistoryByElectionIds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<ElectionRepository>;
     electoralRolls = {

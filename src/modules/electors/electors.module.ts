@@ -29,6 +29,7 @@ import { CheckElectorHasVotedUseCase } from './application/use-cases/check-elect
 import { DeleteElectorUseCase } from './application/use-cases/delete-elector.use-case';
 import { GetElectorUseCase } from './application/use-cases/get-elector.use-case';
 import { GetElectorElectionsUseCase } from './application/use-cases/get-elector-elections.use-case';
+import { GetVoterUpcomingElectionsUseCase } from './application/use-cases/get-voter-upcoming-elections.use-case';
 import { GetElectoralRegistryTemplateUseCase } from './application/use-cases/get-electoral-registry-template.use-case';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
@@ -113,6 +114,15 @@ import { ElectorElectionsController } from './presentation/controllers/elector-e
         elections: ElectionRepository,
         electoralRolls: ElectoralRollRepository,
       ) => new CheckElectorHasVotedUseCase(electors, elections, electoralRolls),
+      inject: [ELECTOR_REPOSITORY, ELECTION_REPOSITORY, ELECTORAL_ROLL_REPOSITORY],
+    },
+    {
+      provide: GetVoterUpcomingElectionsUseCase,
+      useFactory: (
+        electors: ElectorRepository,
+        elections: ElectionRepository,
+        electoralRolls: ElectoralRollRepository,
+      ) => new GetVoterUpcomingElectionsUseCase(electors, elections, electoralRolls),
       inject: [ELECTOR_REPOSITORY, ELECTION_REPOSITORY, ELECTORAL_ROLL_REPOSITORY],
     },
     {

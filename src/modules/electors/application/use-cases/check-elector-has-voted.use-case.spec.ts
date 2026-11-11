@@ -26,6 +26,7 @@ describe('CheckElectorHasVotedUseCase', () => {
       countByElectionIds: jest.fn(),
       deleteByElectionAndElectorId: jest.fn(),
       findHasVoted: jest.fn(),
+      countVotedByElectionIds: jest.fn(),
     };
     useCase = new CheckElectorHasVotedUseCase(
       electors as unknown as ElectorRepository,
