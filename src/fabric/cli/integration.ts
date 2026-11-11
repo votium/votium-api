@@ -88,7 +88,7 @@ async function main(): Promise<void> {
     await check('createElection', async () => {
       const r = await elections.createElection(base);
       assert.ok(r.txId);
-      assert.ok(r.blockNumber > 0);
+      assert.ok((r.blockNumber ?? 0) > 0);
       has(r.data, { electionId: E, status: 'CREATED' });
       assert.ok(r.data.timeline.createdAt);
       show('createElection', r.data);

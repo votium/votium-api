@@ -33,4 +33,14 @@ describe('fabricConfig', () => {
     process.env.FABRIC_KEEPALIVE_MS = '30000';
     expect(() => load()).toThrow(/FABRIC_KEEPALIVE_MS/);
   });
+
+  it('exposes the resilience defaults', () => {
+    process.env.FABRIC_WRITER_DIR = '/tmp/w';
+    expect(load().resilience).toEqual({
+      maxAttempts: 3,
+      retryBaseMs: 250,
+      maxConcurrentSubmits: 32,
+      logCause: false,
+    });
+  });
 });

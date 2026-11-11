@@ -3,7 +3,10 @@ import { FabricProfile } from '../fabric.constants';
 export interface TxResult<T> {
   data: T;
   txId: string;
-  blockNumber: number;
+  /** null when the result was recovered by reconciliation and the block is unknown */
+  blockNumber: number | null;
+  /** true when the first attempt had an unknown outcome and the result comes from a retry or from reading the ledger */
+  recovered?: boolean;
 }
 export interface ReadOptions {
   profile?: FabricProfile;

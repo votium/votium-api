@@ -60,6 +60,8 @@ export class FabricClient {
         'grpc.keepalive_time_ms': this.config.keepAliveMs,
         'grpc.keepalive_timeout_ms': 20000,
         'grpc.keepalive_permit_without_calls': 1,
+        'grpc.initial_reconnect_backoff_ms': 500,
+        'grpc.max_reconnect_backoff_ms': 10000,
       },
     );
     this.gateway = connect({
