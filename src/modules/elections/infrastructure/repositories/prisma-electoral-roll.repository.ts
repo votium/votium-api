@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/shared/database/prisma.service';
 import { ElectoralRollEntity } from '../../domain/entities/electoral-roll.entity';
-import { ElectoralRollRepository } from '../../domain/repositories/electoral-roll.repository.interface';
+import type {
+  ElectionParticipationCount,
+  ElectoralRollRepository,
+} from '../../domain/repositories/electoral-roll.repository.interface';
 import { PrismaElectoralRollMapper } from '../mappers/prisma-electoral-roll.mapper';
 
 @Injectable()
@@ -76,5 +79,17 @@ export class PrismaElectoralRollRepository implements ElectoralRollRepository {
     });
 
     return row ? row.has_voted : null;
+  }
+
+  async countVotedByElectionIds(electionIds: string[]): Promise<ElectionParticipationCount[]> {
+    if (electionIds.length === 0) return [];
+
+    const rows = await this.prisma.electoralRoll.groupBy({
+      by: ['election_id'],
+      where: { election_id: { in: electionIds }, has_voted: true },
+      _count: { _all: true },
+    });
+
+    return rows.map((row) => ({ electionId: row.election_id, total: row._count._all }));
   }
 }

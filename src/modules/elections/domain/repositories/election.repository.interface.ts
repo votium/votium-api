@@ -51,6 +51,14 @@ export type VoterElectionRow = {
   participationDate: Date | null;
 };
 
+// Voter-facing "upcoming and active" window. Defaults: now = current time (UTC),
+// windowDays = 30.
+export type VoterUpcomingElectionParams = {
+  electorId: string;
+  now?: Date;
+  windowDays?: number;
+};
+
 export type VoterElectionListResult = {
   rows: VoterElectionRow[];
   total: number;
@@ -100,6 +108,12 @@ export interface ElectionRepository {
   // asc then id asc, together with the elector's participation state. Never
   // reads or exposes vote content (e.g. last_vote_candidacy_id).
   findEligibleByElector(params: VoterElectionListParams): Promise<VoterElectionListResult>;
+
+  // Elections where the elector is eligible (electoral_rolls row) and that are either
+  // CREATED with start instant in (now, now + windowDays] or ACTIVE in course
+  // (start <= now <= end). Not paginated. Ordered by start_date, start_time, id asc.
+  // Read-only; never reads vote content.
+  findUpcomingAndActiveByElector(params: VoterUpcomingElectionParams): Promise<VoterElectionRow[]>;
 
   // Batch variant of findStatusHistory for the given elections, ordered by
   // election_id then changed_at asc. Used to avoid N+1 reads on list endpoints.

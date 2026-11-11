@@ -1673,3 +1673,248 @@ describe('PrismaElectionRepository voter eligibility integration', () => {
     await expect(repository.findStatusHistoryByElectionIds([])).resolves.toEqual([]);
   });
 });
+
+describe('PrismaElectionRepository upcoming and active elections for a voter', () => {
+  let prisma: PrismaService;
+  let repository: PrismaElectionRepository;
+
+  const suffix = Date.now();
+  const electionIds: string[] = [];
+  const electorIds: string[] = [];
+
+  // Fixed reference instant so the 30-day window is deterministic.
+  const now = new Date('2026-11-10T12:00:00.000Z');
+  const DAY = 24 * 60 * 60 * 1000;
+  const at = (offsetMs: number) => new Date(now.getTime() + offsetMs);
+
+  beforeAll(async () => {
+    prisma = new PrismaService();
+    await prisma.$connect();
+    repository = new PrismaElectionRepository(prisma);
+  });
+
+  afterEach(async () => {
+    if (electionIds.length > 0) {
+      await prisma.electoralRoll.deleteMany({ where: { election_id: { in: electionIds } } });
+      await prisma.election.deleteMany({ where: { id: { in: electionIds } } });
+      electionIds.length = 0;
+    }
+    if (electorIds.length > 0) {
+      await prisma.elector.deleteMany({ where: { id: { in: electorIds } } });
+      electorIds.length = 0;
+    }
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  function dateOf(instant: Date): Date {
+    return new Date(
+      Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth(), instant.getUTCDate()),
+    );
+  }
+
+  function timeOf(instant: Date): Date {
+    return new Date(
+      Date.UTC(1970, 0, 1, instant.getUTCHours(), instant.getUTCMinutes(), instant.getUTCSeconds()),
+    );
+  }
+
+  async function seedElector(label: string): Promise<string> {
+    const row = await prisma.elector.create({
+      data: {
+        first_name: 'Upcoming',
+        last_name: label,
+        email: `upcoming-int-${suffix}-${label}-${Math.random()}@example.com`,
+        password_hash: 'pbkdf2$placeholder',
+        student_code: `UPC-${suffix}-${label}-${electorIds.length}`,
+        program_code: '2710',
+        status: 'ACTIVE',
+      },
+    });
+    electorIds.push(row.id);
+    return row.id;
+  }
+
+  async function seedElection(options: {
+    label: string;
+    status: ElectionStatus;
+    start: Date;
+    end: Date;
+    electorId?: string;
+    hasVoted?: boolean;
+  }): Promise<string> {
+    const row = await prisma.election.create({
+      data: {
+        electionCode: await nextTestElectionCode(prisma),
+        name: `UPC-${options.label}-${suffix}-${Math.random()}`,
+        description: 'Upcoming elections integration election.',
+        start_date: dateOf(options.start),
+        start_time: timeOf(options.start),
+        end_date: dateOf(options.end),
+        end_time: timeOf(options.end),
+        current_status: options.status,
+        blank_vote_enabled: false,
+      },
+    });
+    electionIds.push(row.id);
+    if (options.electorId) {
+      await prisma.electoralRoll.create({
+        data: {
+          election_id: row.id,
+          elector_id: options.electorId,
+          has_voted: options.hasVoted ?? false,
+        },
+      });
+    }
+    return row.id;
+  }
+
+  async function idsFor(electorId: string): Promise<string[]> {
+    const rows = await repository.findUpcomingAndActiveByElector({ electorId, now });
+    return rows.map((row) => row.election.id as string);
+  }
+
+  it('UP-01: includes CREATED elections starting within (now, now+30d], boundary inclusive', async () => {
+    const electorId = await seedElector('up01');
+    const soon = await seedElection({
+      label: 'soon',
+      status: 'CREATED',
+      start: at(2 * DAY),
+      end: at(3 * DAY),
+      electorId,
+    });
+    const boundary = await seedElection({
+      label: 'boundary',
+      status: 'CREATED',
+      start: at(30 * DAY),
+      end: at(31 * DAY),
+      electorId,
+    });
+
+    expect(await idsFor(electorId)).toEqual([soon, boundary]);
+  });
+
+  it('UP-02: excludes CREATED beyond 30 days, already started, and PENDING elections', async () => {
+    const electorId = await seedElector('up02');
+    await seedElection({
+      label: 'far',
+      status: 'CREATED',
+      start: at(30 * DAY + 1000),
+      end: at(31 * DAY),
+      electorId,
+    });
+    await seedElection({
+      label: 'started',
+      status: 'CREATED',
+      start: at(-1000),
+      end: at(DAY),
+      electorId,
+    });
+    await seedElection({
+      label: 'pending',
+      status: 'PENDING',
+      start: at(2 * DAY),
+      end: at(3 * DAY),
+      electorId,
+    });
+
+    expect(await idsFor(electorId)).toEqual([]);
+  });
+
+  it('UP-03: includes ACTIVE elections in course even if they started over 30 days ago', async () => {
+    const electorId = await seedElector('up03');
+    const longRunning = await seedElection({
+      label: 'long',
+      status: 'ACTIVE',
+      start: at(-40 * DAY),
+      end: at(DAY),
+      electorId,
+    });
+
+    expect(await idsFor(electorId)).toEqual([longRunning]);
+  });
+
+  it('UP-04: excludes ACTIVE elections already ended and CLOSED/PUBLISHED/CANCELLED', async () => {
+    const electorId = await seedElector('up04');
+    await seedElection({
+      label: 'expired',
+      status: 'ACTIVE',
+      start: at(-2 * DAY),
+      end: at(-1000),
+      electorId,
+    });
+    for (const status of ['CLOSED', 'PUBLISHED', 'CANCELLED'] as const) {
+      await seedElection({
+        label: status,
+        status,
+        start: at(-DAY),
+        end: at(DAY),
+        electorId,
+      });
+    }
+
+    expect(await idsFor(electorId)).toEqual([]);
+  });
+
+  it('UP-05: excludes elections where the voter is not in the electoral roll', async () => {
+    const electorId = await seedElector('up05');
+    const otherId = await seedElector('up05-other');
+    await seedElection({
+      label: 'other-roll',
+      status: 'ACTIVE',
+      start: at(-DAY),
+      end: at(DAY),
+      electorId: otherId,
+    });
+    await seedElection({ label: 'no-roll', status: 'CREATED', start: at(DAY), end: at(2 * DAY) });
+
+    expect(await idsFor(electorId)).toEqual([]);
+  });
+
+  it('UP-06: includes already-voted elections with hasVoted true and no vote content', async () => {
+    const electorId = await seedElector('up06');
+    await seedElection({
+      label: 'voted',
+      status: 'ACTIVE',
+      start: at(-DAY),
+      end: at(DAY),
+      electorId,
+      hasVoted: true,
+    });
+
+    const rows = await repository.findUpcomingAndActiveByElector({ electorId, now });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].hasVoted).toBe(true);
+    expect(Object.keys(rows[0]).sort()).toEqual(['election', 'hasVoted', 'participationDate']);
+  });
+
+  it('UP-07: orders by start_date, start_time, id ascending', async () => {
+    const electorId = await seedElector('up07');
+    const later = await seedElection({
+      label: 'later',
+      status: 'CREATED',
+      start: at(5 * DAY),
+      end: at(6 * DAY),
+      electorId,
+    });
+    const active = await seedElection({
+      label: 'active',
+      status: 'ACTIVE',
+      start: at(-5 * DAY),
+      end: at(DAY),
+      electorId,
+    });
+    const sameDayEarlier = await seedElection({
+      label: 'sooner',
+      status: 'CREATED',
+      start: at(5 * DAY - 60 * 60 * 1000),
+      end: at(6 * DAY),
+      electorId,
+    });
+
+    expect(await idsFor(electorId)).toEqual([active, sameDayEarlier, later]);
+  });
+});

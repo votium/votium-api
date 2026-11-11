@@ -327,4 +327,48 @@ describe('PrismaElectoralRollRepository integration', () => {
       expect(typeof result).toBe('boolean');
     });
   });
+
+  describe('countVotedByElectionIds', () => {
+    it('IV1: counts only has_voted = true rows, grouped by election', async () => {
+      const electionA = await seedElection();
+      const electionB = await seedElection();
+      const voterA1 = await seedElector();
+      const voterA2 = await seedElector();
+      const pendingA = await seedElector();
+      const voterB = await seedElector();
+      await prisma.electoralRoll.createMany({
+        data: [
+          { election_id: electionA, elector_id: voterA1, has_voted: true },
+          { election_id: electionA, elector_id: voterA2, has_voted: true },
+          { election_id: electionA, elector_id: pendingA, has_voted: false },
+          { election_id: electionB, elector_id: voterB, has_voted: true },
+        ],
+      });
+
+      const counts = await repository.countVotedByElectionIds([electionA, electionB]);
+
+      expect(counts).toEqual(
+        expect.arrayContaining([
+          { electionId: electionA, total: 2 },
+          { electionId: electionB, total: 1 },
+        ]),
+      );
+      expect(counts).toHaveLength(2);
+      await expect(repository.countByElectionIds([electionA])).resolves.toEqual([
+        { electionId: electionA, total: 3 },
+      ]);
+    });
+
+    it('IV2: omits elections without voters', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await repository.createMany(electionId, [electorId]);
+
+      await expect(repository.countVotedByElectionIds([electionId])).resolves.toEqual([]);
+    });
+
+    it('IV3: returns [] for an empty id list', async () => {
+      await expect(repository.countVotedByElectionIds([])).resolves.toEqual([]);
+    });
+  });
 });

@@ -22,6 +22,8 @@ import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guar
 import { ELECTION_STATUSES } from 'src/modules/elections/domain/entities/election.entity';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { GetElectorElectionsUseCase } from '../../application/use-cases/get-elector-elections.use-case';
+import { GetVoterUpcomingElectionsUseCase } from '../../application/use-cases/get-voter-upcoming-elections.use-case';
+import { VoterUpcomingElectionResponseDto } from '../dtos/voter-upcoming-election-response.dto';
 import { ElectorElectionsListResponseDto } from '../dtos/elector-elections-list-response.dto';
 import { ListElectorElectionsQueryDto } from '../dtos/list-elector-elections-query.dto';
 import { ElectorElectionPresenter } from '../presenters/elector-election.presenter';
@@ -38,7 +40,36 @@ type AuthenticatedRequest = Request & {
 @ApiCookieAuth()
 @Controller('electors')
 export class ElectorElectionsController {
-  constructor(private readonly getElectorElections: GetElectorElectionsUseCase) {}
+  constructor(
+    private readonly getElectorElections: GetElectorElectionsUseCase,
+    private readonly getVoterUpcomingElections: GetVoterUpcomingElectionsUseCase,
+  ) {}
+
+  // 3-segment route: must not be declared as 2 segments, or ':id/elections' would
+  // capture it and ParseUUIDPipe would reject 'me' with 400.
+  @Get('me/elections/upcoming')
+  @UseGuards(JwtAuthGuard, ElectorGuard)
+  @ApiOperation({
+    summary: "List the authenticated voter's upcoming and active elections",
+    description:
+      'Returns the elections where the authenticated voter is registered in the electoral ' +
+      'roll: CREATED elections starting within the next 30 days and ACTIVE elections still ' +
+      'in course. Includes elections already voted. Identity comes exclusively from the JWT. ' +
+      'Read-only; ballot content is never exposed. Not paginated.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Upcoming and active elections retrieved successfully.',
+    type: VoterUpcomingElectionResponseDto,
+    isArray: true,
+  })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires an elector principal.' })
+  @ApiResponse({ status: 404, description: 'The authenticated identity is not an elector.' })
+  async upcoming(@Req() req: AuthenticatedRequest) {
+    const items = await this.getVoterUpcomingElections.execute({ electorId: req.user.sub });
+    return ElectorElectionPresenter.toUpcomingList(items);
+  }
 
   @Get(':id/elections')
   @UseGuards(JwtAuthGuard, ElectorGuard)
