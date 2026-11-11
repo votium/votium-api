@@ -100,8 +100,8 @@ describe('VotingService.getVotesByElection', () => {
     await svc.getVotesByElection({ electionId: 'E1', bookmark: 'bm' });
     await svc.getVotesByElection({ electionId: 'E1', pageSize: 50, bookmark: 'bm' });
     expect(invoker.evaluate.mock.calls.map((c) => c[2])).toEqual([
-      ['E1'],
-      ['E1', '50'],
+      ['E1', '200', ''],
+      ['E1', '50', ''],
       ['E1', '200', 'bm'],
       ['E1', '50', 'bm'],
     ]);

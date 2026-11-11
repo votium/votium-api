@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FabricInvoker } from '../client/fabric-invoker';
-import { validateInput } from '../dto/validate';
 import { CastVoteDto, ElectionIdDto, VotesQueryDto } from '../dto/inputs';
+import { validateInput } from '../dto/validate';
 import { CastVoteResult, ReadOptions, Tally, TxResult, VotesPage } from '../types';
 
 const DEFAULT_PAGE_SIZE = 200; // documented default of the contract
@@ -22,9 +22,8 @@ export class VotingService {
 
   async getVotesByElection(input: VotesQueryDto, opts: ReadOptions = {}): Promise<VotesPage> {
     const v = await validateInput(VotesQueryDto, input);
-    const args = [v.electionId];
-    if (v.pageSize !== undefined || v.bookmark) args.push(String(v.pageSize ?? DEFAULT_PAGE_SIZE));
-    if (v.bookmark) args.push(v.bookmark);
+    // The contract always receives the three arguments: pageSize (documented default 200) and an empty bookmark for the first page.
+    const args = [v.electionId, String(v.pageSize ?? DEFAULT_PAGE_SIZE), v.bookmark ?? ''];
     return this.fabric.evaluate<VotesPage>('voting', 'GetVotesByElection', args, opts.profile);
   }
 
