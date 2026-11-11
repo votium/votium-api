@@ -1,8 +1,9 @@
 // The invoker pulls the registry, @nestjs/config and the Gateway (ESM). These tests only need a fake of it.
 jest.mock('../client/fabric-invoker', () => ({ FabricInvoker: class FabricInvoker { } }));
 
-import { randomBytes, generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { FabricInvoker } from '../client/fabric-invoker';
+import { businessError } from '../errors/fabric.error';
 import { ElectionsService } from './elections.service';
 import { VotersService } from './voters.service';
 import { VotingService } from './voting.service';
@@ -30,13 +31,12 @@ describe('ElectionsService', () => {
       endDate: '2026-11-10T18:00:00-05:00',
       signingPublicKey: publicPem,
     });
-    expect(invoker.submit).toHaveBeenCalledWith('elections', 'CreateElection', [
-      'E1',
-      'Rector',
-      '2026-11-10T08:00:00-05:00',
-      '2026-11-10T18:00:00-05:00',
-      publicPem,
-    ]);
+    expect(invoker.submit).toHaveBeenCalledWith(
+      'elections',
+      'CreateElection',
+      ['E1', 'Rector', '2026-11-10T08:00:00-05:00', '2026-11-10T18:00:00-05:00', publicPem],
+      expect.any(Object),
+    );
   });
 
   it('does not touch the network when the end date is not after the start date', async () => {
@@ -69,17 +69,37 @@ describe('ElectionsService', () => {
     await svc.getElection('E1', { profile: 'auditor' });
     expect(invoker.evaluate).toHaveBeenCalledWith('elections', 'GetElection', ['E1'], 'auditor');
   });
+
+  it('reconciles a transition by reading the election status', async () => {
+    const { invoker, asInvoker } = fakeInvoker();
+    await new ElectionsService(asInvoker).startElection('E1');
+    const opts = invoker.submit.mock.calls[0][3] as { reconcile: () => Promise<unknown> };
+    invoker.evaluate.mockResolvedValueOnce({ electionId: 'E1', status: 'ACTIVE' });
+    await expect(opts.reconcile()).resolves.toMatchObject({ status: 'ACTIVE' });
+    invoker.evaluate.mockResolvedValueOnce({ electionId: 'E1', status: 'CREATED' });
+    await expect(opts.reconcile()).resolves.toBeUndefined();
+    invoker.evaluate.mockRejectedValueOnce(businessError('NOT_FOUND', new Error('x')));
+    await expect(opts.reconcile()).resolves.toBeUndefined();
+  });
 });
 
 describe('VotersService', () => {
-  it('serialises the hash list as JSON', async () => {
+  it('serialises the hash list as JSON and marks batches as idempotent', async () => {
     const { invoker, asInvoker } = fakeInvoker();
     const hashes = [hex64(), hex64()];
     await new VotersService(asInvoker).markVotedBatch({ electionId: 'E1', voterHashes: hashes });
-    expect(invoker.submit).toHaveBeenCalledWith('voters', 'MarkVotedBatch', [
-      'E1',
-      JSON.stringify(hashes),
-    ]);
+    expect(invoker.submit).toHaveBeenCalledWith(
+      'voters',
+      'MarkVotedBatch',
+      ['E1', JSON.stringify(hashes)],
+      { idempotent: true },
+    );
+  });
+
+  it('issueToken is never idempotent: it must not be resent after an unknown outcome', async () => {
+    const { invoker, asInvoker } = fakeInvoker();
+    await new VotersService(asInvoker).issueToken({ electionId: 'E1', voterHash: hex64() });
+    expect(invoker.submit.mock.calls[0]).toHaveLength(3);
   });
 
   it('rejects an invalid hash before sending', async () => {
@@ -91,8 +111,32 @@ describe('VotersService', () => {
   });
 });
 
-describe('VotingService.getVotesByElection', () => {
-  it('sends only the arguments that were provided', async () => {
+describe('VotingService', () => {
+  const vote = () => ({
+    electionId: 'E1',
+    candidateId: 'C1',
+    nullifier: hex64(),
+    signature: randomBytes(256).toString('base64'),
+  });
+
+  it('castVote is idempotent and only NULLIFIER_USED counts as "already applied"', async () => {
+    const { invoker, asInvoker } = fakeInvoker();
+    const v = vote();
+    await new VotingService(asInvoker).castVote(v);
+    const opts = invoker.submit.mock.calls[0][3] as {
+      idempotent: boolean;
+      recoverFromError: (e: unknown) => unknown;
+    };
+    expect(opts.idempotent).toBe(true);
+    expect(opts.recoverFromError(businessError('NULLIFIER_USED', new Error('x')))).toEqual({
+      electionId: 'E1',
+      nullifier: v.nullifier,
+      accepted: true,
+    });
+    expect(opts.recoverFromError(businessError('ALREADY_VOTED', new Error('x')))).toBeUndefined();
+  });
+
+  it('getVotesByElection always sends the three arguments', async () => {
     const { invoker, asInvoker } = fakeInvoker();
     const svc = new VotingService(asInvoker);
     await svc.getVotesByElection({ electionId: 'E1' });

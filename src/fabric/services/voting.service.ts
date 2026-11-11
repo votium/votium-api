@@ -10,14 +10,24 @@ const DEFAULT_PAGE_SIZE = 200; // documented default of the contract
 export class VotingService {
   constructor(private readonly fabric: FabricInvoker) { }
 
+  /**
+   * After an unknown outcome the same vote (same nullifier) is sent once more. If the network answers
+   * NULLIFIER_USED, the first attempt was applied: the result is returned with recovered=true.
+   */
   async castVote(input: CastVoteDto): Promise<TxResult<CastVoteResult>> {
     const v = await validateInput(CastVoteDto, input);
-    return this.fabric.submit<CastVoteResult>('voting', 'CastVote', [
-      v.electionId,
-      v.candidateId,
-      v.nullifier,
-      v.signature,
-    ]);
+    return this.fabric.submit<CastVoteResult>(
+      'voting',
+      'CastVote',
+      [v.electionId, v.candidateId, v.nullifier, v.signature],
+      {
+        idempotent: true,
+        recoverFromError: (err) =>
+          err.code === 'NULLIFIER_USED'
+            ? { electionId: v.electionId, nullifier: v.nullifier, accepted: true }
+            : undefined,
+      },
+    );
   }
 
   async getVotesByElection(input: VotesQueryDto, opts: ReadOptions = {}): Promise<VotesPage> {

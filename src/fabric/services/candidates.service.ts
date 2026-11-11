@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FabricInvoker } from '../client/fabric-invoker';
-import { validateInput } from '../dto/validate';
 import { CandidateKeyDto, ElectionIdDto, RegisterCandidateDto } from '../dto/inputs';
+import { validateInput } from '../dto/validate';
 import { Candidate, ReadOptions, TxResult } from '../types';
 
 @Injectable()
@@ -10,11 +10,22 @@ export class CandidatesService {
 
   async registerCandidate(input: RegisterCandidateDto): Promise<TxResult<Candidate>> {
     const v = await validateInput(RegisterCandidateDto, input);
-    return this.fabric.submit<Candidate>('candidates', 'RegisterCandidate', [
-      v.electionId,
-      v.candidateId,
-      v.name,
-    ]);
+    return this.fabric.submit<Candidate>(
+      'candidates',
+      'RegisterCandidate',
+      [v.electionId, v.candidateId, v.name],
+      {
+        // After an unknown outcome: the candidate exists with this name => the first attempt was applied.
+        reconcile: async () => {
+          try {
+            const c = await this.getCandidate(v.electionId, v.candidateId);
+            return c.name === v.name ? c : undefined;
+          } catch {
+            return undefined;
+          }
+        },
+      },
+    );
   }
 
   async getCandidate(
