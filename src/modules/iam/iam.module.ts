@@ -6,8 +6,14 @@ import { EnsureDefaultRolesUseCase } from './application/use-cases/ensure-defaul
 import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { UsersController } from './presentation/controllers/users.controller';
+import { AuditLogsController } from './presentation/controllers/audit-logs.controller';
 import { PrismaUserRepository } from './infrastructure/repositories/prisma-user.repository';
 import { PrismaRoleRepository } from './infrastructure/repositories/prisma-role.repository';
+import { PrismaAuditLogRepository } from './infrastructure/repositories/prisma-audit-log.repository';
+import {
+  AUDIT_LOG_REPOSITORY,
+  type AuditLogRepository,
+} from './domain/repositories/audit-log.repository.interface';
 import {
   USER_REPOSITORY,
   type UserRepository,
@@ -25,17 +31,19 @@ import { NodeCryptoPasswordHasherService } from './infrastructure/services/node-
 import { PrismaAuditLogService } from './infrastructure/services/prisma-audit-log.service';
 import { GetUsersUseCase } from './application/use-cases/get-users.use-case';
 import { GetUserUseCase } from './application/use-cases/get-user.use-case';
+import { GetAuditLogsUseCase } from './application/use-cases/get-audit-logs.use-case';
 import { ActivateUserUseCase } from './application/use-cases/activate-user.use-case';
 import { DeactivateUserUseCase } from './application/use-cases/deactivate-user.use-case';
 import { DeleteUserUseCase } from './application/use-cases/delete-user.use-case';
 
 @Module({
   imports: [forwardRef(() => AuthModule)],
-  controllers: [UsersController],
+  controllers: [UsersController, AuditLogsController],
   providers: [
     PrismaService,
     { provide: USER_REPOSITORY, useClass: PrismaUserRepository },
     { provide: ROLE_REPOSITORY, useClass: PrismaRoleRepository },
+    { provide: AUDIT_LOG_REPOSITORY, useClass: PrismaAuditLogRepository },
     { provide: PASSWORD_HASHER_PORT, useClass: NodeCryptoPasswordHasherService },
     { provide: AUDIT_LOG_PORT, useClass: PrismaAuditLogService },
     { provide: IAM_GATEWAY, useClass: PrismaIamGateway },
@@ -63,6 +71,11 @@ import { DeleteUserUseCase } from './application/use-cases/delete-user.use-case'
       provide: GetUserUseCase,
       useFactory: (users: UserRepository) => new GetUserUseCase(users),
       inject: [USER_REPOSITORY],
+    },
+    {
+      provide: GetAuditLogsUseCase,
+      useFactory: (auditLogs: AuditLogRepository) => new GetAuditLogsUseCase(auditLogs),
+      inject: [AUDIT_LOG_REPOSITORY],
     },
     {
       provide: ActivateUserUseCase,
