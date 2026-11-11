@@ -23,4 +23,8 @@ export interface ElectoralRollRepository {
   // Removes the association between an election and an elector. Returns true
   // when a row was deleted, false when no association existed.
   deleteByElectionAndElectorId(electionId: string, electorId: string): Promise<boolean>;
+
+  // Returns the has_voted flag of the (election, elector) roll row, or null when the
+  // elector is not registered in the election's roll. Reads ONLY has_voted, never vote data.
+  findHasVoted(electionId: string, electorId: string): Promise<boolean | null>;
 }
