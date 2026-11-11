@@ -1,14 +1,11 @@
 import { CandidacyPresenter } from 'src/modules/candidacies/presentation/presenters/candidacy.presenter';
-import type { CandidacyWithCandidate } from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
 import { ElectionDetailResult } from '../../application/use-cases/get-election-detail.use-case';
 import { ElectionEntity } from '../../domain/entities/election.entity';
-import type { ElectionStatusHistoryEntry } from '../../domain/repositories/election.repository.interface';
 import {
   ElectionDetailResponseDto,
   ElectionStatusHistoryEntryResponseDto,
 } from '../dtos/election-detail-response.dto';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
-import { VoterElectionDetailResponseDto } from '../dtos/voter-election-detail-response.dto';
 
 export class ElectionPresenter {
   static toResponse(entity: ElectionEntity): ElectionResponseDto {
@@ -45,21 +42,6 @@ export class ElectionPresenter {
         CandidacyPresenter.toCandidacyWithCandidate(candidacy),
       ),
       registeredVoters: result.registeredVoters,
-    });
-  }
-
-  static toVoterDetail(item: {
-    election: ElectionEntity;
-    statusHistory: ElectionStatusHistoryEntry[];
-    candidacies: CandidacyWithCandidate[];
-    registeredVoters: number;
-    hasVoted: boolean;
-    participationDate: Date | null;
-  }): VoterElectionDetailResponseDto {
-    return new VoterElectionDetailResponseDto({
-      ...ElectionPresenter.toDetail(item), // reuse the full detail mapping
-      hasVoted: item.hasVoted,
-      participationDate: item.participationDate?.toISOString() ?? null,
     });
   }
 }
