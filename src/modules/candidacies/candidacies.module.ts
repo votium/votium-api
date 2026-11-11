@@ -31,8 +31,8 @@ import { ElectionCandidaciesController } from './presentation/controllers/electi
 
 @Module({
   imports: [
-    IamModule,
-    AuthModule,
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
     forwardRef(() => ElectionsModule),
     forwardRef(() => CandidatesModule),
   ],

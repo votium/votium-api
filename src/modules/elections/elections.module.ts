@@ -53,11 +53,15 @@ import { ElectoralRollCsvFileParserService } from './infrastructure/services/ele
 import { ElectionClosureSchedulerService } from './infrastructure/services/election-closure-scheduler.service';
 import { ElectionsController } from './presentation/controllers/elections.controller';
 import { ElectionsElectoralRollController } from './presentation/controllers/elections-electoral-roll.controller';
-import { VoterElectionsController } from './presentation/controllers/voter-elections.controller';
 
 @Module({
-  imports: [IamModule, AuthModule, forwardRef(() => CandidaciesModule), ElectorsModule],
-  controllers: [VoterElectionsController, ElectionsController, ElectionsElectoralRollController],
+  imports: [
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
+    forwardRef(() => CandidaciesModule),
+    forwardRef(() => ElectorsModule),
+  ],
+  controllers: [ElectionsController, ElectionsElectoralRollController],
   providers: [
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },
     { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
