@@ -92,6 +92,7 @@ describe('UpdateElectoralRollElectorUseCase', () => {
     createMany: jest.fn(),
     countByElection: jest.fn(),
     deleteByElectionAndElectorId: jest.fn(),
+    findHasVoted: jest.fn(),
   };
 
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {

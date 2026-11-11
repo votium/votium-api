@@ -40,6 +40,7 @@ describe('GetElectoralRollSummaryUseCase', () => {
     createMany: jest.fn(),
     countByElection: jest.fn(),
     deleteByElectionAndElectorId: jest.fn(),
+    findHasVoted: jest.fn(),
   };
 
   beforeEach(() => {

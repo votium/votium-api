@@ -68,4 +68,13 @@ export class PrismaElectoralRollRepository implements ElectoralRollRepository {
 
     return result.count > 0;
   }
+
+  async findHasVoted(electionId: string, electorId: string): Promise<boolean | null> {
+    const row = await this.prisma.electoralRoll.findUnique({
+      where: { election_id_elector_id: { election_id: electionId, elector_id: electorId } },
+      select: { has_voted: true },
+    });
+
+    return row ? row.has_voted : null;
+  }
 }

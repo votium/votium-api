@@ -286,4 +286,45 @@ describe('PrismaElectoralRollRepository integration', () => {
       await expect(repository.countByElectionIds([])).resolves.toEqual([]);
     });
   });
+
+  describe('findHasVoted', () => {
+    it('IH1: returns true when the roll row has has_voted = true', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await prisma.electoralRoll.create({
+        data: { election_id: electionId, elector_id: electorId, has_voted: true },
+      });
+
+      await expect(repository.findHasVoted(electionId, electorId)).resolves.toBe(true);
+    });
+
+    it('IH2: returns false when the roll row has has_voted = false', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await repository.createMany(electionId, [electorId]);
+
+      await expect(repository.findHasVoted(electionId, electorId)).resolves.toBe(false);
+    });
+
+    it('IH3: returns null when no (election, elector) row exists', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      const otherElectionId = await seedElection();
+      await repository.createMany(otherElectionId, [electorId]);
+
+      await expect(repository.findHasVoted(electionId, electorId)).resolves.toBeNull();
+    });
+
+    it('IH4: returns a plain boolean without exposing vote columns', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await prisma.electoralRoll.create({
+        data: { election_id: electionId, elector_id: electorId, has_voted: true },
+      });
+
+      const result = await repository.findHasVoted(electionId, electorId);
+
+      expect(typeof result).toBe('boolean');
+    });
+  });
 });

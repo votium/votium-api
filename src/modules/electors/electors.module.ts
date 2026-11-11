@@ -25,6 +25,7 @@ import {
 } from 'src/modules/iam/application/ports/audit-log.port';
 import { ActivateElectorUseCase } from './application/use-cases/activate-elector.use-case';
 import { DeactivateElectorUseCase } from './application/use-cases/deactivate-elector.use-case';
+import { CheckElectorHasVotedUseCase } from './application/use-cases/check-elector-has-voted.use-case';
 import { DeleteElectorUseCase } from './application/use-cases/delete-elector.use-case';
 import { GetElectorUseCase } from './application/use-cases/get-elector.use-case';
 import { GetElectorElectionsUseCase } from './application/use-cases/get-elector-elections.use-case';
@@ -104,6 +105,15 @@ import { ElectorElectionsController } from './presentation/controllers/elector-e
         CANDIDACY_REPOSITORY,
         ELECTOR_REPOSITORY,
       ],
+    },
+    {
+      provide: CheckElectorHasVotedUseCase,
+      useFactory: (
+        electors: ElectorRepository,
+        elections: ElectionRepository,
+        electoralRolls: ElectoralRollRepository,
+      ) => new CheckElectorHasVotedUseCase(electors, elections, electoralRolls),
+      inject: [ELECTOR_REPOSITORY, ELECTION_REPOSITORY, ELECTORAL_ROLL_REPOSITORY],
     },
     {
       provide: GetElectoralRegistryTemplateUseCase,
