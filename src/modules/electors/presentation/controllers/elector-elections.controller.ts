@@ -22,6 +22,8 @@ import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guar
 import { ELECTION_STATUSES } from 'src/modules/elections/domain/entities/election.entity';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { GetElectorElectionsUseCase } from '../../application/use-cases/get-elector-elections.use-case';
+import { GetVoterActiveParticipationUseCase } from '../../application/use-cases/get-voter-active-participation.use-case';
+import { VoterParticipationResponseDto } from '../dtos/voter-participation-response.dto';
 import { GetVoterUpcomingElectionsUseCase } from '../../application/use-cases/get-voter-upcoming-elections.use-case';
 import { VoterUpcomingElectionResponseDto } from '../dtos/voter-upcoming-election-response.dto';
 import { ElectorElectionsListResponseDto } from '../dtos/elector-elections-list-response.dto';
@@ -43,7 +45,31 @@ export class ElectorElectionsController {
   constructor(
     private readonly getElectorElections: GetElectorElectionsUseCase,
     private readonly getVoterUpcomingElections: GetVoterUpcomingElectionsUseCase,
+    private readonly getVoterActiveParticipation: GetVoterActiveParticipationUseCase,
   ) {}
+
+  @Get('me/participation')
+  @UseGuards(JwtAuthGuard, ElectorGuard)
+  @ApiOperation({
+    summary: "Get the authenticated voter's participation in active elections",
+    description:
+      'Returns how many ACTIVE elections the voter is registered for in the electoral roll, ' +
+      'how many of those the voter has already voted in, and the resulting percentage ' +
+      '(2 decimals; 0 when there are no active elections). Identity comes exclusively from ' +
+      'the JWT. Read-only; ballot content is never exposed.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Participation summary retrieved successfully.',
+    type: VoterParticipationResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires an elector principal.' })
+  @ApiResponse({ status: 404, description: 'The authenticated identity is not an elector.' })
+  async participation(@Req() req: AuthenticatedRequest) {
+    const result = await this.getVoterActiveParticipation.execute({ electorId: req.user.sub });
+    return ElectorElectionPresenter.toParticipation(result);
+  }
 
   // 3-segment route: must not be declared as 2 segments, or ':id/elections' would
   // capture it and ParseUUIDPipe would reject 'me' with 400.

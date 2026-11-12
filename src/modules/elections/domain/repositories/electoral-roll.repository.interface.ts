@@ -4,6 +4,11 @@ export const ELECTORAL_ROLL_REPOSITORY = 'ElectoralRollRepository';
 
 export type ElectionParticipationCount = { electionId: string; total: number };
 
+export type ActiveParticipationCounts = {
+  activeElections: number;
+  participatedElections: number;
+};
+
 export interface ElectoralRollRepository {
   // Find all rolls for a given election matching any of the provided elector IDs.
   findByElectionAndElectorIds(
@@ -34,4 +39,10 @@ export interface ElectoralRollRepository {
   // @@unique([election_id, elector_id])). Elections with no voters are omitted.
   // Returns [] for an empty input. Read-only; never reads vote content.
   countVotedByElectionIds(electionIds: string[]): Promise<ElectionParticipationCount[]>;
+
+  // Participation summary of the elector in ACTIVE elections whose roll includes them.
+  // activeElections counts (ACTIVE election, elector) rows; participatedElections counts
+  // the same rows with has_voted = true. Zeros when there are none. Read-only; never
+  // reads vote content.
+  countActiveParticipationByElector(electorId: string): Promise<ActiveParticipationCounts>;
 }
