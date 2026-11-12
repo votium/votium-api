@@ -95,6 +95,14 @@ model Election {
   current_status     StatusElection @default(PENDING)
   blank_vote_enabled Boolean        @default(false)
   created_at         DateTime       @default(now())
+  signing_public_key String?
+  ledger_tx_id       String?
+  ledger_block       Int?
+  started_at         DateTime?
+  closed_at          DateTime?
+  published_at       DateTime?
+  canceled_at        DateTime?
+  updated_at         DateTime?      @updatedAt
 
   reports              Report[]
   notifications        Notification[]

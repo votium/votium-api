@@ -3,6 +3,7 @@ import { ElectionEntity } from '../../domain/entities/election.entity';
 import { ElectionNotFoundError } from '../../domain/errors/election-not-found.error';
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
+import { ElectionLedgerPort } from '../ports/election-ledger.port';
 
 // Publication is the CLOSED -> PUBLISHED edge (D2): once an election has closed, an
 // administrator publishes it. CLOSED is the only prerequisite — no roll, candidacy or
@@ -11,6 +12,7 @@ export class PublishElectionUseCase {
   constructor(
     private readonly elections: Pick<ElectionRepository, 'findById' | 'updateStatus'>,
     private readonly audit: AuditLogPort,
+    private readonly ledger: ElectionLedgerPort,
   ) {}
 
   async execute(input: { electionId: string; requestingUserId: string }): Promise<ElectionEntity> {
@@ -44,6 +46,12 @@ export class PublishElectionUseCase {
       newStatus: 'PUBLISHED',
     });
 
+    await this._updateLedger(electionId);
+
     return updated;
+  }
+
+  _updateLedger(electionId: string) {
+    return this.ledger.publish(electionId);
   }
 }
