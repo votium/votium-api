@@ -11,6 +11,7 @@ import { VotingModule } from './modules/voting/voting.module';
 import { AnonymousVotingModule } from './modules/anonymous-voting/anonymous-voting.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { FabricModule } from './fabric';
+import { BlindSignatureModule } from './shared/blind-signature/blind-signature.module';
 
 @Module({
   imports: [
@@ -25,8 +26,9 @@ import { FabricModule } from './fabric';
     AnonymousVotingModule,
     DashboardModule,
     FabricModule,
+    BlindSignatureModule,
   ],
   controllers: [AppController],
   providers: [],
 })
-export class AppModule { }
+export class AppModule {}
