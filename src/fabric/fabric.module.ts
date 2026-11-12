@@ -26,4 +26,4 @@ import { VotingService } from './services/voting.service';
   ],
   exports: [FabricHealthService, ElectionsService, CandidatesService, VotersService, VotingService],
 })
-export class FabricModule { }
+export class FabricModule {}

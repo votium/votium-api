@@ -17,7 +17,7 @@ export interface FabricHealth {
 export class FabricHealthService {
   private cache?: { at: number; value: FabricHealth };
 
-  constructor(private readonly registry: FabricClientRegistry) { }
+  constructor(private readonly registry: FabricClientRegistry) {}
 
   async check(maxAgeMs = 10_000): Promise<FabricHealth> {
     if (this.cache && Date.now() - this.cache.at < maxAgeMs) return this.cache.value;

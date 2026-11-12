@@ -31,7 +31,7 @@ Object.assign(process.env, {
 });
 
 @Module({ imports: [ConfigModule.forRoot({ isGlobal: true }), FabricModule] })
-class FaultModule { }
+class FaultModule {}
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const hex64 = (): string => randomBytes(32).toString('hex');

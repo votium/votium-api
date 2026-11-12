@@ -15,7 +15,7 @@ import { VotingService } from '../services/voting.service';
 // IT_SHOW=1 prints a sample of the main responses, to review the types against reality.
 
 @Module({ imports: [ConfigModule.forRoot({ isGlobal: true }), FabricModule] })
-class ItModule { }
+class ItModule {}
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const hex64 = (): string => randomBytes(32).toString('hex');

@@ -8,7 +8,7 @@ const DEFAULT_PAGE_SIZE = 200; // documented default of the contract
 
 @Injectable()
 export class VotingService {
-  constructor(private readonly fabric: FabricInvoker) { }
+  constructor(private readonly fabric: FabricInvoker) {}
 
   /**
    * After an unknown outcome the same vote (same nullifier) is sent once more. If the network answers
