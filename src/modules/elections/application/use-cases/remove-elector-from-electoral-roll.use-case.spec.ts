@@ -78,6 +78,7 @@ describe('RemoveElectorFromElectoralRollUseCase', () => {
     deleteByElectionAndElectorId: jest.fn(),
     findHasVoted: jest.fn(),
     countVotedByElectionIds: jest.fn(),
+    countActiveParticipationByElector: jest.fn(),
   };
 
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {

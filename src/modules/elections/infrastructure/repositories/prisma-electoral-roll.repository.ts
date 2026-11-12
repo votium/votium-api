@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/shared/database/prisma.service';
 import { ElectoralRollEntity } from '../../domain/entities/electoral-roll.entity';
 import type {
+  ActiveParticipationCounts,
   ElectionParticipationCount,
   ElectoralRollRepository,
 } from '../../domain/repositories/electoral-roll.repository.interface';
@@ -91,5 +92,19 @@ export class PrismaElectoralRollRepository implements ElectoralRollRepository {
     });
 
     return rows.map((row) => ({ electionId: row.election_id, total: row._count._all }));
+  }
+
+  async countActiveParticipationByElector(electorId: string): Promise<ActiveParticipationCounts> {
+    // Single grouped query so both counts come from the same snapshot.
+    const rows = await this.prisma.electoralRoll.groupBy({
+      by: ['has_voted'],
+      where: { elector_id: electorId, election: { is: { current_status: 'ACTIVE' } } },
+      _count: { _all: true },
+    });
+
+    return {
+      activeElections: rows.reduce((sum, row) => sum + row._count._all, 0),
+      participatedElections: rows.find((row) => row.has_voted)?._count._all ?? 0,
+    };
   }
 }
