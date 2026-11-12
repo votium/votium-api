@@ -1,6 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { EmailDeliveryException } from 'src/shared/exceptions/base/email-delivery.exception';
-import { buildVerificationEmail, NodemailerEmailService } from './nodemailer-email.service';
+import {
+  buildPasswordRecoveryEmail,
+  buildVerificationEmail,
+  NodemailerEmailService,
+} from './nodemailer-email.service';
 
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn(),
@@ -28,6 +32,22 @@ describe('buildVerificationEmail', () => {
   it('never includes password-like values', () => {
     const { body } = buildVerificationEmail('483912');
     expect(body).not.toMatch(/password|secret|SecurePassword123!/i);
+  });
+});
+
+describe('buildPasswordRecoveryEmail', () => {
+  it('uses its own subject, distinct from the login verification email', () => {
+    const { subject } = buildPasswordRecoveryEmail('483912');
+    expect(subject).toBe('Your Votium Password Recovery Code');
+    expect(subject).not.toBe(buildVerificationEmail('483912').subject);
+  });
+
+  it('includes the code, the 15-minute validity and single use', () => {
+    const { body } = buildPasswordRecoveryEmail('483912');
+    expect(body).toContain('483912');
+    expect(body).toContain('valid for 15 minutes');
+    expect(body).toContain('can only be used once');
+    expect(body).not.toContain('login attempt');
   });
 });
 
@@ -93,5 +113,30 @@ describe('NodemailerEmailService', () => {
       .catch((e: unknown) => e);
 
     expect((error as Error).message).not.toContain('483912');
+  });
+
+  it('sends the password recovery email from the configured sender', async () => {
+    sendMail.mockResolvedValue({ messageId: '2' });
+    const service = new NodemailerEmailService();
+
+    await service.sendPasswordRecoveryCode('admin@example.com', '654321');
+
+    const options = sendMail.mock.calls[0][0];
+    expect(options.to).toBe('admin@example.com');
+    expect(options.subject).toBe('Your Votium Password Recovery Code');
+    expect(options.text).toContain('654321');
+  });
+
+  it('maps password recovery delivery failures to EmailDeliveryException without leaking the code', async () => {
+    sendMail.mockRejectedValue(new Error('smtp down'));
+    const service = new NodemailerEmailService();
+
+    const error = await service
+      .sendPasswordRecoveryCode('admin@example.com', '654321')
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(EmailDeliveryException);
+    expect((error as Error).message).not.toContain('654321');
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain('654321');
   });
 });
