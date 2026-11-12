@@ -82,6 +82,7 @@ describe('GetElectionDetailUseCase', () => {
     deleteByElectionAndElectorId: jest.fn(),
     findHasVoted: jest.fn(),
     countVotedByElectionIds: jest.fn(),
+    countActiveParticipationByElector: jest.fn(),
   };
 
   beforeEach(() => {

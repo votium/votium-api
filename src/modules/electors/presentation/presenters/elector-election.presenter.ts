@@ -2,6 +2,8 @@ import { ElectionPresenter } from 'src/modules/elections/presentation/presenters
 import type { ElectionEntity } from 'src/modules/elections/domain/entities/election.entity';
 import type { ElectionStatusHistoryEntry } from 'src/modules/elections/domain/repositories/election.repository.interface';
 import type { CandidacyWithCandidate } from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
+import type { VoterActiveParticipationResult } from '../../application/use-cases/get-voter-active-participation.use-case';
+import { VoterParticipationResponseDto } from '../dtos/voter-participation-response.dto';
 import type { VoterUpcomingElectionItem } from '../../application/use-cases/get-voter-upcoming-elections.use-case';
 import { VoterUpcomingElectionResponseDto } from '../dtos/voter-upcoming-election-response.dto';
 import { ElectorElectionDetailResponseDto } from '../dtos/elector-election-detail-response.dto';
@@ -35,5 +37,13 @@ export class ElectorElectionPresenter {
           hasVoted: item.hasVoted,
         }),
     );
+  }
+
+  static toParticipation(result: VoterActiveParticipationResult): VoterParticipationResponseDto {
+    return new VoterParticipationResponseDto({
+      participatedElections: result.participatedElections,
+      activeElections: result.activeElections,
+      participation: result.participation,
+    });
   }
 }

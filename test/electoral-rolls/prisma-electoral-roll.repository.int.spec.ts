@@ -371,4 +371,65 @@ describe('PrismaElectoralRollRepository integration', () => {
       await expect(repository.countVotedByElectionIds([])).resolves.toEqual([]);
     });
   });
+
+  describe('countActiveParticipationByElector', () => {
+    async function seedWithStatus(
+      status: 'PENDING' | 'CREATED' | 'ACTIVE' | 'CLOSED' | 'PUBLISHED' | 'CANCELLED',
+    ): Promise<string> {
+      const electionId = await seedElection();
+      await prisma.election.update({ where: { id: electionId }, data: { current_status: status } });
+      return electionId;
+    }
+
+    async function enroll(electionId: string, electorId: string, hasVoted: boolean) {
+      await prisma.electoralRoll.create({
+        data: { election_id: electionId, elector_id: electorId, has_voted: hasVoted },
+      });
+    }
+
+    it('IN1: counts ACTIVE rolls and those already voted, once per election', async () => {
+      const electorId = await seedElector();
+      await enroll(await seedWithStatus('ACTIVE'), electorId, true);
+      await enroll(await seedWithStatus('ACTIVE'), electorId, true);
+      await enroll(await seedWithStatus('ACTIVE'), electorId, false);
+
+      await expect(repository.countActiveParticipationByElector(electorId)).resolves.toEqual({
+        activeElections: 3,
+        participatedElections: 2,
+      });
+    });
+
+    it('IN2: excludes every non-ACTIVE status even when the voter voted', async () => {
+      const electorId = await seedElector();
+      for (const status of ['PENDING', 'CREATED', 'CLOSED', 'PUBLISHED', 'CANCELLED'] as const) {
+        await enroll(await seedWithStatus(status), electorId, true);
+      }
+
+      await expect(repository.countActiveParticipationByElector(electorId)).resolves.toEqual({
+        activeElections: 0,
+        participatedElections: 0,
+      });
+    });
+
+    it('IN3: excludes ACTIVE elections where the voter is not in the roll', async () => {
+      const electorId = await seedElector();
+      const otherId = await seedElector();
+      await enroll(await seedWithStatus('ACTIVE'), otherId, true);
+      await enroll(await seedWithStatus('ACTIVE'), electorId, false);
+
+      await expect(repository.countActiveParticipationByElector(electorId)).resolves.toEqual({
+        activeElections: 1,
+        participatedElections: 0,
+      });
+    });
+
+    it('IN4: returns zeros when the voter has no rolls', async () => {
+      const electorId = await seedElector();
+
+      await expect(repository.countActiveParticipationByElector(electorId)).resolves.toEqual({
+        activeElections: 0,
+        participatedElections: 0,
+      });
+    });
+  });
 });
