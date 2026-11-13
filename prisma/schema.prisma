@@ -20,6 +20,8 @@ enum StatusElection {
   CLOSED
   PUBLISHED
   CANCELLED
+  FINALIZING
+  SYNC_ERROR
 }
 
 model Role {

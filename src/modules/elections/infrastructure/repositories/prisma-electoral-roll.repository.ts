@@ -54,4 +54,12 @@ export class PrismaElectoralRollRepository implements ElectoralRollRepository {
 
     return result.count > 0;
   }
+
+  async findByElectionId(electionId: string): Promise<ElectoralRollEntity[]> {
+    const rows = await this.prisma.electoralRoll.findMany({
+      where: { election_id: electionId },
+    });
+
+    return rows.map((row) => PrismaElectoralRollMapper.toDomain(row));
+  }
 }

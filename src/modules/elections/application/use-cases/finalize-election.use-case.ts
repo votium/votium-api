@@ -1,3 +1,6 @@
+// Events
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ElectionValidatedEvent } from '../events/election-validated.event';
 import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.port';
 import { ElectionEntity } from '../../domain/entities/election.entity';
 import { ElectionMissingElectoralRollError } from '../../domain/errors/election-missing-electoral-roll.error';
@@ -5,8 +8,6 @@ import { ElectionNoCandidatesError } from '../../domain/errors/election-no-candi
 import { ElectionNotFoundError } from '../../domain/errors/election-not-found.error';
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
-import { ElectionLedgerPort } from '../ports/election-ledger.port';
-import { ElectionSigningKeyPort } from '../ports/election-signing-key.port';
 
 // Finalization is the PENDING -> CREATED edge: it freezes the election's
 // configuration (basic info, dates, roll and candidacies) ahead of activation.
@@ -18,9 +19,8 @@ export class FinalizeElectionUseCase {
       ElectionRepository,
       'findById' | 'updateStatus' | 'hasElectoralRoll' | 'hasCandidates'
     >,
+    private readonly eventEmitter: EventEmitter2,
     private readonly audit: AuditLogPort,
-    private readonly ledger: ElectionLedgerPort,
-    private readonly signingKey: ElectionSigningKeyPort,
   ) {}
 
   async execute(input: { electionId: string; requestingUserId: string }): Promise<ElectionEntity> {
@@ -50,7 +50,7 @@ export class FinalizeElectionUseCase {
     // cannot both record a CREATED transition.
     const updated = await this.elections.updateStatus(
       electionId,
-      'CREATED',
+      'FINALIZING',
       requestingUserId,
       'PENDING',
     );
@@ -62,22 +62,10 @@ export class FinalizeElectionUseCase {
 
     await this.audit.log('ELECTION_STATUS_CHANGED', requestingUserId, {
       electionId,
-      newStatus: 'CREATED',
+      newStatus: 'FINALIZING',
     });
 
-    // console.log(this.signingKey);
-    const signingPublicKey = await this.signingKey.ensureKey(electionId);
-    const tx = await this.ledger.create({
-      electionId,
-      name: election.name,
-      startDate: election.startDate,
-      startTime: election.startTime,
-      endDate: election.endDate,
-      endTime: election.endTime,
-      signingPublicKey,
-    });
-
-    console.log('Ledger transaction:', tx);
+    this.eventEmitter.emit('election.validated', new ElectionValidatedEvent(electionId));
 
     return updated;
   }

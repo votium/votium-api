@@ -8,6 +8,8 @@ export const ELECTION_STATUSES = [
   'CLOSED',
   'PUBLISHED',
   'CANCELLED',
+  'FINALIZING',
+  'SYNC_ERROR',
 ] as const;
 
 export type ElectionStatus = (typeof ELECTION_STATUSES)[number];
@@ -22,7 +24,9 @@ export type ElectionStatus = (typeof ELECTION_STATUSES)[number];
 // `canTransitionTo` and `transitionTo` are both pure functions of it, so they cannot
 // drift apart.
 export const ELECTION_TRANSITIONS: Readonly<Record<ElectionStatus, readonly ElectionStatus[]>> = {
-  PENDING: ['CREATED', 'CANCELLED'],
+  FINALIZING: ['CREATED', 'CANCELLED', 'SYNC_ERROR'],
+  SYNC_ERROR: ['FINALIZING', 'CANCELLED'],
+  PENDING: ['FINALIZING', 'CANCELLED'],
   CREATED: ['ACTIVE', 'CANCELLED'],
   ACTIVE: ['CLOSED', 'CANCELLED'],
   CLOSED: ['PUBLISHED', 'CANCELLED'],

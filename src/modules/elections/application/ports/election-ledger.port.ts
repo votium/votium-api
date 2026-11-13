@@ -1,17 +1,15 @@
-import { ElectionLedgerResultDto } from '../dtos/election-ledger-result.dto';
-
-export interface CreateElectionLedgerInput {
-  electionId: string;
-  name: string;
-  startDate: Date;
-  startTime: Date;
-  endDate: Date;
-  endTime: Date;
-  signingPublicKey: string;
-}
+import {
+  CreateElectionLedgerDto,
+  CreateElectionLedgerResultDto,
+  ElectionLedgerDto,
+  RegisterCandidateLedgerResultDto,
+  RegisterCandidateLedgerDto,
+  RegisterElectoralRollLedgerResultDto,
+  RegisterElectoralRollLedgerDto,
+} from '../dtos';
 
 export abstract class ElectionLedgerPort {
-  abstract create(input: CreateElectionLedgerInput): Promise<ElectionLedgerResultDto>;
+  abstract create(input: CreateElectionLedgerDto): Promise<CreateElectionLedgerResultDto>;
 
   abstract start(electionId: string): Promise<void>;
 
@@ -21,5 +19,13 @@ export abstract class ElectionLedgerPort {
 
   abstract cancel(electionId: string): Promise<void>;
 
-  abstract get(electionId: string): Promise<ElectionLedgerResultDto>;
+  abstract get(electionId: string): Promise<ElectionLedgerDto>;
+
+  abstract regsiterCandidate(
+    input: RegisterCandidateLedgerDto,
+  ): Promise<RegisterCandidateLedgerResultDto>;
+
+  abstract registerElectoralRoll(
+    input: RegisterElectoralRollLedgerDto,
+  ): Promise<RegisterElectoralRollLedgerResultDto>;
 }

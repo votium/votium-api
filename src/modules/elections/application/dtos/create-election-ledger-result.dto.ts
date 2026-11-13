@@ -83,12 +83,12 @@ export class ElectionDataDto {
   timeline!: ElectionTimelineDto;
 }
 
-export class ElectionLedgerResultDto {
+export class CreateElectionLedgerResultDto {
   @IsString()
   @IsNotEmpty()
   txId?: string;
 
-  @IsNumber() // Corregido: antes tenía @IsString()
+  @IsNumber()
   @IsNotEmpty()
   blockNumber?: number | null;
 

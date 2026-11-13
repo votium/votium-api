@@ -59,8 +59,17 @@ import { BlindSignatureModule } from '../../shared/blind-signature/blind-signatu
 import { ElectionLedgerPort } from './application/ports/election-ledger.port';
 import { ElectionSigningKeyPort } from './application/ports/election-signing-key.port';
 
-import { FabricElectionLedgerService } from './infrastructure/services/fabric-election-ledger.service';
-import { SigningKeyAdapter } from './infrastructure/services/signing-key.adapter';
+import { FabricElectionLedgerAdapter } from './infrastructure/adapters/fabric-election-ledger.adapter';
+import { SigningKeyAdapter } from './infrastructure/adapters/signing-key.adapter';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  ELECTION_CANDIDATES_PORT,
+  type ElectionCandidatesPort,
+} from './domain/ports/election-candidates.port';
+import { RegisterElectionToBlockchainUseCase } from './application/use-cases/register-election-to-blockchain.use-case';
+import { VOTER_HASHER_PORT, VoterHasherPort } from 'src/shared/domain/ports/voter-hasher.port';
+import { ElectionValidatedListener } from './application/listeners/election-validated.listener';
+import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-module.adapter';
 
 @Module({
   imports: [
@@ -73,13 +82,15 @@ import { SigningKeyAdapter } from './infrastructure/services/signing-key.adapter
   ],
   controllers: [ElectionsController, ElectionsElectoralRollController],
   providers: [
-    FabricElectionLedgerService,
+    FabricElectionLedgerAdapter,
     SigningKeyAdapter,
-    { provide: ElectionLedgerPort, useExisting: FabricElectionLedgerService },
+    ElectionValidatedListener,
+    { provide: ElectionLedgerPort, useExisting: FabricElectionLedgerAdapter },
     { provide: ElectionSigningKeyPort, useExisting: SigningKeyAdapter },
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },
     { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
     { provide: ELECTORAL_ROLL_CSV_PARSER_PORT, useClass: ElectoralRollCsvFileParserService },
+    { provide: ELECTION_CANDIDATES_PORT, useClass: CandidaciesModuleAdapter },
     {
       provide: CreateElectionUseCase,
       useFactory: (elections: ElectionRepository, audit: AuditLogPort) =>
@@ -116,11 +127,10 @@ import { SigningKeyAdapter } from './infrastructure/services/signing-key.adapter
       provide: FinalizeElectionUseCase,
       useFactory: (
         elections: ElectionRepository,
+        eventEmitter: EventEmitter2,
         audit: AuditLogPort,
-        ledger: ElectionLedgerPort,
-        signingKey: ElectionSigningKeyPort,
-      ) => new FinalizeElectionUseCase(elections, audit, ledger, signingKey),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, ElectionSigningKeyPort],
+      ) => new FinalizeElectionUseCase(elections, eventEmitter, audit),
+      inject: [ELECTION_REPOSITORY, EventEmitter2, AUDIT_LOG_PORT],
     },
     {
       provide: StartElectionUseCase,
@@ -129,7 +139,7 @@ import { SigningKeyAdapter } from './infrastructure/services/signing-key.adapter
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
       ) => new StartElectionUseCase(elections, audit, ledger),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT],
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort],
     },
     {
       provide: PublishElectionUseCase,
@@ -238,6 +248,33 @@ import { SigningKeyAdapter } from './infrastructure/services/signing-key.adapter
           audit,
         ),
       inject: [ELECTION_REPOSITORY, ELECTOR_REPOSITORY, ELECTORAL_ROLL_REPOSITORY, AUDIT_LOG_PORT],
+    },
+    {
+      provide: RegisterElectionToBlockchainUseCase,
+      useFactory: (
+        electionRepo: ElectionRepository,
+        candidacyPort: ElectionCandidatesPort,
+        electoralRollRepo: ElectoralRollRepository,
+        ledger: ElectionLedgerPort,
+        signingKey: ElectionSigningKeyPort,
+        voterHasher: VoterHasherPort,
+      ) =>
+        new RegisterElectionToBlockchainUseCase(
+          electionRepo,
+          candidacyPort,
+          electoralRollRepo,
+          ledger,
+          signingKey,
+          voterHasher,
+        ),
+      inject: [
+        ELECTION_REPOSITORY,
+        ELECTION_CANDIDATES_PORT,
+        ELECTORAL_ROLL_REPOSITORY,
+        ElectionLedgerPort,
+        ElectionSigningKeyPort,
+        VOTER_HASHER_PORT,
+      ],
     },
   ],
   exports: [

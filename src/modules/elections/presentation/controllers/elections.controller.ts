@@ -210,7 +210,7 @@ export class ElectionsController {
   }
 
   @Post(':id/finalize')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
     summary: 'Finalize an election',
     description:
