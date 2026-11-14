@@ -64,10 +64,10 @@ import { SigningKeyAdapter } from './infrastructure/services/signing-key.adapter
 
 @Module({
   imports: [
-    IamModule,
-    AuthModule,
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
     forwardRef(() => CandidaciesModule),
-    ElectorsModule,
+    forwardRef(() => ElectorsModule),
     FabricModule,
     BlindSignatureModule,
   ],
