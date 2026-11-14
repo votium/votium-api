@@ -70,6 +70,8 @@ import { RegisterElectionToBlockchainUseCase } from './application/use-cases/reg
 import { VOTER_HASHER_PORT, VoterHasherPort } from 'src/shared/domain/ports/voter-hasher.port';
 import { ElectionValidatedListener } from './application/listeners/election-validated.listener';
 import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-module.adapter';
+import { VotingModule } from '../voting/voting.module';
+import { PendingMarksPort } from './application/ports/pending-marks.port';
 
 @Module({
   imports: [
@@ -79,6 +81,7 @@ import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-
     ElectorsModule,
     FabricModule,
     BlindSignatureModule,
+    VotingModule,
   ],
   controllers: [ElectionsController, ElectionsElectoralRollController],
   providers: [
@@ -147,8 +150,9 @@ import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-
         elections: ElectionRepository,
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
-      ) => new PublishElectionUseCase(elections, audit, ledger),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort],
+        marks: PendingMarksPort,
+      ) => new PublishElectionUseCase(elections, audit, ledger, marks),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, PendingMarksPort],
     },
     {
       provide: CloseElectionUseCase,
@@ -156,8 +160,9 @@ import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-
         elections: ElectionRepository,
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
-      ) => new CloseElectionUseCase(elections, audit, ledger),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort],
+        marks: PendingMarksPort,
+      ) => new CloseElectionUseCase(elections, audit, ledger, marks),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, PendingMarksPort],
     },
     {
       provide: CancelElectionUseCase,
