@@ -28,6 +28,7 @@ import { PrismaCandidacyRepository } from './infrastructure/repositories/prisma-
 import { BallotController } from './presentation/controllers/ballot.controller';
 import { CandidaciesController } from './presentation/controllers/candidacies.controller';
 import { ElectionCandidaciesController } from './presentation/controllers/election-candidacies.controller';
+import { CandidaciesPublicService } from './application/services/candidacies-public.service';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { ElectionCandidaciesController } from './presentation/controllers/electi
   ],
   controllers: [CandidaciesController, ElectionCandidaciesController, BallotController],
   providers: [
+    CandidaciesPublicService,
     { provide: CANDIDACY_REPOSITORY, useClass: PrismaCandidacyRepository },
     {
       provide: RegisterCandidacyUseCase,
@@ -80,6 +82,6 @@ import { ElectionCandidaciesController } from './presentation/controllers/electi
       inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY, AUDIT_LOG_PORT],
     },
   ],
-  exports: [CANDIDACY_REPOSITORY],
+  exports: [CANDIDACY_REPOSITORY, CandidaciesPublicService],
 })
 export class CandidaciesModule {}

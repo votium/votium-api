@@ -73,6 +73,14 @@ export class PrismaElectoralRollRepository implements ElectoralRollRepository {
     return result.count > 0;
   }
 
+  async findByElectionId(electionId: string): Promise<ElectoralRollEntity[]> {
+    const rows = await this.prisma.electoralRoll.findMany({
+      where: { election_id: electionId },
+    });
+
+    return rows.map((row) => PrismaElectoralRollMapper.toDomain(row));
+  }
+
   async findHasVoted(electionId: string, electorId: string): Promise<boolean | null> {
     const row = await this.prisma.electoralRoll.findUnique({
       where: { election_id_elector_id: { election_id: electionId, elector_id: electorId } },

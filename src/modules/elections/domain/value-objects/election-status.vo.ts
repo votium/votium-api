@@ -5,6 +5,8 @@ export const ELECTION_STATUS_VALUES = [
   'CLOSED',
   'PUBLISHED',
   'CANCELED',
+  'FINALIZING',
+  'SYNC_ERROR',
 ] as const;
 
 export type ElectionStatusType = (typeof ELECTION_STATUS_VALUES)[number];
@@ -48,5 +50,21 @@ export class ElectionStatus {
 
   public isClosed(): boolean {
     return this._value === 'CLOSED';
+  }
+
+  public isPublished(): boolean {
+    return this._value === 'PUBLISHED';
+  }
+
+  public isCanceled(): boolean {
+    return this._value === 'CANCELED';
+  }
+
+  public isFinalizing(): boolean {
+    return this._value === 'FINALIZING';
+  }
+
+  public isSyncError(): boolean {
+    return this._value === 'SYNC_ERROR';
   }
 }

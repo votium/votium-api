@@ -8,7 +8,7 @@ import {
 
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 
 const SPKI_PEM = /^-----BEGIN PUBLIC KEY-----[\s\S]+-----END PUBLIC KEY-----\s*$/;
 
@@ -27,6 +27,48 @@ export class ElectionKeyService {
   private readonly pendingRequests = new Map<string, Promise<string>>();
 
   private readonly keyStore = process.env.KEY_STORE ?? 'aws';
+
+  /**
+   * Obtiene el par completo de llaves (pública y privada) de una elección existente.
+   * Lanza error si no existe (no genera una nueva).
+   */
+  async loadKeyPair(electionId: string): Promise<ElectionKeyPair> {
+    if (!electionId || !electionId.trim()) {
+      throw new Error('Election ID cannot be empty');
+    }
+
+    if (this.keyStore === 'memory') {
+      const existingKey = this.memoryStore.get(electionId);
+
+      if (!existingKey) {
+        throw new NotFoundException(`Election key pair not found in memory for ${electionId}`);
+      }
+
+      this.validateKeyPair(existingKey);
+      return existingKey;
+    }
+
+    if (this.keyStore !== 'aws') {
+      throw new Error(`Unsupported KEY_STORE value: ${this.keyStore}`);
+    }
+
+    const secretName = this.getSecretName(electionId);
+
+    try {
+      const response = await this.secretsClient.send(
+        new GetSecretValueCommand({
+          SecretId: secretName,
+        }),
+      );
+
+      return this.parseSecret(response.SecretString);
+    } catch (error) {
+      if (error instanceof ResourceNotFoundException) {
+        throw new NotFoundException(`Election key pair not found in AWS for ${electionId}`);
+      }
+      throw error;
+    }
+  }
 
   /**
    * Obtiene la llave pública de una elección.
@@ -98,7 +140,7 @@ export class ElectionKeyService {
         }),
       );
 
-      return this.parseSecret(existingSecret.SecretString);
+      return this.parseSecret(existingSecret.SecretString).publicKeyPem;
     } catch (error) {
       if (!(error instanceof ResourceNotFoundException)) {
         throw error;
@@ -141,7 +183,7 @@ export class ElectionKeyService {
       }),
     );
 
-    return this.parseSecret(response.SecretString);
+    return this.parseSecret(response.SecretString).publicKeyPem;
   }
 
   /**
@@ -203,7 +245,7 @@ export class ElectionKeyService {
   /**
    * Recupera y valida el contenido JSON de AWS Secrets Manager.
    */
-  private parseSecret(secretString?: string): string {
+  private parseSecret(secretString?: string): ElectionKeyPair {
     if (!secretString) {
       throw new Error('Election secret does not contain a valid SecretString');
     }
@@ -222,7 +264,7 @@ export class ElectionKeyService {
 
     this.validateKeyPair(keyPair);
 
-    return keyPair.publicKeyPem;
+    return keyPair;
   }
 
   /**

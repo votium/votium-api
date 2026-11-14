@@ -1,48 +1,68 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { CandidaciesModule } from 'src/modules/candidacies/candidacies.module';
-import { ElectionsModule } from 'src/modules/elections/elections.module';
 import { IamModule } from 'src/modules/iam/iam.module';
+
+import { VotingController } from './presentation/controllers/voting.controller';
+import { Sha256VoterHasherService } from 'src/shared/infrastructure/crypto/sha256-voter-hasher.service';
+import { VOTER_HASHER_PORT } from 'src/shared/domain/ports/voter-hasher.port';
+
 import {
-  CANDIDACY_REPOSITORY,
-  type CandidacyRepository,
-} from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
-import {
-  ELECTION_REPOSITORY,
-  type ElectionRepository,
-} from 'src/modules/elections/domain/repositories/election.repository.interface';
-import {
-  ELECTORAL_ROLL_REPOSITORY,
-  type ElectoralRollRepository,
-} from 'src/modules/elections/domain/repositories/electoral-roll.repository.interface';
-import { RegisterVoteUseCase } from './application/use-cases/register-vote.use-case';
-import {
-  VOTE_REPOSITORY,
-  type VoteRepository,
-} from './domain/repositories/vote.repository.interface';
-import { PrismaVoteRepository } from './infrastructure/repositories/prisma-vote.repository';
-import { VotesController } from './presentation/controllers/votes.controller';
+  CastVoteUseCase,
+  FlushVoteMarksUseCase,
+  GetBallotUseCase,
+  GetSignatureStatusUseCase,
+  ReportVotedUseCase,
+  RequestBlindSignatureUseCase,
+} from './application/use-cases';
+
+import { FabricVoteProcessingAdapter } from './infrastructure/adapters/fabric-vote-processing.adapter';
+import { VoteProcessingPort } from './application/ports/vote-processing.port';
+import { FabricModule } from 'src/fabric/fabric.module';
+import { PrismaBallotCandidateReader } from './infrastructure/repositories/prisma-ballot-candidate.reader';
+import { BallotCandidateReader } from './domain/repositories/ballot-candidate.reader';
+import { PrismaVoteCredentialRepository } from './infrastructure/repositories/prisma-vote-credential.repository';
+import { VOTE_CREDENTIAL_REPOSITORY } from './domain/repositories/vote-credential.repository';
+import { VoteMarksJob } from './infrastructure/jobs/vote-marks.job';
+import { VoteProcessingPendingMarks } from './infrastructure/services/vote-processing-pending-marks.service';
+import { PendingMarksPort } from '../elections/application/ports/pending-marks.port';
+import { SharedModule } from 'src/shared/shared.module';
+import { SignerPort } from './application/ports/signer.port';
+import { BlindSignatureService } from 'src/shared/blind-signature/blind-signature.service';
+import { BlindSignatureModule } from 'src/shared/blind-signature/blind-signature.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
-  imports: [IamModule, AuthModule, ElectionsModule, CandidaciesModule],
-  controllers: [VotesController],
-  providers: [
-    { provide: VOTE_REPOSITORY, useClass: PrismaVoteRepository },
-    {
-      provide: RegisterVoteUseCase,
-      useFactory: (
-        elections: ElectionRepository,
-        electoralRolls: ElectoralRollRepository,
-        candidacies: CandidacyRepository,
-        votes: VoteRepository,
-      ) => new RegisterVoteUseCase(elections, electoralRolls, candidacies, votes),
-      inject: [
-        ELECTION_REPOSITORY,
-        ELECTORAL_ROLL_REPOSITORY,
-        CANDIDACY_REPOSITORY,
-        VOTE_REPOSITORY,
-      ],
-    },
+  imports: [
+    IamModule,
+    AuthModule,
+    forwardRef(() => CandidaciesModule),
+    FabricModule,
+    SharedModule,
+    BlindSignatureModule,
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
   ],
+  controllers: [VotingController],
+  providers: [
+    CastVoteUseCase,
+    FlushVoteMarksUseCase,
+    GetBallotUseCase,
+    GetSignatureStatusUseCase,
+    ReportVotedUseCase,
+    RequestBlindSignatureUseCase,
+    Sha256VoterHasherService,
+    FabricVoteProcessingAdapter,
+    PrismaBallotCandidateReader,
+    PrismaVoteCredentialRepository,
+    VoteMarksJob,
+    BlindSignatureService,
+    { provide: VOTER_HASHER_PORT, useClass: Sha256VoterHasherService },
+    { provide: VoteProcessingPort, useClass: FabricVoteProcessingAdapter },
+    { provide: BallotCandidateReader, useClass: PrismaBallotCandidateReader },
+    { provide: VOTE_CREDENTIAL_REPOSITORY, useClass: PrismaVoteCredentialRepository },
+    { provide: PendingMarksPort, useClass: VoteProcessingPendingMarks },
+    { provide: SignerPort, useClass: BlindSignatureService },
+  ],
+  exports: [PendingMarksPort],
 })
 export class VotingModule {}
