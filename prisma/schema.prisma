@@ -45,12 +45,13 @@ model User {
   status        String    @default("ACTIVE")
   deleted_at    DateTime?
 
-  role          Role                    @relation(fields: [role_id], references: [id])
-  auditLogs     AuditLog[]
-  notifications Notification[]
-  reports       Report[]
-  statusHistory ElectionStatusHistory[]
-  mfaChallenges MfaChallenge[]
+  role                  Role                    @relation(fields: [role_id], references: [id])
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  reports               Report[]
+  statusHistory         ElectionStatusHistory[]
+  mfaChallenges         MfaChallenge[]
+  passwordRecoveryCodes PasswordRecoveryCode[]
 
   @@map("users")
 }
@@ -250,9 +251,10 @@ model Elector {
   updated_at     DateTime  @updatedAt
   deleted_at     DateTime?
 
-  electoralRolls       ElectoralRoll[]
-  mfaChallenges        ElectorMfaChallenge[]
-  anonymousCredentials AnonymousCredential[]
+  electoralRolls        ElectoralRoll[]
+  mfaChallenges         ElectorMfaChallenge[]
+  anonymousCredentials  AnonymousCredential[]
+  passwordRecoveryCodes ElectorPasswordRecoveryCode[]
 
   @@map("electors")
 }
@@ -386,4 +388,34 @@ model VoteCredential {
   @@id([election_id, elector_id])
   @@index([election_id, markStatus])
   @@map("vote_credentials")
+}
+
+model PasswordRecoveryCode {
+  id          String    @id @default(uuid())
+  user_id     String
+  code_hash   String
+  attempts    Int       @default(0)
+  expires_at  DateTime
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("password_recovery_codes")
+}
+
+model ElectorPasswordRecoveryCode {
+  id          String    @id @default(uuid())
+  elector_id  String
+  code_hash   String
+  attempts    Int       @default(0)
+  expires_at  DateTime
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  elector Elector @relation(fields: [elector_id], references: [id], onDelete: Cascade)
+
+  @@index([elector_id])
+  @@map("elector_password_recovery_codes")
 }

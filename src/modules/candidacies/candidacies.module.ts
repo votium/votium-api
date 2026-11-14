@@ -32,8 +32,8 @@ import { CandidaciesPublicService } from './application/services/candidacies-pub
 
 @Module({
   imports: [
-    IamModule,
-    AuthModule,
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
     forwardRef(() => ElectionsModule),
     forwardRef(() => CandidatesModule),
   ],
