@@ -98,15 +98,14 @@ export class ElectionsController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary: 'Get election detail',
     description:
       'Returns the full detail of a single election: basic information, current status, ' +
       'persisted status history, associated candidates (INACTIVE candidates are excluded) ' +
-      'and the total number of electors enabled to participate. Read-only. Requires ' +
-      'ADMINISTRATOR or AUDITOR role.',
+      'and the total number of electors enabled to participate. Read-only. Available to ' +
+      'any authenticated role.',
   })
   @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
   @ApiResponse({
@@ -116,7 +115,6 @@ export class ElectionsController {
   })
   @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
   @ApiResponse({ status: 401, description: 'Authentication is required.' })
-  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
   @ApiResponse({ status: 404, description: 'Election not found.' })
   async findById(@Param('id', ParseUUIDPipe) id: string) {
     const detail = await this.getElectionDetail.execute(id);

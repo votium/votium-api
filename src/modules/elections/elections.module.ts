@@ -54,7 +54,12 @@ import { ElectionsController } from './presentation/controllers/elections.contro
 import { ElectionsElectoralRollController } from './presentation/controllers/elections-electoral-roll.controller';
 
 @Module({
-  imports: [IamModule, AuthModule, forwardRef(() => CandidaciesModule), ElectorsModule],
+  imports: [
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
+    forwardRef(() => CandidaciesModule),
+    forwardRef(() => ElectorsModule),
+  ],
   controllers: [ElectionsController, ElectionsElectoralRollController],
   providers: [
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },

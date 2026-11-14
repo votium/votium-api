@@ -88,6 +88,21 @@ export class PrismaCandidacyRepository implements CandidacyRepository {
     return { candidacies: rows.map(toCandidacyWithCandidate), total };
   }
 
+  async findByElectionIds(electionIds: string[]): Promise<CandidacyWithCandidate[]> {
+    if (electionIds.length === 0) return [];
+
+    const rows = await this.prisma.candiday.findMany({
+      where: {
+        election_id: { in: electionIds },
+        candidate: candidateVisibilityWhere(),
+      },
+      include: CANDIDATE_SELECT,
+      orderBy: [{ election_id: 'asc' }, { position_number: 'asc' }],
+    });
+
+    return rows.map(toCandidacyWithCandidate);
+  }
+
   async findById(id: string): Promise<CandidacyEntity | null> {
     const row = await this.prisma.candiday.findUnique({ where: { id } });
     return row ? PrismaCandidacyMapper.toDomain(row) : null;
@@ -154,12 +169,18 @@ export class PrismaCandidacyRepository implements CandidacyRepository {
   }
 }
 
+function candidateVisibilityWhere(): Prisma.CandidateWhereInput {
+  return {
+    deleted_at: null,
+    status: { not: CandidateEntity.INACTIVE_STATUS },
+  };
+}
+
 function buildListWhere(electionId: string, candidateName?: string): Prisma.CandidayWhereInput {
   return {
     election_id: electionId,
     candidate: {
-      deleted_at: null,
-      status: { not: CandidateEntity.INACTIVE_STATUS },
+      ...candidateVisibilityWhere(),
       ...(candidateName
         ? {
             OR: [

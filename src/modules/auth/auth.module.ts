@@ -36,6 +36,24 @@ import {
   PASSWORD_HASHER_PORT,
   type PasswordHasherPort,
 } from 'src/modules/iam/application/ports/password-hasher.port';
+import {
+  PASSWORD_RECOVERY_EMAIL_PORT,
+  type PasswordRecoveryEmailPort,
+} from './application/ports/password-recovery-email.port';
+import {
+  PASSWORD_RECOVERY_CODE_REPOSITORY,
+  type PasswordRecoveryCodeRepository,
+} from './domain/repositories/password-recovery-code.repository.interface';
+import {
+  ELECTOR_PASSWORD_RECOVERY_CODE_REPOSITORY,
+  type ElectorPasswordRecoveryCodeRepository,
+} from './domain/repositories/elector-password-recovery-code.repository.interface';
+import { RequestUserPasswordRecoveryUseCase } from './application/use-cases/request-user-password-recovery.use-case';
+import { ResetUserPasswordUseCase } from './application/use-cases/reset-user-password.use-case';
+import { RequestElectorPasswordRecoveryUseCase } from './application/use-cases/request-elector-password-recovery.use-case';
+import { ResetElectorPasswordUseCase } from './application/use-cases/reset-elector-password.use-case';
+import { PrismaPasswordRecoveryCodeRepository } from './infrastructure/repositories/prisma-password-recovery-code.repository';
+import { PrismaElectorPasswordRecoveryCodeRepository } from './infrastructure/repositories/prisma-elector-password-recovery-code.repository';
 import { JwtTokenService } from './infrastructure/services/jwt-token.service';
 import { CryptoOtpGeneratorService } from './infrastructure/services/crypto-otp-generator.service';
 import { NodemailerEmailService } from './infrastructure/services/nodemailer-email.service';
@@ -139,6 +157,84 @@ import { AuthCookieService } from './presentation/services/auth-cookie.service';
         OTP_GENERATOR_PORT,
         MFA_HASHER_PORT,
         ASYNC_EMAIL_SERVICE_PORT,
+      ],
+    },
+    { provide: PASSWORD_RECOVERY_CODE_REPOSITORY, useClass: PrismaPasswordRecoveryCodeRepository },
+    {
+      provide: ELECTOR_PASSWORD_RECOVERY_CODE_REPOSITORY,
+      useClass: PrismaElectorPasswordRecoveryCodeRepository,
+    },
+    // Same Nodemailer instance as EMAIL_SERVICE_PORT; a dedicated token keeps EmailServicePort intact.
+    { provide: PASSWORD_RECOVERY_EMAIL_PORT, useExisting: EMAIL_SERVICE_PORT },
+    {
+      provide: RequestUserPasswordRecoveryUseCase,
+      useFactory: (
+        users: UserRepository,
+        recovery: PasswordRecoveryCodeRepository,
+        otpGenerator: OtpGeneratorPort,
+        mfaHasher: MfaHasherPort,
+        email: PasswordRecoveryEmailPort,
+      ) => new RequestUserPasswordRecoveryUseCase(users, recovery, otpGenerator, mfaHasher, email),
+      inject: [
+        USER_REPOSITORY,
+        PASSWORD_RECOVERY_CODE_REPOSITORY,
+        OTP_GENERATOR_PORT,
+        MFA_HASHER_PORT,
+        PASSWORD_RECOVERY_EMAIL_PORT,
+      ],
+    },
+    {
+      provide: ResetUserPasswordUseCase,
+      useFactory: (
+        users: UserRepository,
+        recovery: PasswordRecoveryCodeRepository,
+        mfaHasher: MfaHasherPort,
+        passwordHasher: PasswordHasherPort,
+      ) => new ResetUserPasswordUseCase(users, recovery, mfaHasher, passwordHasher),
+      inject: [
+        USER_REPOSITORY,
+        PASSWORD_RECOVERY_CODE_REPOSITORY,
+        MFA_HASHER_PORT,
+        PASSWORD_HASHER_PORT,
+      ],
+    },
+    {
+      provide: RequestElectorPasswordRecoveryUseCase,
+      useFactory: (
+        electors: ElectorRepository,
+        recovery: ElectorPasswordRecoveryCodeRepository,
+        otpGenerator: OtpGeneratorPort,
+        mfaHasher: MfaHasherPort,
+        email: PasswordRecoveryEmailPort,
+      ) =>
+        new RequestElectorPasswordRecoveryUseCase(
+          electors,
+          recovery,
+          otpGenerator,
+          mfaHasher,
+          email,
+        ),
+      inject: [
+        ELECTOR_REPOSITORY,
+        ELECTOR_PASSWORD_RECOVERY_CODE_REPOSITORY,
+        OTP_GENERATOR_PORT,
+        MFA_HASHER_PORT,
+        PASSWORD_RECOVERY_EMAIL_PORT,
+      ],
+    },
+    {
+      provide: ResetElectorPasswordUseCase,
+      useFactory: (
+        electors: ElectorRepository,
+        recovery: ElectorPasswordRecoveryCodeRepository,
+        mfaHasher: MfaHasherPort,
+        passwordHasher: PasswordHasherPort,
+      ) => new ResetElectorPasswordUseCase(electors, recovery, mfaHasher, passwordHasher),
+      inject: [
+        ELECTOR_REPOSITORY,
+        ELECTOR_PASSWORD_RECOVERY_CODE_REPOSITORY,
+        MFA_HASHER_PORT,
+        PASSWORD_HASHER_PORT,
       ],
     },
     {
