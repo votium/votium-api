@@ -25,7 +25,7 @@ export class RegisterElectionToBlockchainUseCase {
 
   async execute(electionId: string): Promise<void> {
     const election = await this.electionRepository.findById(electionId);
-    console.log(election?.currentStatus);
+
     if (!election) {
       throw new Error(`Election with ID ${electionId} not found`);
     }
