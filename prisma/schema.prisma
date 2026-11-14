@@ -367,3 +367,23 @@ model AnonymousVote {
   @@index([election_id, candidacy_id])
   @@map("anonymous_votes")
 }
+
+enum MakeStatus {
+  NONE
+  REPORTED
+  MARKED
+  REJECTED
+}
+
+model VoteCredential {
+  election_id          String
+  elector_id           String
+  voter_hash           String
+  blinded_message_hash String
+  blind_signature      String     @db.Text
+  markStatus           MakeStatus @default(NONE)
+
+  @@id([election_id, elector_id])
+  @@index([election_id, markStatus])
+  @@map("vote_credentials")
+}
