@@ -20,15 +20,19 @@
     "test:cov": "jest --coverage",
     "test:watch": "jest --watch",
     "keys:generate": "bash scripts/generate-election-key.sh",
-    "test:e2e": "node --experimental-vm-modules node_modules/.bin/jest --selectProjects e2e --runInBand"
+    "test:e2e": "node --experimental-vm-modules node_modules/.bin/jest --selectProjects e2e --runInBand",
+    "fabric:smoke": "ts-node src/fabric/cli/smoke.ts",
+    "fabric:it": "ts-node src/fabric/cli/integration.ts",
+    "fabric:faults": "ts-node src/fabric/cli/faults.ts"
   },
   "dependencies": {
-    "@cloudflare/blindrsa-ts": "^0.4.4",
+    "@grpc/grpc-js": "1.14.7",
+    "@hyperledger/fabric-gateway": "1.13.0",
     "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "12.1.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "11.0.2",
     "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/schedule": "^6.1.3",
     "@nestjs/swagger": "^11.4.6",
     "@noble/curves": "^2.4.0",
     "@prisma/adapter-pg": "7.8.0",
