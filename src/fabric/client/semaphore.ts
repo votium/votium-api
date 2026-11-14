@@ -3,7 +3,7 @@ export class Semaphore {
   private active = 0;
   private readonly waiting: Array<() => void> = [];
 
-  constructor(private readonly limit: number) { }
+  constructor(private readonly limit: number) {}
 
   async acquire(): Promise<() => void> {
     if (this.active < this.limit) this.active++;

@@ -7,7 +7,7 @@ import { CHAINCODES, ChaincodeName } from '../fabric.constants';
 import { FabricModule } from '../fabric.module';
 
 @Module({ imports: [ConfigModule.forRoot({ isGlobal: true }), FabricModule] })
-class SmokeModule { }
+class SmokeModule {}
 
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SmokeModule, {

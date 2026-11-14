@@ -1,5 +1,5 @@
 // The invoker pulls the registry, @nestjs/config and the Gateway (ESM). These tests only need a fake of it.
-jest.mock('../client/fabric-invoker', () => ({ FabricInvoker: class FabricInvoker { } }));
+jest.mock('../client/fabric-invoker', () => ({ FabricInvoker: class FabricInvoker {} }));
 
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { FabricInvoker } from '../client/fabric-invoker';

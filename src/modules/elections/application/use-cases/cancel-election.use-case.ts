@@ -4,6 +4,7 @@ import { ElectionNotFoundError } from '../../domain/errors/election-not-found.er
 import { ElectionStartRequiresUserError } from '../../domain/errors/election-start-requires-user.error';
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
+import { ElectionLedgerPort } from '../ports/election-ledger.port';
 
 // Cancellation is the terminal sink of the lifecycle: any non-terminal state
 // (PENDING, CREATED, ACTIVE, CLOSED) may be cancelled, and the election can never move
@@ -13,6 +14,7 @@ export class CancelElectionUseCase {
   constructor(
     private readonly elections: Pick<ElectionRepository, 'findById' | 'updateStatus'>,
     private readonly audit: AuditLogPort,
+    private readonly ledger: ElectionLedgerPort,
   ) {}
 
   async execute(input: { electionId: string; requestingUserId: string }): Promise<ElectionEntity> {
@@ -48,5 +50,9 @@ export class CancelElectionUseCase {
     });
 
     return updated;
+  }
+
+  _updateLedger(electionId: string) {
+    return this.ledger.cancel(electionId);
   }
 }

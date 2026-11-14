@@ -32,7 +32,7 @@ export class FabricClient {
     readonly profile: FabricProfile,
     private readonly credentials: FabricCredentials,
     private readonly config: FabricConfig,
-  ) { }
+  ) {}
 
   get mspId(): string {
     return this.credentials.mspId;

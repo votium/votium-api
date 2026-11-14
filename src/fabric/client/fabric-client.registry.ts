@@ -13,7 +13,7 @@ export class FabricClientRegistry implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FabricClientRegistry.name);
   private readonly clients = new Map<FabricProfile, FabricClient>();
 
-  constructor(@Inject(fabricConfig.KEY) private readonly config: ConfigType<typeof fabricConfig>) { }
+  constructor(@Inject(fabricConfig.KEY) private readonly config: ConfigType<typeof fabricConfig>) {}
 
   onModuleInit(): void {
     // Invalid credentials abort the application start on purpose (fail fast).

@@ -1,5 +1,5 @@
 jest.mock('./fabric-client.registry', () => ({
-  FabricClientRegistry: class FabricClientRegistry { },
+  FabricClientRegistry: class FabricClientRegistry {},
 }));
 jest.mock('../config/fabric.config', () => ({ fabricConfig: { KEY: 'fabric' } }));
 
@@ -45,7 +45,7 @@ const logged: string[] = [];
 beforeEach(() => {
   logged.length = 0;
   for (const m of ['log', 'warn', 'error', 'debug'] as const) {
-    jest.spyOn(Logger.prototype, m).mockImplementation((message: unknown) => {
+    jest.spyOn(Logger.prototype, m).mockImplementation((message: unknown, ..._: unknown[]) => {
       logged.push(String(message));
     });
   }
@@ -113,7 +113,7 @@ describe('FabricInvoker.submit', () => {
     const { client, invoker } = make();
     client.submit.mockRejectedValue(unknown('u1'));
     const r = await invoker.submit('elections', 'StartElection', ['E'], {
-      reconcile: async () => ({ status: 'ACTIVE' }),
+      reconcile: () => Promise.resolve({ status: 'ACTIVE' }),
     });
     expect(client.submit).toHaveBeenCalledTimes(1);
     expect(r).toEqual({
@@ -129,7 +129,7 @@ describe('FabricInvoker.submit', () => {
     client.submit.mockRejectedValueOnce(unknown()).mockResolvedValueOnce(ok());
     const r = await invoker.submit('voters', 'MarkVoted', ['E'], {
       idempotent: true,
-      reconcile: async () => {
+      reconcile: () => {
         throw new Error('read failed');
       },
     });

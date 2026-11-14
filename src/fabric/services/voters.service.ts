@@ -13,7 +13,7 @@ import {
 
 @Injectable()
 export class VotersService {
-  constructor(private readonly fabric: FabricInvoker) { }
+  constructor(private readonly fabric: FabricInvoker) {}
 
   /** Idempotent: voters already loaded are skipped, so it is resent once after an unknown outcome. */
   async registerVoters(input: VoterBatchDto): Promise<TxResult<RegisterVotersResult>> {

@@ -6,7 +6,7 @@ import { Election, ElectionStatus, ReadOptions, TxResult } from '../types';
 
 @Injectable()
 export class ElectionsService {
-  constructor(private readonly fabric: FabricInvoker) { }
+  constructor(private readonly fabric: FabricInvoker) {}
 
   async createElection(input: CreateElectionDto): Promise<TxResult<Election>> {
     const v = await validateInput(CreateElectionDto, input);

@@ -5,6 +5,7 @@ import { ElectionNotEndedError } from '../../domain/errors/election-not-ended.er
 import { ElectionStartRequiresUserError } from '../../domain/errors/election-start-requires-user.error';
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
+import { ElectionLedgerPort } from '../ports/election-ledger.port';
 
 // Manual closure is the ACTIVE -> CLOSED edge, triggered by an administrator rather than
 // by the automatic scheduler. It reuses the same domain decision points as the automatic
@@ -15,6 +16,7 @@ export class CloseElectionUseCase {
   constructor(
     private readonly elections: Pick<ElectionRepository, 'findById' | 'updateStatus'>,
     private readonly audit: AuditLogPort,
+    private readonly ledger: ElectionLedgerPort,
   ) {}
 
   async execute(input: {
@@ -59,6 +61,12 @@ export class CloseElectionUseCase {
       newStatus: 'CLOSED',
     });
 
+    await this._updateLedger(electionId);
+
     return updated;
+  }
+
+  _updateLedger(electionId: string) {
+    return this.ledger.close(electionId);
   }
 }

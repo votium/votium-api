@@ -37,7 +37,16 @@ function causeText(err: FabricError): string {
   const parts: string[] = [cause instanceof Error ? cause.message : String(cause)];
   const details = (cause as { details?: unknown } | null)?.details;
   if (Array.isArray(details))
-    for (const d of details) parts.push(String((d as { message?: unknown })?.message ?? ''));
+    for (const d of details) {
+      const rawMessage = (d as { message?: unknown })?.message;
+      const message =
+        typeof rawMessage === 'string'
+          ? rawMessage
+          : Array.isArray(rawMessage)
+            ? rawMessage.join(', ') // Útil en NestJS porque class-validator devuelve string[]
+            : '';
+      parts.push(message);
+    }
   return parts.join(' | ').replace(/\s+/g, ' ').slice(0, 300);
 }
 

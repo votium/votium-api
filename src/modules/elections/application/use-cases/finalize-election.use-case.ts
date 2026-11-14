@@ -5,6 +5,8 @@ import { ElectionNoCandidatesError } from '../../domain/errors/election-no-candi
 import { ElectionNotFoundError } from '../../domain/errors/election-not-found.error';
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
+import { ElectionLedgerPort } from '../ports/election-ledger.port';
+import { ElectionSigningKeyPort } from '../ports/election-signing-key.port';
 
 // Finalization is the PENDING -> CREATED edge: it freezes the election's
 // configuration (basic info, dates, roll and candidacies) ahead of activation.
@@ -17,6 +19,8 @@ export class FinalizeElectionUseCase {
       'findById' | 'updateStatus' | 'hasElectoralRoll' | 'hasCandidates'
     >,
     private readonly audit: AuditLogPort,
+    private readonly ledger: ElectionLedgerPort,
+    private readonly signingKey: ElectionSigningKeyPort,
   ) {}
 
   async execute(input: { electionId: string; requestingUserId: string }): Promise<ElectionEntity> {
@@ -60,6 +64,20 @@ export class FinalizeElectionUseCase {
       electionId,
       newStatus: 'CREATED',
     });
+
+    // console.log(this.signingKey);
+    const signingPublicKey = await this.signingKey.ensureKey(electionId);
+    const tx = await this.ledger.create({
+      electionId,
+      name: election.name,
+      startDate: election.startDate,
+      startTime: election.startTime,
+      endDate: election.endDate,
+      endTime: election.endTime,
+      signingPublicKey,
+    });
+
+    console.log('Ledger transaction:', tx);
 
     return updated;
   }
