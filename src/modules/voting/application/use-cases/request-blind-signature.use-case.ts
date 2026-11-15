@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
   Inject,
+  Logger,
 } from '@nestjs/common';
 
 import { createHash } from 'crypto';
@@ -18,6 +19,8 @@ import { SignerPort } from '../ports/signer.port';
 
 @Injectable()
 export class RequestBlindSignatureUseCase {
+  log = new Logger(RequestBlindSignatureUseCase.name);
+
   constructor(
     @Inject(VOTE_CREDENTIAL_REPOSITORY)
     private readonly voteCredentialRepository: VoteCredentialRepository,
@@ -69,7 +72,8 @@ export class RequestBlindSignatureUseCase {
     let blindSignature: string;
     try {
       blindSignature = await this.signer.signBlinded(electionId, blindedMessage);
-    } catch {
+    } catch (e) {
+      this.log.error(`blindSign falló (${electionId}): ${e}`);
       throw new BadRequestException({
         code: 'INVALID_BLINDED_MESSAGE',
         message: 'The provided blinded message is invalid.',
