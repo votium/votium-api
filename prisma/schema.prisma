@@ -20,11 +20,8 @@ enum StatusElection {
   CLOSED
   PUBLISHED
   CANCELLED
-  <<<<<<< HEAD
   FINALIZING
   SYNC_ERROR
-  =======
-  >>>>>>> main
 }
 
 model Role {
@@ -48,7 +45,6 @@ model User {
   status        String    @default("ACTIVE")
   deleted_at    DateTime?
 
-  <<<<<<< HEAD
   role                  Role                    @relation(fields: [role_id], references: [id])
   auditLogs             AuditLog[]
   notifications         Notification[]
@@ -56,14 +52,6 @@ model User {
   statusHistory         ElectionStatusHistory[]
   mfaChallenges         MfaChallenge[]
   passwordRecoveryCodes PasswordRecoveryCode[]
-  =======
-  role                  Role                    @relation(fields: [role_id], references: [id])
-  auditLogs             AuditLog[]
-  notifications         Notification[]
-  reports               Report[]
-  statusHistory         ElectionStatusHistory[]
-  mfaChallenges         MfaChallenge[]
-  >>>>>>> main
 
   @@map("users")
 }
@@ -263,16 +251,10 @@ model Elector {
   updated_at     DateTime  @updatedAt
   deleted_at     DateTime?
 
-  <<<<<<< HEAD
   electoralRolls        ElectoralRoll[]
   mfaChallenges         ElectorMfaChallenge[]
   anonymousCredentials  AnonymousCredential[]
   passwordRecoveryCodes ElectorPasswordRecoveryCode[]
-  =======
-  electoralRolls        ElectoralRoll[]
-  mfaChallenges         ElectorMfaChallenge[]
-  anonymousCredentials  AnonymousCredential[]
-  >>>>>>> main
 
   @@map("electors")
 }
