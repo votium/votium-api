@@ -15,6 +15,7 @@ import { FabricModule } from './fabric';
 import { BlindSignatureModule } from './shared/blind-signature/blind-signature.module';
 import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from './shared/shared.module';
+import { PrismaModule } from './shared/database/prisma.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { SharedModule } from './shared/shared.module';
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
     SharedModule,
+    PrismaModule,
     IamModule,
     AuthModule,
     ElectorsModule,
