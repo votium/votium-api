@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsOptional, IsString, Matches } from 'class-validator';
 
 export const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 export const HASH_RE = /^[0-9a-f]{64}$/;
