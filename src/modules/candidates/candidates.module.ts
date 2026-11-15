@@ -25,7 +25,11 @@ import { PrismaCandidateRepository } from './infrastructure/repositories/prisma-
 import { CandidatesController } from './presentation/controllers/candidates.controller';
 
 @Module({
-  imports: [IamModule, AuthModule, forwardRef(() => CandidaciesModule)],
+  imports: [
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
+    forwardRef(() => CandidaciesModule),
+  ],
   controllers: [CandidatesController],
   providers: [
     { provide: CANDIDATE_REPOSITORY, useClass: PrismaCandidateRepository },

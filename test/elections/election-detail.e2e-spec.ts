@@ -1,3 +1,4 @@
+import * as jwt from 'jsonwebtoken';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -15,7 +16,7 @@ import {
 import { NodeCryptoPasswordHasherService } from '../../src/modules/iam/infrastructure/services/node-crypto-password-hasher.service';
 import { RoleName } from '../../src/modules/iam/domain/value-objects/role-name.vo';
 import { UserStatus } from '../../src/modules/iam/domain/value-objects/user-status.vo';
-import { extractAuthCookie } from '../auth/auth-cookie.utils';
+import { buildAuthCookie, extractAuthCookie } from '../auth/auth-cookie.utils';
 import { nextTestElectionCode } from './election-code.utils';
 
 interface ElectionDetailResponseBody {
@@ -80,6 +81,7 @@ describe('Election detail (e2e)', () => {
   let auditorUser: { id: string; email: string; password: string };
   let adminToken = '';
   let auditorToken = '';
+  let electorCookie = '';
 
   const suffix = Date.now();
   let electionCounter = 0;
@@ -282,6 +284,24 @@ describe('Election detail (e2e)', () => {
 
     adminToken = await completeLogin(adminUser.email, adminUser.password);
     auditorToken = await completeLogin(auditorUser.email, auditorUser.password);
+
+    const elector = await prisma.elector.create({
+      data: {
+        first_name: 'E2E',
+        last_name: 'Elector',
+        email: `e2e-detail-elector-${suffix}@example.com`,
+        password_hash: 'pbkdf2$placeholder',
+        student_code: `E2E-DETAIL-EL-${suffix}`,
+        program_code: '2710',
+        status: 'ACTIVE',
+      },
+    });
+    usedElectorIds.push(elector.id);
+    electorCookie = buildAuthCookie(
+      jwt.sign({ sub: elector.id, email: elector.email, actorType: 'ELECTOR' }, envs.jwtSecret, {
+        expiresIn: envs.jwtExpiresIn,
+      }),
+    );
   });
 
   afterAll(async () => {
@@ -595,13 +615,24 @@ describe('Election detail (e2e)', () => {
     });
   });
 
-  describe('D11 403 auditor access', () => {
+  describe('D11 200 auditor access', () => {
     it('allows AUDITOR role (200)', async () => {
       const electionId = await seedElection({ status: 'PENDING' });
       await seedElectorAndRoll(electionId);
       await seedCandidateAndCandidacy(electionId);
 
       const res = await detailRequest(electionId, auditorToken).expect(200);
+      expect(toDetailBody(res).id).toBe(electionId);
+    });
+  });
+
+  describe('D12 200 elector access', () => {
+    it('allows any authenticated role (elector) to read election detail (200)', async () => {
+      const electionId = await seedElection({ status: 'PENDING' });
+      await seedElectorAndRoll(electionId);
+      await seedCandidateAndCandidacy(electionId);
+
+      const res = await detailRequest(electionId, electorCookie).expect(200);
       expect(toDetailBody(res).id).toBe(electionId);
     });
   });
@@ -669,7 +700,7 @@ describe('Election detail (e2e)', () => {
       expect(detailSchema!.properties?.createdAt).toBeDefined();
     });
 
-    it('SWAGGER-3: error responses 400/401/403/404 documented', () => {
+    it('SWAGGER-3: error responses 400/401/404 documented', () => {
       const config = new DocumentBuilder()
         .setTitle('Votium API')
         .setDescription('Electronic voting system API')
@@ -686,8 +717,8 @@ describe('Election detail (e2e)', () => {
 
       expect(operation.responses['400']).toBeDefined();
       expect(operation.responses['401']).toBeDefined();
-      expect(operation.responses['403']).toBeDefined();
       expect(operation.responses['404']).toBeDefined();
+      expect(operation.responses['403']).toBeUndefined();
     });
   });
 });

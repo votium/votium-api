@@ -5,6 +5,9 @@ import { ElectionNotEndedError } from '../../domain/errors/election-not-ended.er
 import { ElectionStartRequiresUserError } from '../../domain/errors/election-start-requires-user.error';
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
+import { ElectionLedgerPort } from '../ports/election-ledger.port';
+import { PendingMarksPort } from '../ports/pending-marks.port';
+import { Logger } from '@nestjs/common';
 
 // Manual closure is the ACTIVE -> CLOSED edge, triggered by an administrator rather than
 // by the automatic scheduler. It reuses the same domain decision points as the automatic
@@ -12,9 +15,13 @@ import type { ElectionRepository } from '../../domain/repositories/election.repo
 // differences are the human actor (audit entry) and the surfaced error for an election
 // whose end instant has not yet been reached.
 export class CloseElectionUseCase {
+  private readonly log = new Logger(CloseElectionUseCase.name);
+
   constructor(
     private readonly elections: Pick<ElectionRepository, 'findById' | 'updateStatus'>,
     private readonly audit: AuditLogPort,
+    private readonly ledger: ElectionLedgerPort,
+    private readonly marks: PendingMarksPort,
   ) {}
 
   async execute(input: {
@@ -59,6 +66,20 @@ export class CloseElectionUseCase {
       newStatus: 'CLOSED',
     });
 
+    try {
+      await this.marks.flush(electionId);
+    } catch (e: any) {
+      this.log.warn(
+        `Flush previo al cierre falló en ${electionId}: ${e?.code ?? e?.message}. El cron lo reintentará`,
+      );
+    }
+
+    await this._updateLedger(electionId);
+
     return updated;
+  }
+
+  _updateLedger(electionId: string) {
+    return this.ledger.close(electionId);
   }
 }

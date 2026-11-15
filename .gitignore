@@ -56,3 +56,4 @@ Thumbs.db
 
 ### Local secrets (election key encryption, see scripts/generate-election-key.sh)
 .secrets/
+.fabric/

@@ -19,6 +19,7 @@ import { ElectionKeyProvisioner } from './application/election-key-provisioner';
 import { CastAnonymousVoteUseCase } from './application/use-cases/cast-anonymous-vote.use-case';
 import { GetAnonymousBallotReceiptUseCase } from './application/use-cases/get-anonymous-ballot-receipt.use-case';
 import { GetAnonymousVotingResultsUseCase } from './application/use-cases/get-anonymous-voting-results.use-case';
+import { GetFinalElectionResultsUseCase } from './application/use-cases/get-final-election-results.use-case';
 import { GetBallotCredentialStatusUseCase } from './application/use-cases/get-ballot-credential-status.use-case';
 import { GetBlindSignaturePublicKeyUseCase } from './application/use-cases/get-blind-signature-public-key.use-case';
 import { IssueBallotCredentialUseCase } from './application/use-cases/issue-ballot-credential.use-case';
@@ -37,10 +38,11 @@ import {
 import { ElectionKeyCipher } from './infrastructure/crypto/election-key-cipher';
 import { PrismaAnonymousVotingRepository } from './infrastructure/repositories/prisma-anonymous-voting.repository';
 import { AnonymousVotingController } from './presentation/controllers/anonymous-voting.controller';
+import { ElectionResultsController } from './presentation/controllers/election-results.controller';
 
 @Module({
   imports: [IamModule, AuthModule, ElectionsModule, CandidaciesModule],
-  controllers: [AnonymousVotingController],
+  controllers: [AnonymousVotingController, ElectionResultsController],
   providers: [
     { provide: ANONYMOUS_VOTING_REPOSITORY, useClass: PrismaAnonymousVotingRepository },
     { provide: BLIND_SIGNATURE_PORT, useClass: RsaBssaBlindSignature },
@@ -116,6 +118,15 @@ import { AnonymousVotingController } from './presentation/controllers/anonymous-
         candidacies: CandidacyRepository,
         repo: AnonymousVotingRepository,
       ) => new GetAnonymousVotingResultsUseCase(elections, candidacies, repo),
+      inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY, ANONYMOUS_VOTING_REPOSITORY],
+    },
+    {
+      provide: GetFinalElectionResultsUseCase,
+      useFactory: (
+        elections: ElectionRepository,
+        candidacies: CandidacyRepository,
+        votes: AnonymousVotingRepository,
+      ) => new GetFinalElectionResultsUseCase(elections, candidacies, votes),
       inject: [ELECTION_REPOSITORY, CANDIDACY_REPOSITORY, ANONYMOUS_VOTING_REPOSITORY],
     },
   ],

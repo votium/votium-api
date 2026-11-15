@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+// import { Cron, CronExpression } from '@nestjs/schedule';
 import { envs } from 'src/config';
 import type { CloseExpiredElectionsUseCase } from '../../application/use-cases/close-expired-elections.use-case';
 
@@ -14,7 +14,7 @@ export class ElectionClosureSchedulerService {
 
   // Every minute in UTC; waitForCompletion skips ticks while a run is in progress
   // (no overlapping runs). Operational opt-out via ELECTION_AUTO_CLOSE_ENABLED.
-  @Cron(CronExpression.EVERY_MINUTE, { timeZone: 'UTC', waitForCompletion: true })
+  // @Cron(CronExpression.EVERY_MINUTE, { timeZone: 'UTC', waitForCompletion: true })
   async handleTick(): Promise<void> {
     if (!envs.electionAutoCloseEnabled) return;
 

@@ -1,5 +1,5 @@
 import { ElectionStatusTransitionError } from '../errors/election-status-transition.error';
-import { ElectionCodeVO } from '../value-objects/election-code.vo';
+// import { ElectionCodeVO } from '../value-objects/election-code.vo';
 
 export const ELECTION_STATUSES = [
   'PENDING',
@@ -8,6 +8,8 @@ export const ELECTION_STATUSES = [
   'CLOSED',
   'PUBLISHED',
   'CANCELLED',
+  'FINALIZING',
+  'SYNC_ERROR',
 ] as const;
 
 export type ElectionStatus = (typeof ELECTION_STATUSES)[number];
@@ -22,7 +24,9 @@ export type ElectionStatus = (typeof ELECTION_STATUSES)[number];
 // `canTransitionTo` and `transitionTo` are both pure functions of it, so they cannot
 // drift apart.
 export const ELECTION_TRANSITIONS: Readonly<Record<ElectionStatus, readonly ElectionStatus[]>> = {
-  PENDING: ['CREATED', 'CANCELLED'],
+  FINALIZING: ['CREATED', 'CANCELLED', 'SYNC_ERROR'],
+  SYNC_ERROR: ['FINALIZING', 'CANCELLED'],
+  PENDING: ['FINALIZING', 'CANCELLED'],
   CREATED: ['ACTIVE', 'CANCELLED'],
   ACTIVE: ['CLOSED', 'CANCELLED'],
   CLOSED: ['PUBLISHED', 'CANCELLED'],
@@ -39,6 +43,14 @@ export interface CreateElectionInput {
   endDate: Date;
   endTime: Date;
   blankVoteEnabled?: boolean;
+  signingPublicKey?: string;
+  ledgerBlock?: number;
+  ledgerTxId?: string;
+  canceledAt?: Date;
+  publishedAt?: Date;
+  closedAt?: Date;
+  startedAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface RestoreElectionInput {
@@ -52,7 +64,15 @@ export interface RestoreElectionInput {
   endTime: Date;
   currentStatus: ElectionStatus;
   blankVoteEnabled: boolean;
+  signingPublicKey?: string;
+  ledgerBlock?: number;
+  ledgerTxId?: string;
   createdAt: Date;
+  canceledAt?: Date;
+  publishedAt?: Date;
+  closedAt?: Date;
+  startedAt?: Date;
+  updatedAt?: Date;
 }
 
 // Partial input for an election update. Only the provided fields are merged; the rest
@@ -84,6 +104,14 @@ export class ElectionEntity {
     private _currentStatus: ElectionStatus,
     public blankVoteEnabled: boolean,
     public readonly createdAt: Date | null,
+    public signingPublicKey?: string,
+    public ledgerBlock?: number,
+    public ledgerTxId?: string,
+    public canceledAt?: Date,
+    public publishedAt?: Date,
+    public closedAt?: Date,
+    public startedAt?: Date,
+    public updatedAt?: Date,
   ) {}
 
   get currentStatus(): ElectionStatus {
@@ -128,7 +156,7 @@ export class ElectionEntity {
   static create(input: CreateElectionInput): ElectionEntity {
     return new ElectionEntity(
       null,
-      ElectionCodeVO.from(input.electionCode).value,
+      input.electionCode,
       input.name.trim(),
       input.description.trim(),
       input.startDate,
@@ -137,7 +165,15 @@ export class ElectionEntity {
       input.endTime,
       ElectionEntity.DEFAULT_STATUS,
       input.blankVoteEnabled ?? ElectionEntity.DEFAULT_BLANK_VOTE,
-      null,
+      new Date(),
+      input.signingPublicKey,
+      input.ledgerBlock,
+      input.ledgerTxId,
+      input.canceledAt,
+      input.publishedAt,
+      input.closedAt,
+      input.startedAt,
+      input.updatedAt,
     );
   }
 
@@ -154,6 +190,8 @@ export class ElectionEntity {
       input.currentStatus,
       input.blankVoteEnabled,
       input.createdAt,
+      input.signingPublicKey,
+      input.ledgerBlock,
     );
   }
 

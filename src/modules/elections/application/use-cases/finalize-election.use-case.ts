@@ -1,3 +1,6 @@
+// Events
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ElectionValidatedEvent } from '../events/election-validated.event';
 import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.port';
 import { ElectionEntity } from '../../domain/entities/election.entity';
 import { ElectionMissingElectoralRollError } from '../../domain/errors/election-missing-electoral-roll.error';
@@ -16,6 +19,7 @@ export class FinalizeElectionUseCase {
       ElectionRepository,
       'findById' | 'updateStatus' | 'hasElectoralRoll' | 'hasCandidates'
     >,
+    private readonly eventEmitter: EventEmitter2,
     private readonly audit: AuditLogPort,
   ) {}
 
@@ -46,7 +50,7 @@ export class FinalizeElectionUseCase {
     // cannot both record a CREATED transition.
     const updated = await this.elections.updateStatus(
       electionId,
-      'CREATED',
+      'FINALIZING',
       requestingUserId,
       'PENDING',
     );
@@ -58,8 +62,10 @@ export class FinalizeElectionUseCase {
 
     await this.audit.log('ELECTION_STATUS_CHANGED', requestingUserId, {
       electionId,
-      newStatus: 'CREATED',
+      newStatus: 'FINALIZING',
     });
+
+    this.eventEmitter.emit('election.validated', new ElectionValidatedEvent(electionId));
 
     return updated;
   }

@@ -784,4 +784,51 @@ describe('PrismaCandidacyRepository integration', () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe('findByElectionIds', () => {
+    it('FBEI-01: returns candidacies of all requested elections ordered by election and position', async () => {
+      const electionA = await seedElection();
+      const electionB = await seedElection();
+      const candidateA = await seedCandidate({ firstName: 'Ana' });
+      const candidateB = await seedCandidate({ firstName: 'Beto' });
+      const candidateC = await seedCandidate({ firstName: 'Carla' });
+
+      await seedCandidacy(electionA, candidateB, 2);
+      await seedCandidacy(electionA, candidateA, 1);
+      await seedCandidacy(electionB, candidateC, 1);
+
+      const result = await repository.findByElectionIds([electionA, electionB]);
+
+      expect(
+        result.filter((row) => row.electionId === electionA).map((row) => row.positionNumber),
+      ).toEqual([1, 2]);
+      expect(
+        result.filter((row) => row.electionId === electionB).map((row) => row.positionNumber),
+      ).toEqual([1]);
+      expect(result).toHaveLength(3);
+    });
+
+    it('FBEI-02: excludes INACTIVE and soft-deleted candidates', async () => {
+      const electionId = await seedElection();
+      const visible = await seedCandidate({ firstName: 'Visible' });
+      const inactive = await seedCandidate({ firstName: 'Inactive', status: 'INACTIVE' });
+      const deleted = await seedCandidate({ firstName: 'Deleted' });
+      await prisma.candidate.update({
+        where: { id: deleted },
+        data: { deleted_at: new Date() },
+      });
+
+      await seedCandidacy(electionId, visible, 1);
+      await seedCandidacy(electionId, inactive, 2);
+      await seedCandidacy(electionId, deleted, 3);
+
+      const result = await repository.findByElectionIds([electionId]);
+
+      expect(result.map((row) => row.candidateId)).toEqual([visible]);
+    });
+
+    it('FBEI-03: returns an empty array without querying for an empty id list', async () => {
+      await expect(repository.findByElectionIds([])).resolves.toEqual([]);
+    });
+  });
 });

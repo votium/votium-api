@@ -658,7 +658,7 @@ describe('Elections creation (e2e)', () => {
       );
 
     const findCollectionPath = (document: ReturnType<typeof buildDocument>) =>
-      Object.keys(document.paths).find((p) => p.endsWith('/elections'));
+      Object.keys(document.paths).find((p) => p === '/api/v1/elections');
 
     it('SW-01: the update operation is exposed as PUT and PATCH is removed', () => {
       const document = buildDocument();

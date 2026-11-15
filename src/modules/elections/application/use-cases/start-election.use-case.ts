@@ -5,11 +5,13 @@ import { ElectionNotWithinScheduleError } from '../../domain/errors/election-not
 import { ElectionStartRequiresUserError } from '../../domain/errors/election-start-requires-user.error';
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
+import { ElectionLedgerPort } from '../ports/election-ledger.port';
 
 export class StartElectionUseCase {
   constructor(
     private readonly elections: Pick<ElectionRepository, 'findById' | 'updateStatus'>,
     private readonly audit: AuditLogPort,
+    private readonly ledger: ElectionLedgerPort,
   ) {}
 
   async execute(input: {
@@ -51,6 +53,12 @@ export class StartElectionUseCase {
       newStatus: 'ACTIVE',
     });
 
+    await this._updateLedger(electionId);
+
     return updated;
+  }
+
+  _updateLedger(electionId: string) {
+    return this.ledger.start(electionId);
   }
 }

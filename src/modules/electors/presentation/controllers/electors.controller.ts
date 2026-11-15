@@ -38,6 +38,7 @@ import { BadRequestException } from 'src/shared/exceptions/base/bad-request.exce
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { UpdateElectorDto } from '../../application/dtos/update-elector.dto';
 import { ActivateElectorUseCase } from '../../application/use-cases/activate-elector.use-case';
+import { CheckElectorHasVotedUseCase } from '../../application/use-cases/check-elector-has-voted.use-case';
 import { DeactivateElectorUseCase } from '../../application/use-cases/deactivate-elector.use-case';
 import { DeleteElectorUseCase } from '../../application/use-cases/delete-elector.use-case';
 import { GetElectorUseCase } from '../../application/use-cases/get-elector.use-case';
@@ -47,6 +48,8 @@ import { SearchElectorsUseCase } from '../../application/use-cases/search-electo
 import { UpdateElectorUseCase } from '../../application/use-cases/update-elector.use-case';
 import { ElectoralRegistryPresenter } from '../presenters/electoral-registry.presenter';
 import { ElectorPresenter } from '../presenters/elector.presenter';
+import { CheckElectorHasVotedDto } from '../dtos/check-elector-has-voted.dto';
+import { HasVotedResponseDto } from '../dtos/has-voted-response.dto';
 import { ElectorActionResponseDto } from '../dtos/elector-action-response.dto';
 import { ElectorDetailResponseDto } from '../dtos/elector-detail-response.dto';
 import { ElectorsListResponseDto } from '../dtos/electors-list-response.dto';
@@ -78,6 +81,7 @@ export class ElectorsController {
     private readonly getElector: GetElectorUseCase,
     private readonly updateElector: UpdateElectorUseCase,
     private readonly getElectoralRegistryTemplate: GetElectoralRegistryTemplateUseCase,
+    private readonly checkElectorHasVoted: CheckElectorHasVotedUseCase,
   ) {}
 
   @Get()
@@ -250,6 +254,39 @@ export class ElectorsController {
     });
 
     return ElectoralRegistryPresenter.toImportResponse(summary);
+  }
+
+  @Post(':id/has-voted')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Check whether an elector already voted in an election',
+    description:
+      'Read-only query. Returns whether the elector participated in the given election, ' +
+      'based solely on the electoral roll. Never exposes the selected candidacy or any vote ' +
+      'content. Available to any authenticated role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the elector.', example: 'uuid' })
+  @ApiBody({ type: CheckElectorHasVotedDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Participation status retrieved successfully.',
+    type: HasVotedResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid elector or election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Elector not found (ELECTOR_NOT_FOUND), election not found (ELECTION_NOT_FOUND), or ' +
+      'elector not registered in the election roll (ELECTORAL_ROLL_NOT_FOUND).',
+  })
+  @UseGuards(JwtAuthGuard)
+  async hasVoted(@Param('id', ParseUUIDPipe) id: string, @Body() body: CheckElectorHasVotedDto) {
+    const result = await this.checkElectorHasVoted.execute({
+      electorId: id,
+      electionId: body.electionId,
+    });
+    return ElectorPresenter.toHasVoted(result);
   }
 
   @Get('template/csv')

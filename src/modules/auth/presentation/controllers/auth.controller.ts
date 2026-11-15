@@ -1,4 +1,4 @@
-import { ApiCookieAuth, ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
+import { ApiBody, ApiCookieAuth, ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
 import {
   Body,
   Controller,
@@ -24,6 +24,12 @@ import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { VerifyMfaUseCase } from '../../application/use-cases/verify-mfa.use-case';
 import { ResendMfaUseCase } from '../../application/use-cases/resend-mfa.use-case';
 import { GetMeUserUseCase } from '../../application/use-cases/get-me-user.use-case';
+import { ForgotPasswordDto } from '../../application/dtos/forgot-password.dto';
+import { ForgotPasswordResponseDto } from '../../application/dtos/forgot-password-response.dto';
+import { ResetPasswordDto } from '../../application/dtos/reset-password.dto';
+import { ResetPasswordResponseDto } from '../../application/dtos/reset-password-response.dto';
+import { RequestUserPasswordRecoveryUseCase } from '../../application/use-cases/request-user-password-recovery.use-case';
+import { ResetUserPasswordUseCase } from '../../application/use-cases/reset-user-password.use-case';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../guards/roles.decorator';
@@ -47,7 +53,54 @@ export class AuthController {
     private readonly resendMfa: ResendMfaUseCase,
     private readonly getMeUser: GetMeUserUseCase,
     private readonly cookies: AuthCookieService,
+    private readonly requestPasswordRecovery: RequestUserPasswordRecoveryUseCase,
+    private readonly resetPasswordUseCase: ResetUserPasswordUseCase,
   ) {}
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request a password recovery code (administrators and auditors)',
+    description:
+      'Public. Sends a 6-digit recovery code (valid 15 minutes, single use) to the email if ' +
+      'an active account exists. Always returns the same generic message to avoid revealing ' +
+      'whether the account exists. A new code is not sent within 60 seconds of the previous one.',
+  })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiResponse({ status: 200, type: ForgotPasswordResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    const result = await this.requestPasswordRecovery.execute({ email: dto.email });
+    return new ForgotPasswordResponseDto(result.message);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reset the password with a recovery code (administrators and auditors)',
+    description:
+      'Public. Validates the recovery code and sets the new password atomically. The code ' +
+      'can only be used once and expires after 15 minutes.',
+  })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({ status: 200, type: ResetPasswordResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid recovery code (RECOVERY_CODE_INVALID) or request data.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Recovery code already used (RECOVERY_CODE_ALREADY_USED).',
+  })
+  @ApiResponse({ status: 410, description: 'Recovery code expired (RECOVERY_CODE_EXPIRED).' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    const result = await this.resetPasswordUseCase.execute({
+      email: dto.email,
+      code: dto.code,
+      newPassword: dto.newPassword,
+    });
+    return new ResetPasswordResponseDto(result.message);
+  }
 
   @Post('login')
   @ApiOperation({ summary: 'Validate credentials and start the MFA authentication process' })

@@ -1,7 +1,9 @@
+import type { CheckElectorHasVotedResult } from '../../application/use-cases/check-elector-has-voted.use-case';
 import { ElectorEntity } from '../../domain/entities/elector.entity';
 import type { ElectorElectionParticipation } from '../../domain/repositories/elector.repository.interface';
 import { ElectorDetailResponseDto, ElectorElectionDto } from '../dtos/elector-detail-response.dto';
 import { ElectorResponseDto } from '../dtos/elector-response.dto';
+import { HasVotedResponseDto } from '../dtos/has-voted-response.dto';
 
 export class ElectorPresenter {
   static toResponse(entity: ElectorEntity): ElectorResponseDto {
@@ -46,6 +48,14 @@ export class ElectorPresenter {
             hasVoted: p.hasVoted,
           }),
       ),
+    });
+  }
+
+  static toHasVoted(result: CheckElectorHasVotedResult): HasVotedResponseDto {
+    return new HasVotedResponseDto({
+      electionId: result.electionId,
+      electorId: result.electorId,
+      hasVoted: result.hasVoted,
     });
   }
 }

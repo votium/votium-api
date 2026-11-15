@@ -90,6 +90,12 @@ export interface CandidacyRepository {
     params: CandidacyPageParams,
   ): Promise<CandidacyPageResult>;
 
+  // Returns every candidacy for the given elections in one query, ordered by
+  // election_id then position_number. Same visibility rules as findByElection:
+  // INACTIVE and soft-deleted candidates are excluded. Used by batch election
+  // projections to avoid N+1 queries.
+  findByElectionIds(electionIds: string[]): Promise<CandidacyWithCandidate[]>;
+
   // Returns the candidacy with the given id, or null when it does not exist.
   findById(id: string): Promise<CandidacyEntity | null>;
 

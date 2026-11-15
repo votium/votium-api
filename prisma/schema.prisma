@@ -20,6 +20,11 @@ enum StatusElection {
   CLOSED
   PUBLISHED
   CANCELLED
+  <<<<<<< HEAD
+  FINALIZING
+  SYNC_ERROR
+  =======
+  >>>>>>> main
 }
 
 model Role {
@@ -43,12 +48,22 @@ model User {
   status        String    @default("ACTIVE")
   deleted_at    DateTime?
 
-  role          Role                    @relation(fields: [role_id], references: [id])
-  auditLogs     AuditLog[]
-  notifications Notification[]
-  reports       Report[]
-  statusHistory ElectionStatusHistory[]
-  mfaChallenges MfaChallenge[]
+  <<<<<<< HEAD
+  role                  Role                    @relation(fields: [role_id], references: [id])
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  reports               Report[]
+  statusHistory         ElectionStatusHistory[]
+  mfaChallenges         MfaChallenge[]
+  passwordRecoveryCodes PasswordRecoveryCode[]
+  =======
+  role                  Role                    @relation(fields: [role_id], references: [id])
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  reports               Report[]
+  statusHistory         ElectionStatusHistory[]
+  mfaChallenges         MfaChallenge[]
+  >>>>>>> main
 
   @@map("users")
 }
@@ -95,6 +110,14 @@ model Election {
   current_status     StatusElection @default(PENDING)
   blank_vote_enabled Boolean        @default(false)
   created_at         DateTime       @default(now())
+  signing_public_key String?
+  ledger_tx_id       String?
+  ledger_block       Int?
+  started_at         DateTime?
+  closed_at          DateTime?
+  published_at       DateTime?
+  canceled_at        DateTime?
+  updated_at         DateTime?      @updatedAt
 
   reports              Report[]
   notifications        Notification[]
@@ -240,9 +263,16 @@ model Elector {
   updated_at     DateTime  @updatedAt
   deleted_at     DateTime?
 
-  electoralRolls       ElectoralRoll[]
-  mfaChallenges        ElectorMfaChallenge[]
-  anonymousCredentials AnonymousCredential[]
+  <<<<<<< HEAD
+  electoralRolls        ElectoralRoll[]
+  mfaChallenges         ElectorMfaChallenge[]
+  anonymousCredentials  AnonymousCredential[]
+  passwordRecoveryCodes ElectorPasswordRecoveryCode[]
+  =======
+  electoralRolls        ElectoralRoll[]
+  mfaChallenges         ElectorMfaChallenge[]
+  anonymousCredentials  AnonymousCredential[]
+  >>>>>>> main
 
   @@map("electors")
 }
@@ -356,4 +386,54 @@ model AnonymousVote {
 
   @@index([election_id, candidacy_id])
   @@map("anonymous_votes")
+}
+
+enum MakeStatus {
+  NONE
+  REPORTED
+  MARKED
+  REJECTED
+}
+
+model VoteCredential {
+  election_id          String
+  elector_id           String
+  voter_hash           String
+  blinded_message_hash String
+  blind_signature      String     @db.Text
+  markStatus           MakeStatus @default(NONE)
+
+  @@id([election_id, elector_id])
+  @@index([election_id, markStatus])
+  @@map("vote_credentials")
+}
+
+model PasswordRecoveryCode {
+  id          String    @id @default(uuid())
+  user_id     String
+  code_hash   String
+  attempts    Int       @default(0)
+  expires_at  DateTime
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("password_recovery_codes")
+}
+
+model ElectorPasswordRecoveryCode {
+  id          String    @id @default(uuid())
+  elector_id  String
+  code_hash   String
+  attempts    Int       @default(0)
+  expires_at  DateTime
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  elector Elector @relation(fields: [elector_id], references: [id], onDelete: Cascade)
+
+  @@index([elector_id])
+  @@map("elector_password_recovery_codes")
 }
