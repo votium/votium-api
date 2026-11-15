@@ -239,6 +239,33 @@ describe('PrismaAnonymousVotingRepository (integration)', () => {
     expect((await repo.tally(electionId)).filter((r) => r.candidacyId !== null)).toHaveLength(0);
   });
 
+  it('tally groups by candidacy, counts every vote and returns blank votes as candidacyId null', async () => {
+    const electionId = await seedElection('ACTIVE');
+    const first = await seedCandidacy(electionId);
+    const second = await seedCandidacy(electionId);
+    const cast = (candidacyId: string | null) =>
+      repo.castVote({ electionId, ballotId: randomUUID(), candidacyId, now: new Date() });
+    await cast(first);
+    await cast(first);
+    await cast(first);
+    await cast(second);
+    await cast(null);
+    await cast(null);
+
+    const rows = await repo.tally(electionId);
+
+    expect(rows).toHaveLength(3);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { candidacyId: first, votes: 3 },
+        { candidacyId: second, votes: 1 },
+        { candidacyId: null, votes: 2 },
+      ]),
+    );
+    // Only aggregates: no ballot ids, payload or identity columns.
+    for (const row of rows) expect(Object.keys(row).sort()).toEqual(['candidacyId', 'votes']);
+  });
+
   it('concurrent castVote with the same ballotId: exactly one succeeds', async () => {
     const electionId = await seedElection('ACTIVE');
     const candidacyId = await seedCandidacy(electionId);
