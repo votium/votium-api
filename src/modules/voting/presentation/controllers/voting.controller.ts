@@ -21,9 +21,9 @@ import { ReportVotedUseCase } from '../../application/use-cases/report-voted.use
 
 import { CastVoteRequestDto, ElectionParamDto, SignBlindedDto } from '../dtos/vote-processing.dto';
 
-/** Lo mínimo que se lee del JWT. Ajusta `id` si tu payload usa otro campo. */
+/** Lo mínimo que se lee del JWT. Ajusta `sub` si tu payload usa otro campo. */
 interface AuthenticatedRequest {
-  user: { id: string };
+  user: { sub: string };
 }
 
 @Controller('vote-processing/elections/:electionId')
@@ -52,7 +52,7 @@ export class VotingController {
   @UseGuards(JwtAuthGuard)
   @Get('signature/status')
   signatureStatus(@Req() req: AuthenticatedRequest, @Param() { electionId }: ElectionParamDto) {
-    return this.getSignatureStatus.execute(req.user.id, electionId);
+    return this.getSignatureStatus.execute(req.user.sub, electionId);
   }
 
   /**
@@ -67,7 +67,7 @@ export class VotingController {
     @Param() { electionId }: ElectionParamDto,
     @Body() dto: SignBlindedDto,
   ) {
-    return this.requestBlindSignature.execute(req.user.id, electionId, dto.blindedMessage);
+    return this.requestBlindSignature.execute(req.user.sub, electionId, dto.blindedMessage);
   }
 
   /**
@@ -94,6 +94,6 @@ export class VotingController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('voted')
   async voted(@Req() req: AuthenticatedRequest, @Param() { electionId }: ElectionParamDto) {
-    await this.reportVoted.execute(req.user.id, electionId);
+    await this.reportVoted.execute(req.user.sub, electionId);
   }
 }
