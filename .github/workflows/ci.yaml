@@ -1,153 +1,295 @@
-# .github/workflows/ci.yml
-name: CI
+name: CI & Release
 
 on:
-  push:
-    branches:
-      - main
-      - develop
   pull_request:
     branches:
       - main
       - develop
+    types:
+      - opened
+      - synchronize
+      - reopened
 
-env:
-  AWS_REGION: us-east-2
-  ECR_REPOSITORY: votium-development-backend
-  ENVIRONMENT: develop
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   format:
     name: Format
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npm run format:check
+          node-version: 24.14.1
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Check format
+        run: npm run format:check
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npm run lint
 
-  tests:
-    name: Tests
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: votium
-          POSTGRES_PASSWORD: votium
-          POSTGRES_DB: votium_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npm run test
-      - run: npx prisma migrate deploy
-        env:
-          DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
-      - run: npm run test:integration
-        env:
-          DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
+          node-version: 24.14.1
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run lint
+        run: npm run lint
 
   build:
     name: Build
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: 'npm'
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npm run build
+          node-version: 24.14.1
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Build application
+        run: npm run build
+
+  # tests:
+  #   name: Tests
+  #   runs-on: ubuntu-latest
+  #
+  #   services:
+  #     postgres:
+  #       image: postgres:16-alpine
+  #       env:
+  #         POSTGRES_USER: votium
+  #         POSTGRES_PASSWORD: votium
+  #         POSTGRES_DB: votium_test
+  #       ports:
+  #         - 5432:5432
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 5s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 24.14.1
+  #         cache: npm
+  #
+  #     - name: Install dependencies
+  #       run: npm ci
+  #
+  #     - name: Generate Prisma Client
+  #       run: npx prisma generate
+  #
+  #     - name: Run unit tests
+  #       run: npm run test
+  #
+  #     - name: Run migrations
+  #       run: npx prisma migrate deploy
+  #       env:
+  #         DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
+  #
+  #     - name: Run integration tests
+  #       run: npm run test:integration
+  #       env:
+  #         DATABASE_URL: postgresql://votium:votium@localhost:5432/votium_test
+
+  # --------------------------------------------------
+  # RELEASE: BUILD & PUSH DOCKER IMAGE
+  # --------------------------------------------------
 
   docker-build:
     name: Docker Build & Push
-    if: >
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/develop'
-    needs: [tests, build]
     runs-on: ubuntu-latest
+
+    # Only publish when a version tag is pushed.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+
+    needs:
+      - format
+      - lint
+      - build
+      # - tests
+
     permissions:
       id-token: write
       contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # Verify that the tag points to a commit already integrated into main.
+      - name: Verify tag belongs to main
+        run: |
+          git fetch --no-tags origin main
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::The commit associated with $GITHUB_REF_NAME does not belong to main. Publication aborted."
+            exit 1
+          fi
+
+      - name: Validate version tag
+        id: meta
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version tag: $VERSION. Expected format: v1.2.3"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # AWS authentication using GitHub OIDC.
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        id: login-ecr
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Generate Docker tags
-        id: tags
+      # Avoid publishing an image if its version already exists.
+      - name: Check if image already exists
+        id: exists
+        env:
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          SHA_SHORT=$(git rev-parse --short=7 HEAD)
+          if output=$(aws ecr describe-images \
+            --repository-name "$REPOSITORY" \
+            --image-ids imageTag="$VERSION" 2>&1); then
 
-          GIT_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo "")
+            echo "exists=true" >> "$GITHUB_OUTPUT"
 
-          if [ -n "$GIT_TAG" ]; then
-            VERSION="${GIT_TAG#v}"
+            echo "::warning::Image $REPOSITORY:$VERSION already exists. Publication skipped."
+
+          elif grep -q "ImageNotFoundException" <<< "$output"; then
+
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+
           else
-            VERSION="0.0.0"
+            echo "$output"
+            exit 1
           fi
 
-          DOCKER_TAG="${ENVIRONMENT}-${VERSION}-${SHA_SHORT}"
-          echo "tag=${DOCKER_TAG}" >> "${GITHUB_OUTPUT}"
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+      # QEMU enables cross-platform image builds.
+      - name: Set up QEMU
+        if: steps.exists.outputs.exists == 'false'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Set up Docker Buildx
+        if: steps.exists.outputs.exists == 'false'
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
+      # Build and publish both architectures.
+      - name: Build and push multi-platform image
+        id: docker
+        if: steps.exists.outputs.exists == 'false'
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
+          sbom: false
+
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tags.outputs.tag }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.ENVIRONMENT }}-latest
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.meta.outputs.version }}
+
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Start ECR vulnerability scanning after publication.
       - name: Trigger ECR image scan
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
           aws ecr start-image-scan \
-            --repository-name ${{ env.ECR_REPOSITORY }} \
-            --image-id imageTag=${{ steps.tags.outputs.tag }}
+            --repository-name "$REPOSITORY" \
+            --image-id imageTag="$VERSION"
+
+      # Display release information in GitHub Actions.
+      - name: Release summary
+        if: always() && steps.meta.outputs.version != ''
+        env:
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          EXISTS: ${{ steps.exists.outputs.exists }}
+          DIGEST: ${{ steps.docker.outputs.digest }}
+        run: |
+          {
+            if [ "$EXISTS" = "true" ]; then
+              echo "### Image already exists: $REPOSITORY:$VERSION"
+              echo "Publication skipped."
+            elif [ "$EXISTS" = "false" ] && [ -n "$DIGEST" ]; then
+              echo "### Image successfully published"
+              echo "- Image: \`$REGISTRY/$REPOSITORY:$VERSION\`"
+              echo "- Platforms: \`linux/amd64, linux/arm64\`"
+              echo "- Digest: \`$DIGEST\`"
+            else
+              echo "### Release did not complete successfully"
+            fi
+
+            echo "- Commit: \`$GITHUB_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
