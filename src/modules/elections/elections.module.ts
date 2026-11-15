@@ -75,10 +75,10 @@ import { PendingMarksPort } from './application/ports/pending-marks.port';
 
 @Module({
   imports: [
-    IamModule,
-    AuthModule,
+    forwardRef(() => IamModule),
+    forwardRef(() => AuthModule),
     forwardRef(() => CandidaciesModule),
-    ElectorsModule,
+    forwardRef(() => ElectorsModule),
     FabricModule,
     BlindSignatureModule,
     VotingModule,

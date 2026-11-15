@@ -1,7 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { AuthModule } from 'src/modules/auth/auth.module';
-import { CandidaciesModule } from 'src/modules/candidacies/candidacies.module';
-import { IamModule } from 'src/modules/iam/iam.module';
 
 import { VotingController } from './presentation/controllers/voting.controller';
 import { Sha256VoterHasherService } from 'src/shared/infrastructure/crypto/sha256-voter-hasher.service';
@@ -34,9 +32,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
-    IamModule,
-    AuthModule,
-    forwardRef(() => CandidaciesModule),
+    forwardRef(() => AuthModule),
     FabricModule,
     SharedModule,
     BlindSignatureModule,
