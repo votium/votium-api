@@ -14,7 +14,7 @@ export class ElectionClosureSchedulerService {
 
   // Every minute in UTC; waitForCompletion skips ticks while a run is in progress
   // (no overlapping runs). Operational opt-out via ELECTION_AUTO_CLOSE_ENABLED.
-  @Cron(CronExpression.EVERY_MINUTE, { timeZone: 'UTC', waitForCompletion: true })
+  // @Cron(CronExpression.EVERY_MINUTE, { timeZone: 'UTC', waitForCompletion: true })
   async handleTick(): Promise<void> {
     if (!envs.electionAutoCloseEnabled) return;
 
