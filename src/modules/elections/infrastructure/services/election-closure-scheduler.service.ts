@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+// import { Cron, CronExpression } from '@nestjs/schedule';
 import { envs } from 'src/config';
 import type { CloseExpiredElectionsUseCase } from '../../application/use-cases/close-expired-elections.use-case';
 
