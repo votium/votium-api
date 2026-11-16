@@ -89,4 +89,57 @@ describe('ListElectorElectionsQueryDto', () => {
       expect(errors).toHaveLength(1);
     }
   });
+  it('VQ-11: accepts hasVoted = "true" and transforms it to true', () => {
+    const dto = plainToInstance(ListElectorElectionsQueryDto, { hasVoted: 'true' });
+
+    expect(validate({ hasVoted: 'true' })).toHaveLength(0);
+    expect(dto.hasVoted).toBe(true);
+  });
+
+  it('VQ-12: accepts hasVoted = "false" and transforms it to false (not absence)', () => {
+    const dto = plainToInstance(ListElectorElectionsQueryDto, { hasVoted: 'false' });
+
+    expect(validate({ hasVoted: 'false' })).toHaveLength(0);
+    expect(dto.hasVoted).toBe(false);
+  });
+
+  it('VQ-13: leaves hasVoted undefined when it is not sent', () => {
+    const dto = plainToInstance(ListElectorElectionsQueryDto, {});
+
+    expect(dto.hasVoted).toBeUndefined();
+  });
+
+  it.each(['TRUE', 'True', '1', '0', '', 'yes', ['true'], ['true', 'false']])(
+    'VQ-14: rejects hasVoted = %j',
+    (hasVoted) => {
+      const errors = validate({ hasVoted });
+
+      expect(errors).toHaveLength(1);
+      expect(errors[0].property).toBe('hasVoted');
+    },
+  );
+
+  it('VQ-15: accepts hasVoted together with all canonical filters', () => {
+    expect(
+      validate({
+        page: '1',
+        limit: '10',
+        electionCode: 'ELECTION-102026',
+        status: 'ACTIVE',
+        startDateFrom: '2026-08-29',
+        startDateTo: '2026-12-31',
+        hasVoted: 'false',
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('VQ-16: still rejects client-provided identity and unknown parameters alongside hasVoted', () => {
+    for (const input of [
+      { hasVoted: 'true', electorId: 'x' },
+      { hasVoted: 'true', unknown: 'x' },
+    ]) {
+      const errors = validate(input);
+      expect(errors).toHaveLength(1);
+    }
+  });
 });

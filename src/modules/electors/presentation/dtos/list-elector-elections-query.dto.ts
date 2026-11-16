@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
 import {
   ELECTION_STATUSES,
   type ElectionStatus,
@@ -68,4 +68,19 @@ export class ListElectorElectionsQueryDto {
     message: 'startDateTo must be a valid calendar date in YYYY-MM-DD format.',
   })
   startDateTo?: string;
+
+  @ApiProperty({
+    example: true,
+    required: false,
+    description:
+      'Participation filter. true = elections the elector has already voted in; ' +
+      'false = elections the elector has not voted in yet. Optional; when omitted, ' +
+      'both voted and non-voted elections are returned.',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
+  @IsBoolean()
+  hasVoted?: boolean;
 }
