@@ -41,6 +41,9 @@ export type VoterElectionListParams = {
   startDateFrom?: Date;
   // Election start_date <= startDateTo (UTC midnight).
   startDateTo?: Date;
+  // Participation filter over the elector's own electoral_rolls row:
+  // true = has_voted, false = not has_voted. When omitted, both are returned.
+  hasVoted?: boolean;
 };
 
 // One voter-eligible election plus the authenticated elector's participation.
@@ -105,7 +108,8 @@ export interface ElectionRepository {
 
   // Returns a page of elections where the elector is eligible (exists an
   // electoral_rolls row for election_id + elector_id), ordered by start_date
-  // asc then id asc, together with the elector's participation state. Never
+  // asc then id asc, together with the elector's participation state. The
+  // optional hasVoted filter applies to has_voted of that same roll row. Never
   // reads or exposes vote content (e.g. last_vote_candidacy_id).
   findEligibleByElector(params: VoterElectionListParams): Promise<VoterElectionListResult>;
 

@@ -1672,6 +1672,215 @@ describe('PrismaElectionRepository voter eligibility integration', () => {
     expect(history.filter((entry) => entry.electionId === second)).toHaveLength(1);
     await expect(repository.findStatusHistoryByElectionIds([])).resolves.toEqual([]);
   });
+  describe('hasVoted filter', () => {
+    const participationDate = new Date('2026-10-05T14:30:00.000Z');
+
+    // One elector with a voted and a non-voted election, plus another elector who
+    // voted in the "not voted" election (must not influence the filter).
+    async function seedParticipation(label: string) {
+      const electorId = await seedElector(label);
+      const otherElectorId = await seedElector(`${label}-other`);
+      const voted = await seedElection({
+        name: `${label}-VOTED-${suffix}`,
+        status: 'CLOSED',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+      });
+      const notVoted = await seedElection({
+        name: `${label}-NOT-VOTED-${suffix}`,
+        status: 'CLOSED',
+        startDate: new Date(Date.UTC(2026, 9, 2)),
+      });
+      await prisma.electoralRoll.createMany({
+        data: [
+          {
+            election_id: voted,
+            elector_id: electorId,
+            has_voted: true,
+            last_vote_registered_at: participationDate,
+          },
+          { election_id: notVoted, elector_id: electorId },
+          {
+            election_id: notVoted,
+            elector_id: otherElectorId,
+            has_voted: true,
+            last_vote_registered_at: participationDate,
+          },
+        ],
+      });
+      return { electorId, voted, notVoted };
+    }
+
+    it('HV-I-01: hasVoted = true returns only elections the elector voted in', async () => {
+      const { electorId, voted } = await seedParticipation('hvi01');
+
+      const result = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: true,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.rows.map((row) => row.election.id)).toEqual([voted]);
+    });
+
+    it('HV-I-02: hasVoted = false returns only elections not voted by the elector', async () => {
+      const { electorId, notVoted } = await seedParticipation('hvi02');
+
+      const result = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: false,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.rows.map((row) => row.election.id)).toEqual([notVoted]);
+    });
+
+    it('HV-I-03: without hasVoted returns voted and non-voted elections', async () => {
+      const { electorId, voted, notVoted } = await seedParticipation('hvi03');
+
+      const result = await repository.findEligibleByElector({ electorId, page: 1, limit: 10 });
+
+      expect(result.total).toBe(2);
+      expect(result.rows.map((row) => row.election.id)).toEqual([voted, notVoted]);
+    });
+
+    it('HV-I-04: combines hasVoted with status, electionCode and date range (AND)', async () => {
+      const electorId = await seedElector('hvi04');
+      const code = `ELECTION-102026-88${suffix % 10}1`;
+      const matching = await seedElection({
+        name: `HVI04-MATCH-${suffix}`,
+        status: 'ACTIVE',
+        startDate: new Date(Date.UTC(2026, 9, 15)),
+        electionCode: code,
+      });
+      const wrongStatus = await seedElection({
+        name: `HVI04-STATUS-${suffix}`,
+        status: 'CLOSED',
+        startDate: new Date(Date.UTC(2026, 9, 15)),
+      });
+      const outsideRange = await seedElection({
+        name: `HVI04-RANGE-${suffix}`,
+        status: 'ACTIVE',
+        startDate: new Date(Date.UTC(2026, 8, 1)),
+      });
+      const notVoted = await seedElection({
+        name: `HVI04-NOTVOTED-${suffix}`,
+        status: 'ACTIVE',
+        startDate: new Date(Date.UTC(2026, 9, 15)),
+      });
+      await prisma.electoralRoll.createMany({
+        data: [
+          ...[matching, wrongStatus, outsideRange].map((electionId) => ({
+            election_id: electionId,
+            elector_id: electorId,
+            has_voted: true,
+          })),
+          { election_id: notVoted, elector_id: electorId },
+        ],
+      });
+
+      const result = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        status: 'ACTIVE',
+        startDateFrom: new Date(Date.UTC(2026, 9, 1)),
+        startDateTo: new Date(Date.UTC(2026, 9, 31)),
+        hasVoted: true,
+      });
+      expect(result.rows.map((row) => row.election.id)).toEqual([matching]);
+
+      const byCode = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        electionCode: code.toLowerCase(),
+        hasVoted: false,
+      });
+      expect(byCode.total).toBe(0);
+    });
+
+    it('HV-I-05: total reflects the filtered set regardless of page and limit', async () => {
+      const electorId = await seedElector('hvi05');
+      const ids: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        ids.push(
+          await seedElection({
+            name: `HVI05-${i}-${suffix}`,
+            startDate: new Date(Date.UTC(2026, 9, 1 + i)),
+          }),
+        );
+      }
+      await prisma.electoralRoll.createMany({
+        data: ids.map((electionId, i) => ({
+          election_id: electionId,
+          elector_id: electorId,
+          has_voted: i < 3,
+        })),
+      });
+
+      const firstPage = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 2,
+        hasVoted: true,
+      });
+      const secondPage = await repository.findEligibleByElector({
+        electorId,
+        page: 2,
+        limit: 2,
+        hasVoted: true,
+      });
+
+      expect(firstPage.total).toBe(3);
+      expect(secondPage.total).toBe(3);
+      expect(firstPage.rows.map((row) => row.election.id)).toEqual(ids.slice(0, 2));
+      expect(secondPage.rows.map((row) => row.election.id)).toEqual([ids[2]]);
+    });
+
+    it('HV-I-06: keeps mapping hasVoted and participationDate from the elector own row', async () => {
+      const { electorId } = await seedParticipation('hvi06');
+
+      const voted = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: true,
+      });
+      const notVoted = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: false,
+      });
+
+      expect(voted.rows[0].hasVoted).toBe(true);
+      expect(voted.rows[0].participationDate).toEqual(participationDate);
+      expect(notVoted.rows[0].hasVoted).toBe(false);
+      expect(notVoted.rows[0].participationDate).toBeNull();
+    });
+
+    it('HV-I-07: does not expose vote content properties', async () => {
+      const { electorId } = await seedParticipation('hvi07');
+
+      const result = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: true,
+      });
+
+      expect(Object.keys(result.rows[0]).sort()).toEqual([
+        'election',
+        'hasVoted',
+        'participationDate',
+      ]);
+      expect(JSON.stringify(result.rows)).not.toMatch(/candidacy|idempotency/i);
+    });
+  });
 });
 
 describe('PrismaElectionRepository upcoming and active elections for a voter', () => {

@@ -102,7 +102,13 @@ export class PrismaElectionRepository implements ElectionRepository {
     const electionCode = params.electionCode?.trim();
 
     const where: Prisma.ElectionWhereInput = {
-      electoralRolls: { some: { elector_id: params.electorId } },
+      electoralRolls: {
+        some: {
+          elector_id: params.electorId,
+          // false is a valid filter, so compare against undefined (never truthiness).
+          ...(params.hasVoted !== undefined ? { has_voted: params.hasVoted } : {}),
+        },
+      },
       ...(electionCode ? { electionCode: { contains: electionCode, mode: 'insensitive' } } : {}),
       ...(params.status ? { current_status: params.status } : {}),
       ...(params.startDateFrom || params.startDateTo
