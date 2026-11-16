@@ -17,8 +17,8 @@ export interface VoterUpcomingElectionItem {
   hasVoted: boolean;
 }
 
-// Read-only: CREATED elections starting within the next 30 days and ACTIVE elections
-// in course where the authenticated elector is registered in the electoral roll.
+// Read-only: ACTIVE elections in course where the authenticated elector is
+// registered in the electoral roll.
 export class GetVoterUpcomingElectionsUseCase {
   constructor(
     private readonly electors: ElectorRepository,

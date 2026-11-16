@@ -78,9 +78,9 @@ export class ElectorElectionsController {
   @ApiOperation({
     summary: "List the authenticated voter's upcoming and active elections",
     description:
-      'Returns the elections where the authenticated voter is registered in the electoral ' +
-      'roll: CREATED elections starting within the next 30 days and ACTIVE elections still ' +
-      'in course. Includes elections already voted. Identity comes exclusively from the JWT. ' +
+      'Returns the ACTIVE elections currently in course where the authenticated voter is ' +
+      'registered in the electoral roll. Includes elections already voted. Identity comes ' +
+      'exclusively from the JWT. ' +
       'Read-only; ballot content is never exposed. Not paginated.',
   })
   @ApiResponse({

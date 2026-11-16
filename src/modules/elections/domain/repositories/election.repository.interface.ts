@@ -54,8 +54,9 @@ export type VoterElectionRow = {
   participationDate: Date | null;
 };
 
-// Voter-facing "upcoming and active" window. Defaults: now = current time (UTC),
-// windowDays = 30.
+// Params for the voter-facing list. Only ACTIVE elections in course
+// (start <= now <= end) are returned. Default: now = current time (UTC).
+// `windowDays` is kept for compatibility but has no effect after TS-248.
 export type VoterUpcomingElectionParams = {
   electorId: string;
   now?: Date;
@@ -118,10 +119,9 @@ export interface ElectionRepository {
   // Read-only; never reads or exposes vote content.
   countEligibleByElector(params: { electorId: string; status?: ElectionStatus }): Promise<number>;
 
-  // Elections where the elector is eligible (electoral_rolls row) and that are either
-  // CREATED with start instant in (now, now + windowDays] or ACTIVE in course
-  // (start <= now <= end). Not paginated. Ordered by start_date, start_time, id asc.
-  // Read-only; never reads vote content.
+  // Elections where the elector is eligible (electoral_rolls row) and whose
+  // current_status is ACTIVE and in course (start <= now <= end). Not paginated.
+  // Ordered by start_date, start_time, id asc. Read-only; never reads vote content.
   findUpcomingAndActiveByElector(params: VoterUpcomingElectionParams): Promise<VoterElectionRow[]>;
 
   // Batch variant of findStatusHistory for the given elections, ordered by

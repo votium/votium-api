@@ -126,12 +126,13 @@ describe('GET /electors/me/elections/upcoming (e2e)', () => {
     const extraB = await seedElector('extra-b');
     voterCookie = sign({ sub: voterId, email: 'voter@example.com', actorType: 'ELECTOR' });
 
-    // Included: CREATED within 30 days (voter voted none), with 4 registered / 1 voted.
+    // Excluded since TS-248: CREATED within 30 days, with 4 registered / 1 voted.
     await enroll(await seedElection('createdSoon', 'CREATED', 2 * DAY, 3 * DAY), voterId);
     await enroll(ids.createdSoon, extraA, true);
     await enroll(ids.createdSoon, extraB);
     await enroll(ids.createdSoon, otherVoterId);
     // Included: ACTIVE started > 30 days ago and still in course; voter already voted.
+    // It is the only election the voter should see.
     await enroll(await seedElection('activeLong', 'ACTIVE', -40 * DAY, DAY), voterId, true);
     // Excluded scenarios (voter is enrolled in all of them).
     await enroll(await seedElection('createdFar', 'CREATED', 31 * DAY, 32 * DAY), voterId);
@@ -152,11 +153,11 @@ describe('GET /electors/me/elections/upcoming (e2e)', () => {
     await app.close();
   });
 
-  it('UPE-01: returns only CREATED-within-30-days and ACTIVE-in-course eligible elections, ordered by start', async () => {
+  it('UPE-01: returns only ACTIVE-in-course eligible elections', async () => {
     const body = await getUpcoming();
 
     expect(Array.isArray(body)).toBe(true);
-    expect(body.map((item) => item.id)).toEqual([ids.activeLong, ids.createdSoon]);
+    expect(body.map((item) => item.id)).toEqual([ids.activeLong]);
   });
 
   it('UPE-02: returns the exact base + participation contract', async () => {
@@ -185,15 +186,8 @@ describe('GET /electors/me/elections/upcoming (e2e)', () => {
 
   it('UPE-03: computes participation counts and percentage', async () => {
     const body = await getUpcoming();
-    const soon = body.find((item) => item.id === ids.createdSoon);
     const active = body.find((item) => item.id === ids.activeLong);
 
-    expect(soon).toMatchObject({
-      participantsCount: 1,
-      registeredVotersCount: 4,
-      participationPercentage: 25,
-      hasVoted: false,
-    });
     expect(active).toMatchObject({
       participantsCount: 1,
       registeredVotersCount: 1,
@@ -236,7 +230,7 @@ describe('GET /electors/me/elections/upcoming (e2e)', () => {
       .expect(200);
 
     const body = res.body as UpcomingElectionBody[];
-    expect(body.map((item) => item.id)).toEqual([ids.activeLong, ids.createdSoon]);
+    expect(body.map((item) => item.id)).toEqual([ids.activeLong]);
   });
 
   it('UPE-08: is read-only and never exposes candidacies or vote content', async () => {
@@ -269,5 +263,12 @@ describe('GET /electors/me/elections/upcoming (e2e)', () => {
       participationPercentage: 0,
       hasVoted: false,
     });
+  });
+
+  it('UPE-10: a CREATED election starting within the next 30 days is not returned', async () => {
+    const body = await getUpcoming();
+
+    expect(body.map((item) => item.id)).not.toContain(ids.createdSoon);
+    expect(body.every((item) => item.currentStatus === 'ACTIVE')).toBe(true);
   });
 });
