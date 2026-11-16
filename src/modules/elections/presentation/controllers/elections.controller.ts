@@ -32,6 +32,8 @@ import { FinalizeElectionUseCase } from '../../application/use-cases/finalize-el
 import { PublishElectionUseCase } from '../../application/use-cases/publish-election.use-case';
 import { CloseElectionUseCase } from '../../application/use-cases/close-election.use-case';
 import { CancelElectionUseCase } from '../../application/use-cases/cancel-election.use-case';
+import { SynchronizeElectionResultsUseCase } from '../../application/use-cases/synchronize-election-results.use-case';
+import { ResultsSynchronizationResponseDto } from '../dtos/results-synchronization-response.dto';
 import { ElectionPresenter } from '../presenters/election.presenter';
 import { ElectionDetailResponseDto } from '../dtos/election-detail-response.dto';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
@@ -61,6 +63,7 @@ export class ElectionsController {
     private readonly publishElection: PublishElectionUseCase,
     private readonly closeElection: CloseElectionUseCase,
     private readonly cancelElection: CancelElectionUseCase,
+    private readonly synchronizeElectionResults: SynchronizeElectionResultsUseCase,
   ) {}
 
   @Get()
@@ -303,6 +306,40 @@ export class ElectionsController {
       requestingUserId: req.user.sub,
     });
     return ElectionPresenter.toResponse(election);
+  }
+
+  @Post(':electionId/results/synchronize')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  @ApiOperation({
+    summary: 'Synchronize election results from the blockchain',
+    description:
+      'Reconciles the votes per candidacy from Hyperledger Fabric into PostgreSQL. ' +
+      'Only available once the election is PUBLISHED. Idempotent and safe to retry. ' +
+      'Requires ADMINISTRATOR role.',
+  })
+  @ApiParam({ name: 'electionId', description: 'UUID of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election results synchronized successfully.',
+    type: ResultsSynchronizationResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR role.' })
+  @ApiResponse({ status: 404, description: 'Election not found (ELECTION_NOT_FOUND).' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Election is not PUBLISHED (ELECTION_NOT_PUBLISHED), or ledger results are ' +
+      'inconsistent (RESULTS_SYNC_INCONSISTENT).',
+  })
+  async synchronizeResults(
+    @Param('electionId', ParseUUIDPipe) electionId: string,
+  ): Promise<ResultsSynchronizationResponseDto> {
+    const result = await this.synchronizeElectionResults.execute({ electionId });
+    return ElectionPresenter.toResultsSynchronization(result);
   }
 
   @Post(':id/close')
