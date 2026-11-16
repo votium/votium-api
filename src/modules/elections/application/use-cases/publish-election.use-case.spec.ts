@@ -3,6 +3,8 @@ import type { ElectionRepository } from '../../domain/repositories/election.repo
 import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.port';
 import { ElectionNotFoundError } from '../../domain/errors/election-not-found.error';
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
+import { ElectionPublishedEvent } from '../events/election-published.event';
+import type { ElectionLedgerPort } from '../ports/election-ledger.port';
 import { PublishElectionUseCase } from './publish-election.use-case';
 
 // A CLOSED election, the only status from which publication is allowed.
@@ -32,15 +34,31 @@ describe('PublishElectionUseCase', () => {
   const audit: jest.Mocked<Pick<AuditLogPort, 'log'>> = {
     log: jest.fn(),
   };
+  const ledger = { publish: jest.fn() };
+  const marks = { flush: jest.fn(), pending: jest.fn() };
+  const events = { emit: jest.fn() };
+
+  function useCase(): PublishElectionUseCase {
+    return new PublishElectionUseCase(
+      elections,
+      audit,
+      ledger as unknown as ElectionLedgerPort,
+      marks,
+      events,
+    );
+  }
 
   beforeEach(() => {
     jest.clearAllMocks();
     elections.findById.mockResolvedValue(buildElection());
     elections.updateStatus.mockResolvedValue(buildElection({ currentStatus: 'PUBLISHED' }));
+    marks.flush.mockResolvedValue(undefined);
+    marks.pending.mockResolvedValue(0);
+    ledger.publish.mockResolvedValue(undefined);
   });
 
   it('PE-01: publishes a CLOSED election, persists PUBLISHED, and logs the audit entry', async () => {
-    const result = await new PublishElectionUseCase(elections, audit).execute({
+    const result = await useCase().execute({
       electionId: 'election-1',
       requestingUserId: 'admin-1',
     });
@@ -62,7 +80,7 @@ describe('PublishElectionUseCase', () => {
 
   it('PE-02: requires no electoral roll and no candidacies (D2: CLOSED is the only prerequisite)', async () => {
     // findById alone is consulted; the entity's static contract exposes no such checks.
-    const result = await new PublishElectionUseCase(elections, audit).execute({
+    const result = await useCase().execute({
       electionId: 'election-1',
       requestingUserId: 'admin-1',
     });
@@ -76,7 +94,7 @@ describe('PublishElectionUseCase', () => {
     elections.findById.mockResolvedValue(buildElection({ currentStatus: 'CREATED' }));
 
     await expect(
-      new PublishElectionUseCase(elections, audit).execute({
+      useCase().execute({
         electionId: 'election-1',
         requestingUserId: 'admin-1',
       }),
@@ -90,7 +108,7 @@ describe('PublishElectionUseCase', () => {
       elections.findById.mockResolvedValue(buildElection({ currentStatus: status }));
 
       await expect(
-        new PublishElectionUseCase(elections, audit).execute({
+        useCase().execute({
           electionId: 'election-1',
           requestingUserId: 'admin-1',
         }),
@@ -105,7 +123,7 @@ describe('PublishElectionUseCase', () => {
     elections.findById.mockResolvedValue(null);
 
     await expect(
-      new PublishElectionUseCase(elections, audit).execute({
+      useCase().execute({
         electionId: 'missing',
         requestingUserId: 'admin-1',
       }),
@@ -117,11 +135,69 @@ describe('PublishElectionUseCase', () => {
     elections.updateStatus.mockResolvedValue(null);
 
     await expect(
-      new PublishElectionUseCase(elections, audit).execute({
+      useCase().execute({
         electionId: 'election-1',
         requestingUserId: 'admin-1',
       }),
     ).rejects.toBeInstanceOf(ElectionStatusTransitionError);
     expect(audit.log.mock.calls).toHaveLength(0);
+  });
+  it('PE-05: emits election.published once, only after marks.flush and ledger.publish', async () => {
+    const order: string[] = [];
+    marks.flush.mockImplementation(() => {
+      order.push('flush');
+      return Promise.resolve();
+    });
+    ledger.publish.mockImplementation(() => {
+      order.push('ledger');
+      return Promise.resolve();
+    });
+    events.emit.mockImplementation(() => {
+      order.push('emit');
+      return true;
+    });
+
+    await useCase().execute({ electionId: 'election-1', requestingUserId: 'admin-1' });
+
+    expect(events.emit).toHaveBeenCalledTimes(1);
+    expect(events.emit).toHaveBeenCalledWith(
+      'election.published',
+      new ElectionPublishedEvent('election-1'),
+    );
+    expect(order).toEqual(['flush', 'ledger', 'emit']);
+  });
+
+  it('PE-06: does not emit when the transition is refused or the guarded write loses', async () => {
+    elections.findById.mockResolvedValue(buildElection({ currentStatus: 'ACTIVE' }));
+    await expect(
+      useCase().execute({ electionId: 'election-1', requestingUserId: 'admin-1' }),
+    ).rejects.toBeInstanceOf(ElectionStatusTransitionError);
+
+    elections.findById.mockResolvedValue(buildElection());
+    elections.updateStatus.mockResolvedValue(null);
+    await expect(
+      useCase().execute({ electionId: 'election-1', requestingUserId: 'admin-1' }),
+    ).rejects.toBeInstanceOf(ElectionStatusTransitionError);
+
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('PE-07: does not emit when ledger.publish throws', async () => {
+    ledger.publish.mockRejectedValue(new Error('fabric down'));
+
+    await expect(
+      useCase().execute({ electionId: 'election-1', requestingUserId: 'admin-1' }),
+    ).rejects.toThrow('fabric down');
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  it('PE-08: does not emit when marks are still pending (PENDING_MARKS)', async () => {
+    marks.pending.mockResolvedValue(2);
+
+    await expect(
+      useCase().execute({ electionId: 'election-1', requestingUserId: 'admin-1' }),
+    ).rejects.toBeDefined();
+    expect(ledger.publish).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
   });
 });

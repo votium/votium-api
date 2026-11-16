@@ -72,6 +72,15 @@ import { ElectionValidatedListener } from './application/listeners/election-vali
 import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-module.adapter';
 import { VotingModule } from '../voting/voting.module';
 import { PendingMarksPort } from './application/ports/pending-marks.port';
+import { ElectionResultsPort } from './application/ports/election-results.port';
+import { ElectionPublishedResultsSyncListener } from './application/listeners/election-published-results-sync.listener';
+import { SynchronizeElectionResultsUseCase } from './application/use-cases/synchronize-election-results.use-case';
+import {
+  ELECTION_RESULT_REPOSITORY,
+  type ElectionResultRepository,
+} from './domain/repositories/election-result.repository.interface';
+import { FabricElectionResultsAdapter } from './infrastructure/adapters/fabric-election-results.adapter';
+import { PrismaElectionResultRepository } from './infrastructure/repositories/prisma-election-result.repository';
 
 @Module({
   imports: [
@@ -88,7 +97,20 @@ import { PendingMarksPort } from './application/ports/pending-marks.port';
     FabricElectionLedgerAdapter,
     SigningKeyAdapter,
     ElectionValidatedListener,
+    FabricElectionResultsAdapter,
+    ElectionPublishedResultsSyncListener,
     { provide: ElectionLedgerPort, useExisting: FabricElectionLedgerAdapter },
+    { provide: ElectionResultsPort, useExisting: FabricElectionResultsAdapter },
+    { provide: ELECTION_RESULT_REPOSITORY, useClass: PrismaElectionResultRepository },
+    {
+      provide: SynchronizeElectionResultsUseCase,
+      useFactory: (
+        elections: ElectionRepository,
+        ledger: ElectionResultsPort,
+        results: ElectionResultRepository,
+      ) => new SynchronizeElectionResultsUseCase(elections, ledger, results),
+      inject: [ELECTION_REPOSITORY, ElectionResultsPort, ELECTION_RESULT_REPOSITORY],
+    },
     { provide: ElectionSigningKeyPort, useExisting: SigningKeyAdapter },
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },
     { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
@@ -151,8 +173,15 @@ import { PendingMarksPort } from './application/ports/pending-marks.port';
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
         marks: PendingMarksPort,
-      ) => new PublishElectionUseCase(elections, audit, ledger, marks),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, PendingMarksPort],
+        events: EventEmitter2,
+      ) => new PublishElectionUseCase(elections, audit, ledger, marks, events),
+      inject: [
+        ELECTION_REPOSITORY,
+        AUDIT_LOG_PORT,
+        ElectionLedgerPort,
+        PendingMarksPort,
+        EventEmitter2,
+      ],
     },
     {
       provide: CloseElectionUseCase,
