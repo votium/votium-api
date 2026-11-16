@@ -1881,6 +1881,121 @@ describe('PrismaElectionRepository voter eligibility integration', () => {
       expect(JSON.stringify(result.rows)).not.toMatch(/candidacy|idempotency/i);
     });
   });
+  describe('countEligibleByElector', () => {
+    const roll = (electionId: string, electorId: string) => ({
+      election_id: electionId,
+      elector_id: electorId,
+    });
+
+    it('SC-I-01: counts only CREATED elections with a roll row for the elector', async () => {
+      const electorId = await seedElector('sci01');
+      const first = await seedElection({ name: `SCI01-A-${suffix}`, status: 'CREATED' });
+      const second = await seedElection({ name: `SCI01-B-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.createMany({
+        data: [roll(first, electorId), roll(second, electorId)],
+      });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(2);
+    });
+
+    it('SC-I-02: excludes every non-CREATED status even with a roll row', async () => {
+      const electorId = await seedElector('sci02');
+      const created = await seedElection({ name: `SCI02-CREATED-${suffix}`, status: 'CREATED' });
+      const others: string[] = [];
+      for (const status of [
+        'PENDING',
+        'ACTIVE',
+        'CLOSED',
+        'PUBLISHED',
+        'CANCELLED',
+        'FINALIZING',
+        'SYNC_ERROR',
+      ] as const) {
+        others.push(await seedElection({ name: `SCI02-${status}-${suffix}`, status }));
+      }
+      await prisma.electoralRoll.createMany({
+        data: [created, ...others].map((electionId) => roll(electionId, electorId)),
+      });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(1);
+    });
+
+    it('SC-I-03: excludes CREATED elections where the elector is not in the roll', async () => {
+      const electorId = await seedElector('sci03');
+      const inRoll = await seedElection({ name: `SCI03-IN-${suffix}`, status: 'CREATED' });
+      await seedElection({ name: `SCI03-OUT-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.create({ data: roll(inRoll, electorId) });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(1);
+    });
+
+    it('SC-I-04: roll rows of other electors do not increase the count', async () => {
+      const electorId = await seedElector('sci04');
+      const otherId = await seedElector('sci04-other');
+      const mine = await seedElection({ name: `SCI04-MINE-${suffix}`, status: 'CREATED' });
+      const theirs = await seedElection({ name: `SCI04-THEIRS-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.createMany({
+        data: [roll(mine, electorId), roll(mine, otherId), roll(theirs, otherId)],
+      });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(1);
+    });
+
+    it('SC-I-05: each election counts once even when it has many roll rows', async () => {
+      const electorId = await seedElector('sci05');
+      const others = [await seedElector('sci05-a'), await seedElector('sci05-b')];
+      const electionId = await seedElection({ name: `SCI05-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.createMany({
+        data: [electorId, ...others].map((id) => roll(electionId, id)),
+      });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(1);
+    });
+
+    it('SC-I-06: returns 0 when the elector has no eligible elections', async () => {
+      const electorId = await seedElector('sci06');
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(0);
+    });
+
+    it('SC-I-07: without status counts every eligible election', async () => {
+      const electorId = await seedElector('sci07');
+      const created = await seedElection({ name: `SCI07-C-${suffix}`, status: 'CREATED' });
+      const active = await seedElection({ name: `SCI07-A-${suffix}`, status: 'ACTIVE' });
+      const closed = await seedElection({ name: `SCI07-X-${suffix}`, status: 'CLOSED' });
+      await prisma.electoralRoll.createMany({
+        data: [created, active, closed].map((electionId) => roll(electionId, electorId)),
+      });
+
+      await expect(repository.countEligibleByElector({ electorId })).resolves.toBe(3);
+    });
+
+    it('SC-I-08: returns a plain number, ignoring participation state', async () => {
+      const electorId = await seedElector('sci08');
+      const voted = await seedElection({ name: `SCI08-V-${suffix}`, status: 'CREATED' });
+      const notVoted = await seedElection({ name: `SCI08-N-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.createMany({
+        data: [{ ...roll(voted, electorId), has_voted: true }, roll(notVoted, electorId)],
+      });
+
+      const count = await repository.countEligibleByElector({ electorId, status: 'CREATED' });
+
+      expect(typeof count).toBe('number');
+      expect(count).toBe(2);
+    });
+  });
 });
 
 describe('PrismaElectionRepository upcoming and active elections for a voter', () => {

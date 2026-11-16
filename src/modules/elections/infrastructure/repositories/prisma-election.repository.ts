@@ -97,6 +97,19 @@ export class PrismaElectionRepository implements ElectionRepository {
     }));
   }
 
+  async countEligibleByElector(params: {
+    electorId: string;
+    status?: ElectionStatus;
+  }): Promise<number> {
+    // Same eligibility predicate as findEligibleByElector; only a number is returned.
+    return this.prisma.election.count({
+      where: {
+        electoralRolls: { some: { elector_id: params.electorId } },
+        ...(params.status ? { current_status: params.status } : {}),
+      },
+    });
+  }
+
   async findEligibleByElector(params: VoterElectionListParams): Promise<VoterElectionListResult> {
     const skip = (params.page - 1) * params.limit;
     const electionCode = params.electionCode?.trim();

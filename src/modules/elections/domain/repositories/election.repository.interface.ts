@@ -113,6 +113,11 @@ export interface ElectionRepository {
   // reads or exposes vote content (e.g. last_vote_candidacy_id).
   findEligibleByElector(params: VoterElectionListParams): Promise<VoterElectionListResult>;
 
+  // Counts elections where the elector is eligible (an electoral_rolls row exists for
+  // election_id + elector_id) and, when status is provided, whose current_status matches.
+  // Read-only; never reads or exposes vote content.
+  countEligibleByElector(params: { electorId: string; status?: ElectionStatus }): Promise<number>;
+
   // Elections where the elector is eligible (electoral_rolls row) and that are either
   // CREATED with start instant in (now, now + windowDays] or ACTIVE in course
   // (start <= now <= end). Not paginated. Ordered by start_date, start_time, id asc.
