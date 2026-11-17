@@ -7,7 +7,7 @@ import { ElectionStatusTransitionError } from '../../domain/errors/election-stat
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
 import { ElectionLedgerPort } from '../ports/election-ledger.port';
 import { PendingMarksPort } from '../ports/pending-marks.port';
-import { Logger } from '@nestjs/common';
+import { Logger, ConflictException } from '@nestjs/common';
 
 // Manual closure is the ACTIVE -> CLOSED edge, triggered by an administrator rather than
 // by the automatic scheduler. It reuses the same domain decision points as the automatic
@@ -66,12 +66,10 @@ export class CloseElectionUseCase {
       newStatus: 'CLOSED',
     });
 
-    try {
-      await this.marks.flush(electionId);
-    } catch (e: any) {
-      this.log.warn(
-        `Flush previo al cierre falló en ${electionId}: ${e?.code ?? e?.message}. El cron lo reintentará`,
-      );
+    await this.marks.flush(electionId);
+    const pending = await this.marks.pending(electionId);
+    if (pending > 0) {
+      throw new ConflictException({ code: 'PENDING_MARKS', pending });
     }
 
     await this._updateLedger(electionId);

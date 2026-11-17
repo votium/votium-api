@@ -41,6 +41,9 @@ export type VoterElectionListParams = {
   startDateFrom?: Date;
   // Election start_date <= startDateTo (UTC midnight).
   startDateTo?: Date;
+  // Participation filter over the elector's own electoral_rolls row:
+  // true = has_voted, false = not has_voted. When omitted, both are returned.
+  hasVoted?: boolean;
 };
 
 // One voter-eligible election plus the authenticated elector's participation.
@@ -51,8 +54,9 @@ export type VoterElectionRow = {
   participationDate: Date | null;
 };
 
-// Voter-facing "upcoming and active" window. Defaults: now = current time (UTC),
-// windowDays = 30.
+// Params for the voter-facing list. Only ACTIVE elections in course
+// (start <= now <= end) are returned. Default: now = current time (UTC).
+// `windowDays` is kept for compatibility but has no effect after TS-248.
 export type VoterUpcomingElectionParams = {
   electorId: string;
   now?: Date;
@@ -105,14 +109,19 @@ export interface ElectionRepository {
 
   // Returns a page of elections where the elector is eligible (exists an
   // electoral_rolls row for election_id + elector_id), ordered by start_date
-  // asc then id asc, together with the elector's participation state. Never
+  // asc then id asc, together with the elector's participation state. The
+  // optional hasVoted filter applies to has_voted of that same roll row. Never
   // reads or exposes vote content (e.g. last_vote_candidacy_id).
   findEligibleByElector(params: VoterElectionListParams): Promise<VoterElectionListResult>;
 
-  // Elections where the elector is eligible (electoral_rolls row) and that are either
-  // CREATED with start instant in (now, now + windowDays] or ACTIVE in course
-  // (start <= now <= end). Not paginated. Ordered by start_date, start_time, id asc.
-  // Read-only; never reads vote content.
+  // Counts elections where the elector is eligible (an electoral_rolls row exists for
+  // election_id + elector_id) and, when status is provided, whose current_status matches.
+  // Read-only; never reads or exposes vote content.
+  countEligibleByElector(params: { electorId: string; status?: ElectionStatus }): Promise<number>;
+
+  // Elections where the elector is eligible (electoral_rolls row) and whose
+  // current_status is ACTIVE and in course (start <= now <= end). Not paginated.
+  // Ordered by start_date, start_time, id asc. Read-only; never reads vote content.
   findUpcomingAndActiveByElector(params: VoterUpcomingElectionParams): Promise<VoterElectionRow[]>;
 
   // Batch variant of findStatusHistory for the given elections, ordered by

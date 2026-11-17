@@ -284,4 +284,146 @@ describe('GET /electors/:id/elections (e2e)', () => {
 
     expect(JSON.stringify(res.body)).toContain('ELECTION_INVALID_DATE_RANGE');
   });
+  describe('hasVoted filter', () => {
+    // Dedicated elector so assertions are not affected by rolls seeded in other cases.
+    let voterId = '';
+    let voterCookie = '';
+    let votedActive = '';
+    let votedClosed = '';
+    let notVotedActive = '';
+    let notVotedClosed = '';
+
+    const list = (query: string) =>
+      request(app.getHttpServer())
+        .get(`/api/v1/electors/${voterId}/elections${query}`)
+        .set('Cookie', voterCookie);
+
+    const ids = (body: PaginatedElectorBody) => body.data.map((item) => item.id);
+
+    beforeAll(async () => {
+      voterId = await seedOtherElector('has-voted');
+      const token = jwt.sign(
+        {
+          sub: voterId,
+          email: `voter-e2e-${suffix}-has-voted@correounivalle.edu.co`,
+          actorType: 'ELECTOR',
+        },
+        envs.jwtSecret,
+        { expiresIn: envs.jwtExpiresIn },
+      );
+      voterCookie = buildAuthCookie(token);
+
+      votedActive = await seedElection({
+        name: `HV-VOTED-ACTIVE-${suffix}`,
+        status: 'ACTIVE',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+      });
+      votedClosed = await seedElection({
+        name: `HV-VOTED-CLOSED-${suffix}`,
+        status: 'CLOSED',
+        startDate: new Date(Date.UTC(2026, 9, 2)),
+      });
+      notVotedActive = await seedElection({
+        name: `HV-NOT-ACTIVE-${suffix}`,
+        status: 'ACTIVE',
+        startDate: new Date(Date.UTC(2026, 9, 3)),
+      });
+      notVotedClosed = await seedElection({
+        name: `HV-NOT-CLOSED-${suffix}`,
+        status: 'CLOSED',
+        startDate: new Date(Date.UTC(2026, 9, 4)),
+      });
+
+      const votedAt = new Date('2026-10-05T14:30:00.000Z');
+      await prisma.electoralRoll.createMany({
+        data: [
+          ...[votedActive, votedClosed].map((electionId) => ({
+            election_id: electionId,
+            elector_id: voterId,
+            has_voted: true,
+            last_vote_registered_at: votedAt,
+          })),
+          ...[notVotedActive, notVotedClosed].map((electionId) => ({
+            election_id: electionId,
+            elector_id: voterId,
+          })),
+        ],
+      });
+    });
+
+    it('E2E-08: ?hasVoted=true returns only voted elections', async () => {
+      const res = await list('?hasVoted=true').expect(200);
+      const body = res.body as PaginatedElectorBody;
+
+      expect(ids(body)).toEqual([votedActive, votedClosed]);
+      expect(body.data.every((item) => item.hasVoted === true)).toBe(true);
+      expect(body.data.every((item) => item.participationDate !== null)).toBe(true);
+    });
+
+    it('E2E-09: ?hasVoted=false returns only non-voted elections (CLOSED included)', async () => {
+      const res = await list('?hasVoted=false').expect(200);
+      const body = res.body as PaginatedElectorBody;
+
+      expect(ids(body)).toEqual([notVotedActive, notVotedClosed]);
+      expect(body.data.every((item) => item.hasVoted === false)).toBe(true);
+      expect(body.data.every((item) => item.participationDate === null)).toBe(true);
+    });
+
+    it('E2E-10: without hasVoted returns voted and non-voted elections', async () => {
+      const res = await list('').expect(200);
+      const body = res.body as PaginatedElectorBody;
+
+      expect(ids(body)).toEqual([votedActive, votedClosed, notVotedActive, notVotedClosed]);
+      expect(body.meta.total).toBe(4);
+    });
+
+    it('E2E-11: combines hasVoted with status, dates and electionCode (AND)', async () => {
+      const byStatus = await list('?hasVoted=true&status=CLOSED').expect(200);
+      expect(ids(byStatus.body as PaginatedElectorBody)).toEqual([votedClosed]);
+
+      const byDates = await list(
+        '?hasVoted=false&startDateFrom=2026-10-03&startDateTo=2026-10-03',
+      ).expect(200);
+      expect(ids(byDates.body as PaginatedElectorBody)).toEqual([notVotedActive]);
+
+      const election = await prisma.election.findUniqueOrThrow({ where: { id: votedActive } });
+      const byCode = await list(
+        `?hasVoted=true&electionCode=${encodeURIComponent(election.electionCode)}`,
+      ).expect(200);
+      expect(ids(byCode.body as PaginatedElectorBody)).toEqual([votedActive]);
+    });
+
+    it('E2E-12: no matches returns an empty page with the standard envelope', async () => {
+      const res = await list('?hasVoted=true&status=PENDING&page=1&limit=10').expect(200);
+
+      expect(res.body).toEqual({
+        data: [],
+        meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+      });
+    });
+
+    it.each(['?hasVoted=1', '?hasVoted=TRUE', '?hasVoted=', '?hasVoted=true&hasVoted=false'])(
+      'E2E-13: rejects %s with 400',
+      async (query) => {
+        await list(query).expect(400);
+      },
+    );
+
+    it('E2E-14: meta reflects the filter and the response carries no vote content', async () => {
+      const res = await list('?hasVoted=false&page=2&limit=1').expect(200);
+      const body = res.body as PaginatedElectorBody;
+
+      expect(body.meta).toEqual({ page: 2, limit: 1, total: 2, totalPages: 2 });
+      expect(ids(body)).toEqual([notVotedClosed]);
+      expect(JSON.stringify(body)).not.toMatch(/lastVote|idempotency|candidacyId/i);
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/electors/${voterId}/elections?hasVoted=true`)
+        .expect(401);
+      await request(app.getHttpServer())
+        .get(`/api/v1/electors/${elector.id}/elections?hasVoted=true`)
+        .set('Cookie', voterCookie)
+        .expect(403);
+    });
+  });
 });

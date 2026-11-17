@@ -67,13 +67,13 @@ export class RegisterElectionToBlockchainUseCase {
     for (const candidate of candidates) {
       const registerCandidateResult = await this.electionLedger.regsiterCandidate({
         electionId: election.id ?? '',
-        candidateId: candidate.candidate.id,
+        candidateId: candidate.id,
         name: candidate.candidate.name,
         // positionNumber: candidate.positionNumber, TODO Add position number to the ledger registration if needed
       });
 
       console.log(
-        `Candidate with ID ${candidate.candidate.id} registered to blockchain for election with ID ${electionId} with transaction ID ${registerCandidateResult.txId}`,
+        `Candidate with ID ${candidate.id} registered to blockchain for election with ID ${electionId} with transaction ID ${registerCandidateResult.txId}`,
       );
     }
 

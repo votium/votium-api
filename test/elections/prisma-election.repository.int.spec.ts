@@ -1672,6 +1672,330 @@ describe('PrismaElectionRepository voter eligibility integration', () => {
     expect(history.filter((entry) => entry.electionId === second)).toHaveLength(1);
     await expect(repository.findStatusHistoryByElectionIds([])).resolves.toEqual([]);
   });
+  describe('hasVoted filter', () => {
+    const participationDate = new Date('2026-10-05T14:30:00.000Z');
+
+    // One elector with a voted and a non-voted election, plus another elector who
+    // voted in the "not voted" election (must not influence the filter).
+    async function seedParticipation(label: string) {
+      const electorId = await seedElector(label);
+      const otherElectorId = await seedElector(`${label}-other`);
+      const voted = await seedElection({
+        name: `${label}-VOTED-${suffix}`,
+        status: 'CLOSED',
+        startDate: new Date(Date.UTC(2026, 9, 1)),
+      });
+      const notVoted = await seedElection({
+        name: `${label}-NOT-VOTED-${suffix}`,
+        status: 'CLOSED',
+        startDate: new Date(Date.UTC(2026, 9, 2)),
+      });
+      await prisma.electoralRoll.createMany({
+        data: [
+          {
+            election_id: voted,
+            elector_id: electorId,
+            has_voted: true,
+            last_vote_registered_at: participationDate,
+          },
+          { election_id: notVoted, elector_id: electorId },
+          {
+            election_id: notVoted,
+            elector_id: otherElectorId,
+            has_voted: true,
+            last_vote_registered_at: participationDate,
+          },
+        ],
+      });
+      return { electorId, voted, notVoted };
+    }
+
+    it('HV-I-01: hasVoted = true returns only elections the elector voted in', async () => {
+      const { electorId, voted } = await seedParticipation('hvi01');
+
+      const result = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: true,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.rows.map((row) => row.election.id)).toEqual([voted]);
+    });
+
+    it('HV-I-02: hasVoted = false returns only elections not voted by the elector', async () => {
+      const { electorId, notVoted } = await seedParticipation('hvi02');
+
+      const result = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: false,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.rows.map((row) => row.election.id)).toEqual([notVoted]);
+    });
+
+    it('HV-I-03: without hasVoted returns voted and non-voted elections', async () => {
+      const { electorId, voted, notVoted } = await seedParticipation('hvi03');
+
+      const result = await repository.findEligibleByElector({ electorId, page: 1, limit: 10 });
+
+      expect(result.total).toBe(2);
+      expect(result.rows.map((row) => row.election.id)).toEqual([voted, notVoted]);
+    });
+
+    it('HV-I-04: combines hasVoted with status, electionCode and date range (AND)', async () => {
+      const electorId = await seedElector('hvi04');
+      const code = `ELECTION-102026-88${suffix % 10}1`;
+      const matching = await seedElection({
+        name: `HVI04-MATCH-${suffix}`,
+        status: 'ACTIVE',
+        startDate: new Date(Date.UTC(2026, 9, 15)),
+        electionCode: code,
+      });
+      const wrongStatus = await seedElection({
+        name: `HVI04-STATUS-${suffix}`,
+        status: 'CLOSED',
+        startDate: new Date(Date.UTC(2026, 9, 15)),
+      });
+      const outsideRange = await seedElection({
+        name: `HVI04-RANGE-${suffix}`,
+        status: 'ACTIVE',
+        startDate: new Date(Date.UTC(2026, 8, 1)),
+      });
+      const notVoted = await seedElection({
+        name: `HVI04-NOTVOTED-${suffix}`,
+        status: 'ACTIVE',
+        startDate: new Date(Date.UTC(2026, 9, 15)),
+      });
+      await prisma.electoralRoll.createMany({
+        data: [
+          ...[matching, wrongStatus, outsideRange].map((electionId) => ({
+            election_id: electionId,
+            elector_id: electorId,
+            has_voted: true,
+          })),
+          { election_id: notVoted, elector_id: electorId },
+        ],
+      });
+
+      const result = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        status: 'ACTIVE',
+        startDateFrom: new Date(Date.UTC(2026, 9, 1)),
+        startDateTo: new Date(Date.UTC(2026, 9, 31)),
+        hasVoted: true,
+      });
+      expect(result.rows.map((row) => row.election.id)).toEqual([matching]);
+
+      const byCode = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        electionCode: code.toLowerCase(),
+        hasVoted: false,
+      });
+      expect(byCode.total).toBe(0);
+    });
+
+    it('HV-I-05: total reflects the filtered set regardless of page and limit', async () => {
+      const electorId = await seedElector('hvi05');
+      const ids: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        ids.push(
+          await seedElection({
+            name: `HVI05-${i}-${suffix}`,
+            startDate: new Date(Date.UTC(2026, 9, 1 + i)),
+          }),
+        );
+      }
+      await prisma.electoralRoll.createMany({
+        data: ids.map((electionId, i) => ({
+          election_id: electionId,
+          elector_id: electorId,
+          has_voted: i < 3,
+        })),
+      });
+
+      const firstPage = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 2,
+        hasVoted: true,
+      });
+      const secondPage = await repository.findEligibleByElector({
+        electorId,
+        page: 2,
+        limit: 2,
+        hasVoted: true,
+      });
+
+      expect(firstPage.total).toBe(3);
+      expect(secondPage.total).toBe(3);
+      expect(firstPage.rows.map((row) => row.election.id)).toEqual(ids.slice(0, 2));
+      expect(secondPage.rows.map((row) => row.election.id)).toEqual([ids[2]]);
+    });
+
+    it('HV-I-06: keeps mapping hasVoted and participationDate from the elector own row', async () => {
+      const { electorId } = await seedParticipation('hvi06');
+
+      const voted = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: true,
+      });
+      const notVoted = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: false,
+      });
+
+      expect(voted.rows[0].hasVoted).toBe(true);
+      expect(voted.rows[0].participationDate).toEqual(participationDate);
+      expect(notVoted.rows[0].hasVoted).toBe(false);
+      expect(notVoted.rows[0].participationDate).toBeNull();
+    });
+
+    it('HV-I-07: does not expose vote content properties', async () => {
+      const { electorId } = await seedParticipation('hvi07');
+
+      const result = await repository.findEligibleByElector({
+        electorId,
+        page: 1,
+        limit: 10,
+        hasVoted: true,
+      });
+
+      expect(Object.keys(result.rows[0]).sort()).toEqual([
+        'election',
+        'hasVoted',
+        'participationDate',
+      ]);
+      expect(JSON.stringify(result.rows)).not.toMatch(/candidacy|idempotency/i);
+    });
+  });
+  describe('countEligibleByElector', () => {
+    const roll = (electionId: string, electorId: string) => ({
+      election_id: electionId,
+      elector_id: electorId,
+    });
+
+    it('SC-I-01: counts only CREATED elections with a roll row for the elector', async () => {
+      const electorId = await seedElector('sci01');
+      const first = await seedElection({ name: `SCI01-A-${suffix}`, status: 'CREATED' });
+      const second = await seedElection({ name: `SCI01-B-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.createMany({
+        data: [roll(first, electorId), roll(second, electorId)],
+      });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(2);
+    });
+
+    it('SC-I-02: excludes every non-CREATED status even with a roll row', async () => {
+      const electorId = await seedElector('sci02');
+      const created = await seedElection({ name: `SCI02-CREATED-${suffix}`, status: 'CREATED' });
+      const others: string[] = [];
+      for (const status of [
+        'PENDING',
+        'ACTIVE',
+        'CLOSED',
+        'PUBLISHED',
+        'CANCELLED',
+        'FINALIZING',
+        'SYNC_ERROR',
+      ] as const) {
+        others.push(await seedElection({ name: `SCI02-${status}-${suffix}`, status }));
+      }
+      await prisma.electoralRoll.createMany({
+        data: [created, ...others].map((electionId) => roll(electionId, electorId)),
+      });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(1);
+    });
+
+    it('SC-I-03: excludes CREATED elections where the elector is not in the roll', async () => {
+      const electorId = await seedElector('sci03');
+      const inRoll = await seedElection({ name: `SCI03-IN-${suffix}`, status: 'CREATED' });
+      await seedElection({ name: `SCI03-OUT-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.create({ data: roll(inRoll, electorId) });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(1);
+    });
+
+    it('SC-I-04: roll rows of other electors do not increase the count', async () => {
+      const electorId = await seedElector('sci04');
+      const otherId = await seedElector('sci04-other');
+      const mine = await seedElection({ name: `SCI04-MINE-${suffix}`, status: 'CREATED' });
+      const theirs = await seedElection({ name: `SCI04-THEIRS-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.createMany({
+        data: [roll(mine, electorId), roll(mine, otherId), roll(theirs, otherId)],
+      });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(1);
+    });
+
+    it('SC-I-05: each election counts once even when it has many roll rows', async () => {
+      const electorId = await seedElector('sci05');
+      const others = [await seedElector('sci05-a'), await seedElector('sci05-b')];
+      const electionId = await seedElection({ name: `SCI05-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.createMany({
+        data: [electorId, ...others].map((id) => roll(electionId, id)),
+      });
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(1);
+    });
+
+    it('SC-I-06: returns 0 when the elector has no eligible elections', async () => {
+      const electorId = await seedElector('sci06');
+
+      await expect(
+        repository.countEligibleByElector({ electorId, status: 'CREATED' }),
+      ).resolves.toBe(0);
+    });
+
+    it('SC-I-07: without status counts every eligible election', async () => {
+      const electorId = await seedElector('sci07');
+      const created = await seedElection({ name: `SCI07-C-${suffix}`, status: 'CREATED' });
+      const active = await seedElection({ name: `SCI07-A-${suffix}`, status: 'ACTIVE' });
+      const closed = await seedElection({ name: `SCI07-X-${suffix}`, status: 'CLOSED' });
+      await prisma.electoralRoll.createMany({
+        data: [created, active, closed].map((electionId) => roll(electionId, electorId)),
+      });
+
+      await expect(repository.countEligibleByElector({ electorId })).resolves.toBe(3);
+    });
+
+    it('SC-I-08: returns a plain number, ignoring participation state', async () => {
+      const electorId = await seedElector('sci08');
+      const voted = await seedElection({ name: `SCI08-V-${suffix}`, status: 'CREATED' });
+      const notVoted = await seedElection({ name: `SCI08-N-${suffix}`, status: 'CREATED' });
+      await prisma.electoralRoll.createMany({
+        data: [{ ...roll(voted, electorId), has_voted: true }, roll(notVoted, electorId)],
+      });
+
+      const count = await repository.countEligibleByElector({ electorId, status: 'CREATED' });
+
+      expect(typeof count).toBe('number');
+      expect(count).toBe(2);
+    });
+  });
 });
 
 describe('PrismaElectionRepository upcoming and active elections for a voter', () => {
@@ -1682,7 +2006,7 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
   const electionIds: string[] = [];
   const electorIds: string[] = [];
 
-  // Fixed reference instant so the 30-day window is deterministic.
+  // Fixed reference instant so the in-course window is deterministic.
   const now = new Date('2026-11-10T12:00:00.000Z');
   const DAY = 24 * 60 * 60 * 1000;
   const at = (offsetMs: number) => new Date(now.getTime() + offsetMs);
@@ -1776,16 +2100,16 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
     return rows.map((row) => row.election.id as string);
   }
 
-  it('UP-01: includes CREATED elections starting within (now, now+30d], boundary inclusive', async () => {
+  it('UP-01: excludes CREATED elections starting within (now, now+30d] (TS-248)', async () => {
     const electorId = await seedElector('up01');
-    const soon = await seedElection({
+    await seedElection({
       label: 'soon',
       status: 'CREATED',
       start: at(2 * DAY),
       end: at(3 * DAY),
       electorId,
     });
-    const boundary = await seedElection({
+    await seedElection({
       label: 'boundary',
       status: 'CREATED',
       start: at(30 * DAY),
@@ -1793,7 +2117,7 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
       electorId,
     });
 
-    expect(await idsFor(electorId)).toEqual([soon, boundary]);
+    expect(await idsFor(electorId)).toEqual([]);
   });
 
   it('UP-02: excludes CREATED beyond 30 days, already started, and PENDING elections', async () => {
@@ -1868,7 +2192,8 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
       end: at(DAY),
       electorId: otherId,
     });
-    await seedElection({ label: 'no-roll', status: 'CREATED', start: at(DAY), end: at(2 * DAY) });
+    // ACTIVE and in course: only the missing roll row excludes it.
+    await seedElection({ label: 'no-roll', status: 'ACTIVE', start: at(-DAY), end: at(DAY) });
 
     expect(await idsFor(electorId)).toEqual([]);
   });
@@ -1891,30 +2216,59 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
     expect(Object.keys(rows[0]).sort()).toEqual(['election', 'hasVoted', 'participationDate']);
   });
 
-  it('UP-07: orders by start_date, start_time, id ascending', async () => {
+  it('UP-07: orders ACTIVE elections by start_date, start_time, id ascending', async () => {
     const electorId = await seedElector('up07');
     const later = await seedElection({
       label: 'later',
-      status: 'CREATED',
-      start: at(5 * DAY),
-      end: at(6 * DAY),
+      status: 'ACTIVE',
+      start: at(-DAY),
+      end: at(DAY),
       electorId,
     });
-    const active = await seedElection({
-      label: 'active',
+    const earliest = await seedElection({
+      label: 'earliest',
       status: 'ACTIVE',
       start: at(-5 * DAY),
       end: at(DAY),
       electorId,
     });
     const sameDayEarlier = await seedElection({
-      label: 'sooner',
-      status: 'CREATED',
-      start: at(5 * DAY - 60 * 60 * 1000),
-      end: at(6 * DAY),
+      label: 'same-day-earlier',
+      status: 'ACTIVE',
+      start: at(-DAY - 60 * 60 * 1000),
+      end: at(DAY),
       electorId,
     });
 
-    expect(await idsFor(electorId)).toEqual([active, sameDayEarlier, later]);
+    expect(await idsFor(electorId)).toEqual([earliest, sameDayEarlier, later]);
+  });
+
+  it('UP-08: includes ACTIVE elections starting or ending exactly at now (inclusive bounds)', async () => {
+    const electorId = await seedElector('up08');
+    const startsNow = await seedElection({
+      label: 'starts-now',
+      status: 'ACTIVE',
+      start: now,
+      end: at(DAY),
+      electorId,
+    });
+    const endsNow = await seedElection({
+      label: 'ends-now',
+      status: 'ACTIVE',
+      start: at(-DAY),
+      end: now,
+      electorId,
+    });
+
+    expect(await idsFor(electorId)).toEqual([endsNow, startsNow]);
+  });
+
+  it('UP-09: excludes FINALIZING and SYNC_ERROR elections in course', async () => {
+    const electorId = await seedElector('up09');
+    for (const status of ['FINALIZING', 'SYNC_ERROR'] as const) {
+      await seedElection({ label: status, status, start: at(-DAY), end: at(DAY), electorId });
+    }
+
+    expect(await idsFor(electorId)).toEqual([]);
   });
 });

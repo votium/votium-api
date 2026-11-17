@@ -28,6 +28,7 @@ import { DeactivateElectorUseCase } from './application/use-cases/deactivate-ele
 import { CheckElectorHasVotedUseCase } from './application/use-cases/check-elector-has-voted.use-case';
 import { DeleteElectorUseCase } from './application/use-cases/delete-elector.use-case';
 import { GetElectorUseCase } from './application/use-cases/get-elector.use-case';
+import { GetScheduledElectionsCountUseCase } from './application/use-cases/get-scheduled-elections-count.use-case';
 import { GetElectorElectionsUseCase } from './application/use-cases/get-elector-elections.use-case';
 import { GetVoterActiveParticipationUseCase } from './application/use-cases/get-voter-active-participation.use-case';
 import { GetVoterUpcomingElectionsUseCase } from './application/use-cases/get-voter-upcoming-elections.use-case';
@@ -92,6 +93,12 @@ import { ElectorElectionsController } from './presentation/controllers/elector-e
       provide: GetElectorUseCase,
       useFactory: (electors: ElectorRepository) => new GetElectorUseCase(electors),
       inject: [ELECTOR_REPOSITORY],
+    },
+    {
+      provide: GetScheduledElectionsCountUseCase,
+      useFactory: (electors: ElectorRepository, elections: ElectionRepository) =>
+        new GetScheduledElectionsCountUseCase(electors, elections),
+      inject: [ELECTOR_REPOSITORY, ELECTION_REPOSITORY],
     },
     {
       provide: GetElectorElectionsUseCase,

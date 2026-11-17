@@ -72,6 +72,16 @@ import { ElectionValidatedListener } from './application/listeners/election-vali
 import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-module.adapter';
 import { VotingModule } from '../voting/voting.module';
 import { PendingMarksPort } from './application/ports/pending-marks.port';
+import { ELECTION_RESULT_REPOSITORY } from './domain/repositories/election-result.repository.interface';
+import { PrismaElectionResultRepository } from './infrastructure/repositories/prisma-election-result.repository';
+
+import { GetElectionResultsUseCase } from './application/use-cases/get-election-results.use-case';
+import { SyncElectionResultsUseCase } from './application/use-cases/sync-election-results.use-case';
+import { RESULTS_REPOSITORY } from './domain/repositories/results.repository.interface';
+import { PrismaResultsRepository } from './infrastructure/repositories/prisma-results.repository';
+import { FabricElectionResultsAdapter } from './infrastructure/adapters/fabric-election-results.adapter';
+import { ElectionResultsPort } from './application/ports/election-results.port';
+import { ElectionPublishedListener } from './application/listeners/election-published.listener';
 
 @Module({
   imports: [
@@ -85,10 +95,17 @@ import { PendingMarksPort } from './application/ports/pending-marks.port';
   ],
   controllers: [ElectionsController, ElectionsElectoralRollController],
   providers: [
+    GetElectionResultsUseCase,
+    SyncElectionResultsUseCase,
     FabricElectionLedgerAdapter,
     SigningKeyAdapter,
+    FabricElectionResultsAdapter,
     ElectionValidatedListener,
+    ElectionPublishedListener,
+    { provide: ElectionResultsPort, useExisting: FabricElectionResultsAdapter },
+    { provide: RESULTS_REPOSITORY, useClass: PrismaResultsRepository },
     { provide: ElectionLedgerPort, useExisting: FabricElectionLedgerAdapter },
+    { provide: ELECTION_RESULT_REPOSITORY, useClass: PrismaElectionResultRepository },
     { provide: ElectionSigningKeyPort, useExisting: SigningKeyAdapter },
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },
     { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
@@ -150,9 +167,9 @@ import { PendingMarksPort } from './application/ports/pending-marks.port';
         elections: ElectionRepository,
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
-        marks: PendingMarksPort,
-      ) => new PublishElectionUseCase(elections, audit, ledger, marks),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, PendingMarksPort],
+        events: EventEmitter2,
+      ) => new PublishElectionUseCase(elections, audit, ledger, events),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, EventEmitter2],
     },
     {
       provide: CloseElectionUseCase,

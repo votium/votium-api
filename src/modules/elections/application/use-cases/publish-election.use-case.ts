@@ -4,8 +4,8 @@ import { ElectionNotFoundError } from '../../domain/errors/election-not-found.er
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
 import { ElectionLedgerPort } from '../ports/election-ledger.port';
-import { PendingMarksPort } from '../ports/pending-marks.port';
-import { ConflictException } from '@nestjs/common';
+import type { EventEmitter2 } from '@nestjs/event-emitter';
+import { ElectionPublishedEvent } from '../events/election-published.event';
 
 // Publication is the CLOSED -> PUBLISHED edge (D2): once an election has closed, an
 // administrator publishes it. CLOSED is the only prerequisite — no roll, candidacy or
@@ -15,7 +15,7 @@ export class PublishElectionUseCase {
     private readonly elections: Pick<ElectionRepository, 'findById' | 'updateStatus'>,
     private readonly audit: AuditLogPort,
     private readonly ledger: ElectionLedgerPort,
-    private readonly marks: PendingMarksPort,
+    private readonly events: Pick<EventEmitter2, 'emit'>,
   ) {}
 
   async execute(input: { electionId: string; requestingUserId: string }): Promise<ElectionEntity> {
@@ -49,13 +49,9 @@ export class PublishElectionUseCase {
       newStatus: 'PUBLISHED',
     });
 
-    await this.marks.flush(electionId);
-    const pending = await this.marks.pending(electionId);
-    if (pending > 0) {
-      throw new ConflictException({ code: 'PENDING_MARKS', pending });
-    }
-
     await this._updateLedger(electionId);
+
+    this.events.emit('election.published', new ElectionPublishedEvent(electionId));
 
     return updated;
   }
