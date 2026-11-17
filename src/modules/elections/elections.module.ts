@@ -73,6 +73,10 @@ import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-
 import { VotingModule } from '../voting/voting.module';
 import { PendingMarksPort } from './application/ports/pending-marks.port';
 
+import { GetElectionResultsUseCase } from './application/use-cases/get-election-results.use-case';
+import { RESULTS_REPOSITORY } from './domain/repositories/results.repository.interface';
+import { PrismaResultsRepository } from './infrastructure/repositories/prisma-results.repository';
+
 @Module({
   imports: [
     forwardRef(() => IamModule),
@@ -85,9 +89,11 @@ import { PendingMarksPort } from './application/ports/pending-marks.port';
   ],
   controllers: [ElectionsController, ElectionsElectoralRollController],
   providers: [
+    GetElectionResultsUseCase,
     FabricElectionLedgerAdapter,
     SigningKeyAdapter,
     ElectionValidatedListener,
+    { provide: RESULTS_REPOSITORY, useClass: PrismaResultsRepository },
     { provide: ElectionLedgerPort, useExisting: FabricElectionLedgerAdapter },
     { provide: ElectionSigningKeyPort, useExisting: SigningKeyAdapter },
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },

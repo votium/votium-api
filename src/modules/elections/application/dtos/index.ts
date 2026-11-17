@@ -5,3 +5,4 @@ export * from './register-candidate-ledger-result.dto';
 export * from './register-candidate-ledger.dto';
 export * from './register-electoral-roll-ledger-result.dto';
 export * from './register-electoral-roll-ledger.dto';
+export * from './election-tally-ledger.dto';

@@ -37,6 +37,9 @@ import { ElectionDetailResponseDto } from '../dtos/election-detail-response.dto'
 import { ElectionResponseDto } from '../dtos/election-response.dto';
 import { ElectionsListResponseDto } from '../dtos/elections-list-response.dto';
 import { ListElectionsQueryDto } from '../dtos/list-elections-query.dto';
+import { GetElectionResultsUseCase } from '../../application/use-cases/get-election-results.use-case';
+import { ElectionResultsResponseDto } from '../dtos/election-results-response.dto';
+import { ElectionResultsPresenter } from '../presenters/election-results.presenter';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -61,6 +64,7 @@ export class ElectionsController {
     private readonly publishElection: PublishElectionUseCase,
     private readonly closeElection: CloseElectionUseCase,
     private readonly cancelElection: CancelElectionUseCase,
+    private readonly getElectionResults: GetElectionResultsUseCase,
   ) {}
 
   @Get()
@@ -371,5 +375,30 @@ export class ElectionsController {
       requestingUserId: req.user.sub,
     });
     return ElectionPresenter.toResponse(election);
+  }
+
+  @Get(':id/results')
+  @ApiOperation({
+    summary: 'Get election results',
+    description:
+      'Returns the results of a completed election, including the tally of votes for each candidate and the total number of votes cast. Requires authentication.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election results retrieved successfully.',
+    type: ElectionResultsResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 404, description: 'Election not found or results not available.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Election is not completed or results are not available.',
+  })
+  @UseGuards(JwtAuthGuard)
+  async getResults(@Param('id', ParseUUIDPipe) id: string): Promise<ElectionResultsResponseDto> {
+    const results = await this.getElectionResults.execute(id);
+    return ElectionResultsPresenter.toResponse(results);
   }
 }
