@@ -72,14 +72,7 @@ import { ElectionValidatedListener } from './application/listeners/election-vali
 import { CandidaciesModuleAdapter } from './infrastructure/adapters/candidacies-module.adapter';
 import { VotingModule } from '../voting/voting.module';
 import { PendingMarksPort } from './application/ports/pending-marks.port';
-import { ElectionResultsPort } from './application/ports/election-results.port';
-import { ElectionPublishedResultsSyncListener } from './application/listeners/election-published-results-sync.listener';
-import { SynchronizeElectionResultsUseCase } from './application/use-cases/synchronize-election-results.use-case';
-import {
-  ELECTION_RESULT_REPOSITORY,
-  type ElectionResultRepository,
-} from './domain/repositories/election-result.repository.interface';
-import { FabricElectionResultsAdapter } from './infrastructure/adapters/fabric-election-results.adapter';
+import { ELECTION_RESULT_REPOSITORY } from './domain/repositories/election-result.repository.interface';
 import { PrismaElectionResultRepository } from './infrastructure/repositories/prisma-election-result.repository';
 
 import { GetElectionResultsUseCase } from './application/use-cases/get-election-results.use-case';
@@ -104,17 +97,7 @@ import { PrismaResultsRepository } from './infrastructure/repositories/prisma-re
     ElectionValidatedListener,
     { provide: RESULTS_REPOSITORY, useClass: PrismaResultsRepository },
     { provide: ElectionLedgerPort, useExisting: FabricElectionLedgerAdapter },
-    { provide: ElectionResultsPort, useExisting: FabricElectionResultsAdapter },
     { provide: ELECTION_RESULT_REPOSITORY, useClass: PrismaElectionResultRepository },
-    {
-      provide: SynchronizeElectionResultsUseCase,
-      useFactory: (
-        elections: ElectionRepository,
-        ledger: ElectionResultsPort,
-        results: ElectionResultRepository,
-      ) => new SynchronizeElectionResultsUseCase(elections, ledger, results),
-      inject: [ELECTION_REPOSITORY, ElectionResultsPort, ELECTION_RESULT_REPOSITORY],
-    },
     { provide: ElectionSigningKeyPort, useExisting: SigningKeyAdapter },
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },
     { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
