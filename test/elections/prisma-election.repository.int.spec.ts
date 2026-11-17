@@ -2006,7 +2006,7 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
   const electionIds: string[] = [];
   const electorIds: string[] = [];
 
-  // Fixed reference instant so the 30-day window is deterministic.
+  // Fixed reference instant so the in-course window is deterministic.
   const now = new Date('2026-11-10T12:00:00.000Z');
   const DAY = 24 * 60 * 60 * 1000;
   const at = (offsetMs: number) => new Date(now.getTime() + offsetMs);
@@ -2100,16 +2100,16 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
     return rows.map((row) => row.election.id as string);
   }
 
-  it('UP-01: includes CREATED elections starting within (now, now+30d], boundary inclusive', async () => {
+  it('UP-01: excludes CREATED elections starting within (now, now+30d] (TS-248)', async () => {
     const electorId = await seedElector('up01');
-    const soon = await seedElection({
+    await seedElection({
       label: 'soon',
       status: 'CREATED',
       start: at(2 * DAY),
       end: at(3 * DAY),
       electorId,
     });
-    const boundary = await seedElection({
+    await seedElection({
       label: 'boundary',
       status: 'CREATED',
       start: at(30 * DAY),
@@ -2117,7 +2117,7 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
       electorId,
     });
 
-    expect(await idsFor(electorId)).toEqual([soon, boundary]);
+    expect(await idsFor(electorId)).toEqual([]);
   });
 
   it('UP-02: excludes CREATED beyond 30 days, already started, and PENDING elections', async () => {
@@ -2192,7 +2192,8 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
       end: at(DAY),
       electorId: otherId,
     });
-    await seedElection({ label: 'no-roll', status: 'CREATED', start: at(DAY), end: at(2 * DAY) });
+    // ACTIVE and in course: only the missing roll row excludes it.
+    await seedElection({ label: 'no-roll', status: 'ACTIVE', start: at(-DAY), end: at(DAY) });
 
     expect(await idsFor(electorId)).toEqual([]);
   });
@@ -2215,30 +2216,59 @@ describe('PrismaElectionRepository upcoming and active elections for a voter', (
     expect(Object.keys(rows[0]).sort()).toEqual(['election', 'hasVoted', 'participationDate']);
   });
 
-  it('UP-07: orders by start_date, start_time, id ascending', async () => {
+  it('UP-07: orders ACTIVE elections by start_date, start_time, id ascending', async () => {
     const electorId = await seedElector('up07');
     const later = await seedElection({
       label: 'later',
-      status: 'CREATED',
-      start: at(5 * DAY),
-      end: at(6 * DAY),
+      status: 'ACTIVE',
+      start: at(-DAY),
+      end: at(DAY),
       electorId,
     });
-    const active = await seedElection({
-      label: 'active',
+    const earliest = await seedElection({
+      label: 'earliest',
       status: 'ACTIVE',
       start: at(-5 * DAY),
       end: at(DAY),
       electorId,
     });
     const sameDayEarlier = await seedElection({
-      label: 'sooner',
-      status: 'CREATED',
-      start: at(5 * DAY - 60 * 60 * 1000),
-      end: at(6 * DAY),
+      label: 'same-day-earlier',
+      status: 'ACTIVE',
+      start: at(-DAY - 60 * 60 * 1000),
+      end: at(DAY),
       electorId,
     });
 
-    expect(await idsFor(electorId)).toEqual([active, sameDayEarlier, later]);
+    expect(await idsFor(electorId)).toEqual([earliest, sameDayEarlier, later]);
+  });
+
+  it('UP-08: includes ACTIVE elections starting or ending exactly at now (inclusive bounds)', async () => {
+    const electorId = await seedElector('up08');
+    const startsNow = await seedElection({
+      label: 'starts-now',
+      status: 'ACTIVE',
+      start: now,
+      end: at(DAY),
+      electorId,
+    });
+    const endsNow = await seedElection({
+      label: 'ends-now',
+      status: 'ACTIVE',
+      start: at(-DAY),
+      end: now,
+      electorId,
+    });
+
+    expect(await idsFor(electorId)).toEqual([endsNow, startsNow]);
+  });
+
+  it('UP-09: excludes FINALIZING and SYNC_ERROR elections in course', async () => {
+    const electorId = await seedElector('up09');
+    for (const status of ['FINALIZING', 'SYNC_ERROR'] as const) {
+      await seedElection({ label: status, status, start: at(-DAY), end: at(DAY), electorId });
+    }
+
+    expect(await idsFor(electorId)).toEqual([]);
   });
 });

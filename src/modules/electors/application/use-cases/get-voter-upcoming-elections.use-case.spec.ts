@@ -139,4 +139,22 @@ describe('GetVoterUpcomingElectionsUseCase', () => {
     expect(createMany).not.toHaveBeenCalled();
     expect(deleteByElectionAndElectorId).not.toHaveBeenCalled();
   });
+
+  it('UPV-08: delegates the status filter to the repository and returns every row it gets', async () => {
+    findUpcoming.mockResolvedValue([
+      { ...row('e1', true), election: { id: 'e1', currentStatus: 'ACTIVE' } as ElectionEntity },
+      { ...row('e2'), election: { id: 'e2', currentStatus: 'CREATED' } as ElectionEntity },
+    ]);
+    countByElectionIds.mockResolvedValue([
+      { electionId: 'e1', total: 2 },
+      { electionId: 'e2', total: 4 },
+    ]);
+    countVotedByElectionIds.mockResolvedValue([{ electionId: 'e1', total: 1 }]);
+
+    const result = await useCase.execute({ electorId: ELECTOR_ID });
+
+    expect(result.map((item) => item.election.id)).toEqual(['e1', 'e2']);
+    expect(result[0]).toMatchObject({ participationPercentage: 50, hasVoted: true });
+    expect(result[1]).toMatchObject({ participationPercentage: 0, hasVoted: false });
+  });
 });
