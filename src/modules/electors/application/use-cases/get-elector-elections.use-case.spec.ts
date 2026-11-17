@@ -232,4 +232,96 @@ describe('GetElectorElectionsUseCase', () => {
       'database exploded',
     );
   });
+  describe('hasVoted filter', () => {
+    const forwarded = () => elections.findEligibleByElector.mock.calls[0][0];
+
+    it('HV-U-01: forwards hasVoted = true to findEligibleByElector', async () => {
+      elections.findEligibleByElector.mockResolvedValue({ rows: [], total: 0 });
+
+      await useCase.execute({ electorId: 'elector-1', page: 1, limit: 10, hasVoted: true });
+
+      expect(forwarded().hasVoted).toBe(true);
+    });
+
+    it('HV-U-02: forwards hasVoted = false as false (not dropped as falsy)', async () => {
+      elections.findEligibleByElector.mockResolvedValue({ rows: [], total: 0 });
+
+      await useCase.execute({ electorId: 'elector-1', page: 1, limit: 10, hasVoted: false });
+
+      expect(forwarded().hasVoted).toBe(false);
+    });
+
+    it('HV-U-03: leaves hasVoted undefined when it is not provided', async () => {
+      elections.findEligibleByElector.mockResolvedValue({ rows: [], total: 0 });
+
+      await useCase.execute({ electorId: 'elector-1', page: 1, limit: 10 });
+
+      expect(forwarded().hasVoted).toBeUndefined();
+    });
+
+    it('HV-U-04: combines hasVoted with electionCode, status and date bounds', async () => {
+      elections.findEligibleByElector.mockResolvedValue({ rows: [], total: 0 });
+
+      await useCase.execute({
+        electorId: 'elector-1',
+        page: 2,
+        limit: 25,
+        electionCode: '102026',
+        status: 'CLOSED',
+        startDateFrom: '2026-08-29',
+        startDateTo: '2026-12-31',
+        hasVoted: false,
+      });
+
+      expect(forwarded()).toStrictEqual({
+        electorId: 'elector-1',
+        page: 2,
+        limit: 25,
+        electionCode: '102026',
+        status: 'CLOSED',
+        startDateFrom: date(2026, 8, 29),
+        startDateTo: date(2026, 12, 31),
+        hasVoted: false,
+      });
+    });
+
+    it('HV-U-05: keeps row order, total, batch queries and identity resolution unchanged', async () => {
+      elections.findEligibleByElector.mockResolvedValue({
+        rows: [
+          { election: buildElection('b'), hasVoted: false, participationDate: null },
+          { election: buildElection('a'), hasVoted: false, participationDate: null },
+        ],
+        total: 7,
+      });
+
+      const result = await useCase.execute({
+        electorId: 'elector-1',
+        page: 1,
+        limit: 2,
+        hasVoted: false,
+      });
+
+      expect(electors.findById).toHaveBeenCalledWith('elector-1');
+      expect(result.total).toBe(7);
+      expect(result.items.map((item) => item.election.id)).toEqual(['b', 'a']);
+      expect(result.items.every((item) => item.hasVoted === false)).toBe(true);
+      expect(elections.findStatusHistoryByElectionIds).toHaveBeenCalledTimes(1);
+      expect(candidacies.findByElectionIds).toHaveBeenCalledTimes(1);
+      expect(electoralRolls.countByElectionIds).toHaveBeenCalledTimes(1);
+    });
+
+    it('HV-U-06: still rejects an inverted date range before querying, with hasVoted set', async () => {
+      await expect(
+        useCase.execute({
+          electorId: 'elector-1',
+          page: 1,
+          limit: 10,
+          startDateFrom: '2026-12-31',
+          startDateTo: '2026-01-01',
+          hasVoted: true,
+        }),
+      ).rejects.toMatchObject({ code: 'ELECTION_INVALID_DATE_RANGE' });
+      expect(elections.findEligibleByElector).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -6,6 +6,8 @@ import type { ElectionRepository } from '../../domain/repositories/election.repo
 import { ElectionLedgerPort } from '../ports/election-ledger.port';
 import { PendingMarksPort } from '../ports/pending-marks.port';
 import { ConflictException } from '@nestjs/common';
+import type { EventEmitter2 } from '@nestjs/event-emitter';
+import { ElectionPublishedEvent } from '../events/election-published.event';
 
 // Publication is the CLOSED -> PUBLISHED edge (D2): once an election has closed, an
 // administrator publishes it. CLOSED is the only prerequisite — no roll, candidacy or
@@ -16,6 +18,7 @@ export class PublishElectionUseCase {
     private readonly audit: AuditLogPort,
     private readonly ledger: ElectionLedgerPort,
     private readonly marks: PendingMarksPort,
+    private readonly events: Pick<EventEmitter2, 'emit'>,
   ) {}
 
   async execute(input: { electionId: string; requestingUserId: string }): Promise<ElectionEntity> {
@@ -56,6 +59,10 @@ export class PublishElectionUseCase {
     }
 
     await this._updateLedger(electionId);
+
+    // Emitted only once PUBLISHED is persisted and published in the ledger. The listener
+    // synchronizes results asynchronously and never reverts the publication.
+    this.events.emit('election.published', new ElectionPublishedEvent(electionId));
 
     return updated;
   }

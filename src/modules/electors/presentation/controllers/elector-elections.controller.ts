@@ -78,9 +78,9 @@ export class ElectorElectionsController {
   @ApiOperation({
     summary: "List the authenticated voter's upcoming and active elections",
     description:
-      'Returns the elections where the authenticated voter is registered in the electoral ' +
-      'roll: CREATED elections starting within the next 30 days and ACTIVE elections still ' +
-      'in course. Includes elections already voted. Identity comes exclusively from the JWT. ' +
+      'Returns the ACTIVE elections currently in course where the authenticated voter is ' +
+      'registered in the electoral roll. Includes elections already voted. Identity comes ' +
+      'exclusively from the JWT. ' +
       'Read-only; ballot content is never exposed. Not paginated.',
   })
   @ApiResponse({
@@ -112,6 +112,14 @@ export class ElectorElectionsController {
   @ApiQuery({ name: 'status', required: false, enum: ELECTION_STATUSES })
   @ApiQuery({ name: 'startDateFrom', required: false, example: '2026-08-29' })
   @ApiQuery({ name: 'startDateTo', required: false, example: '2026-12-31' })
+  @ApiQuery({
+    name: 'hasVoted',
+    required: false,
+    type: Boolean,
+    description:
+      'true = elections already voted by the elector; false = elections not voted yet. ' +
+      'When omitted, both are returned. Only the lowercase strings true/false are accepted.',
+  })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 10 })
   @ApiResponse({
@@ -140,6 +148,7 @@ export class ElectorElectionsController {
       status: query.status,
       startDateFrom: query.startDateFrom,
       startDateTo: query.startDateTo,
+      hasVoted: query.hasVoted,
     });
 
     const data = items.map((item) => ElectorElectionPresenter.toDetail(item));

@@ -42,6 +42,7 @@ import { CheckElectorHasVotedUseCase } from '../../application/use-cases/check-e
 import { DeactivateElectorUseCase } from '../../application/use-cases/deactivate-elector.use-case';
 import { DeleteElectorUseCase } from '../../application/use-cases/delete-elector.use-case';
 import { GetElectorUseCase } from '../../application/use-cases/get-elector.use-case';
+import { GetScheduledElectionsCountUseCase } from '../../application/use-cases/get-scheduled-elections-count.use-case';
 import { GetElectoralRegistryTemplateUseCase } from '../../application/use-cases/get-electoral-registry-template.use-case';
 import { ImportElectoralRegistryUseCase } from '../../application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from '../../application/use-cases/search-electors.use-case';
@@ -54,6 +55,7 @@ import { ElectorActionResponseDto } from '../dtos/elector-action-response.dto';
 import { ElectorDetailResponseDto } from '../dtos/elector-detail-response.dto';
 import { ElectorsListResponseDto } from '../dtos/electors-list-response.dto';
 import { ImportElectoralRegistryResponseDto } from '../dtos/import-electoral-registry-response.dto';
+import { ScheduledElectionsCountResponseDto } from '../dtos/scheduled-elections-count-response.dto';
 import { SearchElectorsQueryDto } from '../dtos/search-electors-query.dto';
 import { UpdateElectorResponseDto } from '../dtos/update-elector-response.dto';
 import { ELECTORAL_REGISTRY_TEMPLATE_FILENAME } from '../../application/electoral-registry-template';
@@ -82,6 +84,7 @@ export class ElectorsController {
     private readonly updateElector: UpdateElectorUseCase,
     private readonly getElectoralRegistryTemplate: GetElectoralRegistryTemplateUseCase,
     private readonly checkElectorHasVoted: CheckElectorHasVotedUseCase,
+    private readonly getScheduledElectionsCount: GetScheduledElectionsCountUseCase,
   ) {}
 
   @Get()
@@ -287,6 +290,33 @@ export class ElectorsController {
       electionId: body.electionId,
     });
     return ElectorPresenter.toHasVoted(result);
+  }
+
+  @Get(':id/scheduled-elections/count')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR, RoleName.AUDITOR)
+  @ApiOperation({
+    summary: 'Count scheduled elections of an elector',
+    description:
+      'Returns only the number of CREATED elections where the elector is registered in the ' +
+      'electoral roll. Excludes PENDING, ACTIVE, CLOSED, PUBLISHED and CANCELLED elections, and ' +
+      'elections where the elector is not in the roll. Requires ADMINISTRATOR or AUDITOR role.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the elector.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Scheduled elections count retrieved successfully.',
+    type: ScheduledElectionsCountResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid elector identifier format.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires ADMINISTRATOR or AUDITOR role.' })
+  @ApiResponse({ status: 404, description: 'Elector not found (ELECTOR_NOT_FOUND).' })
+  async scheduledElectionsCount(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ScheduledElectionsCountResponseDto> {
+    const result = await this.getScheduledElectionsCount.execute({ electorId: id });
+    return ElectorPresenter.toScheduledElectionsCount(result);
   }
 
   @Get('template/csv')

@@ -49,6 +49,7 @@ export class GetElectorElectionsUseCase {
     status?: ElectionStatus;
     startDateFrom?: string;
     startDateTo?: string;
+    hasVoted?: boolean;
   }): Promise<ElectorElectionList> {
     const page = Number.isFinite(params.page) && params.page > 0 ? params.page : 1;
     const limit = Number.isFinite(params.limit) && params.limit > 0 ? params.limit : 10;
@@ -80,6 +81,7 @@ export class GetElectorElectionsUseCase {
       status: params.status,
       startDateFrom,
       startDateTo,
+      hasVoted: params.hasVoted,
     });
 
     if (rows.length === 0) {

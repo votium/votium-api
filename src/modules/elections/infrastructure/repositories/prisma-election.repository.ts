@@ -97,12 +97,31 @@ export class PrismaElectionRepository implements ElectionRepository {
     }));
   }
 
+  async countEligibleByElector(params: {
+    electorId: string;
+    status?: ElectionStatus;
+  }): Promise<number> {
+    // Same eligibility predicate as findEligibleByElector; only a number is returned.
+    return this.prisma.election.count({
+      where: {
+        electoralRolls: { some: { elector_id: params.electorId } },
+        ...(params.status ? { current_status: params.status } : {}),
+      },
+    });
+  }
+
   async findEligibleByElector(params: VoterElectionListParams): Promise<VoterElectionListResult> {
     const skip = (params.page - 1) * params.limit;
     const electionCode = params.electionCode?.trim();
 
     const where: Prisma.ElectionWhereInput = {
-      electoralRolls: { some: { elector_id: params.electorId } },
+      electoralRolls: {
+        some: {
+          elector_id: params.electorId,
+          // false is a valid filter, so compare against undefined (never truthiness).
+          ...(params.hasVoted !== undefined ? { has_voted: params.hasVoted } : {}),
+        },
+      },
       ...(electionCode ? { electionCode: { contains: electionCode, mode: 'insensitive' } } : {}),
       ...(params.status ? { current_status: params.status } : {}),
       ...(params.startDateFrom || params.startDateTo
@@ -151,31 +170,7 @@ export class PrismaElectionRepository implements ElectionRepository {
     params: VoterUpcomingElectionParams,
   ): Promise<VoterElectionRow[]> {
     const now = params.now ?? new Date();
-    const windowDays = params.windowDays ?? UPCOMING_WINDOW_DAYS;
-    const horizon = new Date(now.getTime() + windowDays * MS_PER_DAY);
-
-    const today = currentElectionDate(now);
-    const nowTime = currentElectionTime(now);
-    const horizonDate = currentElectionDate(horizon);
-    const horizonTime = currentElectionTime(horizon);
-
-    const upcomingCreated: Prisma.ElectionWhereInput = {
-      current_status: 'CREATED',
-      AND: [
-        {
-          OR: [
-            { start_date: { gt: today } },
-            { AND: [{ start_date: today }, { start_time: { gt: nowTime } }] },
-          ],
-        },
-        {
-          OR: [
-            { start_date: { lt: horizonDate } },
-            { AND: [{ start_date: horizonDate }, { start_time: { lte: horizonTime } }] },
-          ],
-        },
-      ],
-    };
+    // Only ACTIVE elections in course (TS-248). windowDays no longer has any effect.
     const activeInCourse: Prisma.ElectionWhereInput = {
       current_status: 'ACTIVE',
       ...buildActiveFilter(true, now),
@@ -184,7 +179,7 @@ export class PrismaElectionRepository implements ElectionRepository {
     const rows = await this.prisma.election.findMany({
       where: {
         electoralRolls: { some: { elector_id: params.electorId } },
-        OR: [upcomingCreated, activeInCourse],
+        ...activeInCourse,
       },
       include: {
         // Only the authenticated elector's own roll, and only participation
@@ -365,9 +360,6 @@ export class PrismaElectionRepository implements ElectionRepository {
     }
   }
 }
-
-const UPCOMING_WINDOW_DAYS = 30;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function isRecordNotFoundError(error: unknown): boolean {
   return (
