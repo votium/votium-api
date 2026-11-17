@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { SignerPort } from '../ports/signer.port';
 import { VoteProcessingPort } from '../ports/vote-processing.port';
 
@@ -16,23 +16,12 @@ export class CastVoteUseCase {
     signature: string;
   }): Promise<{ accepted: boolean; txId: string; recovered: boolean }> {
     const pub = await this.voteProcessing.getElection(input.electionId);
-    const verified = await this.signer.verify(
+    await this.signer.verify(
       pub.electionId,
       pub.signingPublicKey,
       input.nullifier,
       input.signature,
     );
-    console.log(
-      `verify(${input.electionId}, ${input.nullifier}, ${input.signature}) = ${verified}`,
-    );
-    if (!verified) {
-      console.log(`verify falló (${input.electionId})`);
-      throw new BadRequestException({
-        code: 'INVALID_SIGNATURE',
-        message: 'The provided signature is invalid.',
-      });
-    }
-
     const r = await this.voteProcessing.castVote(input);
     return { accepted: true, txId: r.txId, recovered: r.recovered ?? false };
   }
