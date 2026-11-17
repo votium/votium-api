@@ -5,7 +5,7 @@ export class AuditLogPresenter {
   static toResponse(record: AuditLogRecord): AuditLogResponseDto {
     return new AuditLogResponseDto({
       id: record.id,
-      userId: record.userId,
+      userName: record.userName,
       action: record.action,
       reason: record.reason,
       details: record.details,
