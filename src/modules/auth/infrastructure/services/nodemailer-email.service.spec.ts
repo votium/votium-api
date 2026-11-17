@@ -12,42 +12,89 @@ jest.mock('nodemailer', () => ({
 
 import { createTransport } from 'nodemailer';
 
+const PALETTE = [
+  '#f7f7f8',
+  '#ffffff',
+  '#1E3A5F',
+  '#152942',
+  '#26282b',
+  '#60656c',
+  '#dfe0e2',
+  '#C65D2E',
+];
+
 describe('buildVerificationEmail', () => {
-  it('uses the expected subject', () => {
+  it('uses the Spanish subject', () => {
     const { subject } = buildVerificationEmail('483912');
-    expect(subject).toBe('Your Votium Verification Code');
+    expect(subject).toBe('Código de verificación de Votium');
   });
 
-  it('includes the verification code in the body', () => {
-    const { body } = buildVerificationEmail('483912');
-    expect(body).toContain('483912');
+  it('includes the code, the 5-minute validity and single use in the text fallback', () => {
+    const { text } = buildVerificationEmail('483912');
+    expect(text).toContain('Hola,');
+    expect(text).toContain('483912');
+    expect(text).toContain('válido por 5 minutos');
+    expect(text).toContain('solo puede usarse una vez');
+    expect(text).toContain('Equipo de Seguridad de Votium');
   });
 
-  it('mentions validity and single-use constraints', () => {
-    const { body } = buildVerificationEmail('483912');
-    expect(body).toContain('valid for 5 minutes');
-    expect(body).toContain('can only be used once');
+  it('builds a Spanish HTML document with the intact code and the frontend palette', () => {
+    const { html } = buildVerificationEmail('483912');
+    expect(html).toContain('lang="es"');
+    expect(html).toContain('charset="utf-8"');
+    expect(html).toContain('>483912<');
+    expect(html).toContain('válido por 5 minutos');
+    for (const color of PALETTE) {
+      expect(html).toContain(color);
+    }
+  });
+
+  it('contains no links, images or scripts', () => {
+    const { html } = buildVerificationEmail('483912');
+    expect(html).not.toMatch(/<a\s|href=|<img|<script|<form/i);
+  });
+
+  it('never includes the code in the subject', () => {
+    expect(buildVerificationEmail('483912').subject).not.toContain('483912');
   });
 
   it('never includes password-like values', () => {
-    const { body } = buildVerificationEmail('483912');
-    expect(body).not.toMatch(/password|secret|SecurePassword123!/i);
+    const { text, html } = buildVerificationEmail('483912');
+    expect(text).not.toMatch(/password|secret|SecurePassword123!/i);
+    expect(html).not.toMatch(/password|secret|SecurePassword123!/i);
+  });
+
+  it('escapes the code as HTML text', () => {
+    const { html } = buildVerificationEmail('<b>1</b>');
+    expect(html).not.toContain('<b>1</b>');
+    expect(html).toContain('&lt;b&gt;1&lt;/b&gt;');
   });
 });
 
 describe('buildPasswordRecoveryEmail', () => {
-  it('uses its own subject, distinct from the login verification email', () => {
+  it('uses its own Spanish subject, distinct from the login verification email', () => {
     const { subject } = buildPasswordRecoveryEmail('483912');
-    expect(subject).toBe('Your Votium Password Recovery Code');
+    expect(subject).toBe('Código de recuperación de contraseña de Votium');
     expect(subject).not.toBe(buildVerificationEmail('483912').subject);
   });
 
-  it('includes the code, the 15-minute validity and single use', () => {
-    const { body } = buildPasswordRecoveryEmail('483912');
-    expect(body).toContain('483912');
-    expect(body).toContain('valid for 15 minutes');
-    expect(body).toContain('can only be used once');
-    expect(body).not.toContain('login attempt');
+  it('includes the code, the 15-minute validity and single use in the text fallback', () => {
+    const { text } = buildPasswordRecoveryEmail('483912');
+    expect(text).toContain('483912');
+    expect(text).toContain('válido por 15 minutos');
+    expect(text).toContain('solo puede usarse una vez');
+    expect(text).not.toContain('intento de inicio de sesión');
+  });
+
+  it('builds a Spanish HTML document with the intact code and the frontend palette', () => {
+    const { html } = buildPasswordRecoveryEmail('483912');
+    expect(html).toContain('lang="es"');
+    expect(html).toContain('>483912<');
+    expect(html).toContain('Código de recuperación');
+    expect(html).not.toContain('intento de inicio de sesión');
+    for (const color of PALETTE) {
+      expect(html).toContain(color);
+    }
   });
 });
 
@@ -60,6 +107,7 @@ describe('NodemailerEmailService', () => {
         to: string;
         subject: string;
         text: string;
+        html: string;
       },
     ]
   >();
@@ -80,8 +128,9 @@ describe('NodemailerEmailService', () => {
     const options = sendMail.mock.calls[0][0];
     expect(options.from).toBe('votiumvalleu@gmail.com');
     expect(options.to).toBe('admin@example.com');
-    expect(options.subject).toBe('Your Votium Verification Code');
+    expect(options.subject).toBe('Código de verificación de Votium');
     expect(options.text).toContain('483912');
+    expect(options.html).toContain('483912');
   });
 
   it('maps delivery failures to EmailDeliveryException and logs', async () => {
@@ -123,8 +172,10 @@ describe('NodemailerEmailService', () => {
 
     const options = sendMail.mock.calls[0][0];
     expect(options.to).toBe('admin@example.com');
-    expect(options.subject).toBe('Your Votium Password Recovery Code');
+    expect(options.from).toBe('votiumvalleu@gmail.com');
+    expect(options.subject).toBe('Código de recuperación de contraseña de Votium');
     expect(options.text).toContain('654321');
+    expect(options.html).toContain('654321');
   });
 
   it('maps password recovery delivery failures to EmailDeliveryException without leaking the code', async () => {
