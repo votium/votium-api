@@ -6,8 +6,6 @@ import {
   ElectionStatusHistoryEntryResponseDto,
 } from '../dtos/election-detail-response.dto';
 import { ElectionResponseDto } from '../dtos/election-response.dto';
-import { ResultsSynchronizationResponseDto } from '../dtos/results-synchronization-response.dto';
-import type { SynchronizeElectionResultsResult } from '../../application/use-cases/synchronize-election-results.use-case';
 
 export class ElectionPresenter {
   static toResponse(entity: ElectionEntity): ElectionResponseDto {
@@ -44,17 +42,6 @@ export class ElectionPresenter {
         CandidacyPresenter.toCandidacyWithCandidate(candidacy),
       ),
       registeredVoters: result.registeredVoters,
-    });
-  }
-
-  static toResultsSynchronization(
-    result: SynchronizeElectionResultsResult,
-  ): ResultsSynchronizationResponseDto {
-    return new ResultsSynchronizationResponseDto({
-      electionId: result.electionId,
-      synchronized: result.synchronized,
-      candidaciesSynchronized: result.candidaciesSynchronized,
-      totalVotes: result.totalVotes,
     });
   }
 }
