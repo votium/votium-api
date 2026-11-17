@@ -10,6 +10,7 @@ import { ElectionSigningKeyPort } from '../ports/election-signing-key.port';
 import { ELECTION_STATUS_VALUES } from '../../domain/value-objects/election-status.vo';
 import { CreateElectionLedgerDto } from '../dtos';
 import { type VoterHasherPort, VOTER_HASHER_PORT } from 'src/shared/domain/ports/voter-hasher.port';
+import { ElectionAuditPort } from '../ports/election-audit.port';
 
 export class RegisterElectionToBlockchainUseCase {
   constructor(
@@ -21,9 +22,10 @@ export class RegisterElectionToBlockchainUseCase {
     private readonly electionSigningKey: ElectionSigningKeyPort,
     @Inject(VOTER_HASHER_PORT)
     private readonly voterHasher: VoterHasherPort,
+    private readonly auditPort: ElectionAuditPort,
   ) {}
 
-  async execute(electionId: string): Promise<void> {
+  async execute(electionId: string, actorId: string): Promise<void> {
     const election = await this.electionRepository.findById(electionId);
 
     if (!election) {
@@ -60,36 +62,88 @@ export class RegisterElectionToBlockchainUseCase {
       signingPublicKey: signingKey,
     };
 
-    const createdElectionLedger = await this.electionLedger.create(electionLedger);
-    console.log(
-      `Election with ID ${electionId} registered to blockchain with transaction ID ${createdElectionLedger.txId}`,
-    );
-    for (const candidate of candidates) {
-      const registerCandidateResult = await this.electionLedger.regsiterCandidate({
-        electionId: election.id ?? '',
-        candidateId: candidate.id,
-        name: candidate.candidate.name,
-        // positionNumber: candidate.positionNumber, TODO Add position number to the ledger registration if needed
-      });
+    const audit = await this.auditPort.recordBlockchainAction({
+      actorId,
+      actionType: 'CREATE_ELECTION',
+      electionId: election.id ?? '',
+      status: 'PENDING',
+      summary: `Registrando elección con ID ${electionId} en Hyperledger Fabric`,
+      transactions: [],
+    });
 
-      console.log(
-        `Candidate with ID ${candidate.id} registered to blockchain for election with ID ${electionId} with transaction ID ${registerCandidateResult.txId}`,
+    try {
+      const createdElectionLedger = await this.electionLedger.create(electionLedger);
+      await this.auditPort.updateBlockchainActionStatus(audit.id, 'PARTIAL_SUCCESS', [
+        {
+          step: 'CREATE_ELECTION',
+          txId: createdElectionLedger.txId ?? '',
+          status: 'SUCCESS',
+          blockNumber: createdElectionLedger.blockNumber ?? 0,
+        },
+      ]);
+    } catch {
+      await this.auditPort.updateBlockchainActionStatus(audit.id, 'FAILED');
+      throw new Error(
+        `Failed to register election with ID ${electionId} on the Hyperledger Fabric`,
       );
     }
 
-    const voterHashPayloads = electoralRoll.map((elector) => ({
-      electionId: election.id ?? '',
-      electorId: elector.electorId,
-    }));
-    const voterHashes = await this.voterHasher.hashBatch(voterHashPayloads);
+    try {
+      const txIdCandidates: { step: string; txId: string; status: string; blockNumber: number }[] =
+        [];
+      for (const candidate of candidates) {
+        const registerCandidateResult = await this.electionLedger.regsiterCandidate({
+          electionId: election.id ?? '',
+          candidateId: candidate.id,
+          name: candidate.candidate.name,
+          // positionNumber: candidate.positionNumber, TODO Add position number to the ledger registration if needed
+        });
 
-    const registerElectoralRollResult = await this.electionLedger.registerElectoralRoll({
-      electionId: election.id ?? '',
-      voterHashes: voterHashes,
-    });
-    console.log(
-      `Electoral roll for election with ID ${electionId} registered to blockchain with transaction ID ${registerElectoralRollResult.txId}`,
-    );
+        txIdCandidates.push({
+          step: `REGISTER_CANDIDATE_${candidate.id}`,
+          txId: registerCandidateResult.txId ?? '',
+          status: 'SUCCESS',
+          blockNumber: registerCandidateResult.blockNumber ?? 0,
+        });
+      }
+
+      await this.auditPort.updateBlockchainActionStatus(
+        audit.id,
+        'PARTIAL_SUCCESS',
+        txIdCandidates,
+      );
+    } catch {
+      await this.auditPort.updateBlockchainActionStatus(audit.id, 'PARTIAL_SUCCESS');
+      throw new Error(
+        `Failed to register candidates for election with ID ${electionId} on the Hyperledger Fabric`,
+      );
+    }
+
+    try {
+      const voterHashPayloads = electoralRoll.map((elector) => ({
+        electionId: election.id ?? '',
+        electorId: elector.electorId,
+      }));
+      const voterHashes = await this.voterHasher.hashBatch(voterHashPayloads);
+
+      const registerElectoralRollResult = await this.electionLedger.registerElectoralRoll({
+        electionId: election.id ?? '',
+        voterHashes: voterHashes,
+      });
+      await this.auditPort.updateBlockchainActionStatus(audit.id, 'SUCCESS', [
+        {
+          step: 'REGISTER_ELECTORAL_ROLL',
+          txId: registerElectoralRollResult.txId ?? '',
+          status: 'SUCCESS',
+          blockNumber: registerElectoralRollResult.blockNumber ?? 0,
+        },
+      ]);
+    } catch {
+      await this.auditPort.updateBlockchainActionStatus(audit.id, 'PARTIAL_SUCCESS');
+      throw new Error(
+        `Failed to register electoral roll for election with ID ${electionId} on the Hyperledger Fabric`,
+      );
+    }
 
     await this.electionRepository.updateStatus(
       electionId,

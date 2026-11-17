@@ -6,18 +6,21 @@ import { ElectionStartRequiresUserError } from '../../domain/errors/election-sta
 import { ElectionStatusTransitionError } from '../../domain/errors/election-status-transition.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
 import { ElectionLedgerPort } from '../ports/election-ledger.port';
+import { ElectionAuditPort } from '../ports/election-audit.port';
 
 export class StartElectionUseCase {
+  private auditLog: { id: number } = { id: 0 };
+
   constructor(
     private readonly elections: Pick<ElectionRepository, 'findById' | 'updateStatus'>,
     private readonly audit: AuditLogPort,
     private readonly ledger: ElectionLedgerPort,
+    private readonly auditPort: ElectionAuditPort,
   ) {}
 
   async execute(input: {
     electionId: string;
     requestingUserId: string;
-    // Reference 'now' for deterministic tests; defaults to the current UTC time.
     now?: Date;
   }): Promise<ElectionEntity> {
     const { electionId, requestingUserId } = input;
@@ -28,16 +31,49 @@ export class StartElectionUseCase {
     const election = await this.elections.findById(electionId);
     if (!election) throw new ElectionNotFoundError(electionId);
 
-    // Start is CREATED -> ACTIVE (per target machine). Only CREATED may start.
     if (election.currentStatus !== 'CREATED') {
       throw new ElectionStatusTransitionError(election.currentStatus, 'ACTIVE');
     }
 
-    // Current date/time must be inside the configured start/closing window.
     if (!election.isWithinSchedule(now)) throw new ElectionNotWithinScheduleError();
 
-    // Persist via guarded write: only if still CREATED. If another process
-    // changed state concurrently, return null -> treat as invalid transition (409).
+    await this.audit.log('ELECTION_STATUS_CHANGED', requestingUserId, {
+      electionId,
+      newStatus: 'ACTIVE',
+    });
+
+    try {
+      this.auditLog = await this.auditPort.recordBlockchainAction({
+        actorId: requestingUserId,
+        actionType: 'START_ELECTION',
+        electionId: electionId,
+        status: 'PENDING',
+        summary: `Iniciando la elección con ID ${electionId}`,
+        transactions: [],
+      });
+      const ledgerResponse = await this._updateLedger(electionId);
+
+      await this.auditPort.updateBlockchainActionStatus(this.auditLog.id, 'SUCCESS', [
+        {
+          step: 'START_ELECTION',
+          txId: ledgerResponse.txId,
+          status: 'SUCCESS',
+          blockNumber: ledgerResponse.blockNumber,
+        },
+      ]);
+    } catch {
+      await this.auditPort.updateBlockchainActionStatus(this.auditLog.id, 'FAILED', [
+        {
+          step: 'START_ELECTION',
+          txId: '',
+          status: 'FAILED',
+          blockNumber: 0,
+          errorMessage: `Ocurrió un error al iniciar la elección con ID ${electionId}`,
+        },
+      ]);
+      throw new Error(`Failed to start election with ID ${electionId}`);
+    }
+
     const updated = await this.elections.updateStatus(
       electionId,
       'ACTIVE',
@@ -47,13 +83,6 @@ export class StartElectionUseCase {
     if (!updated) {
       throw new ElectionStatusTransitionError('CREATED', 'ACTIVE');
     }
-
-    await this.audit.log('ELECTION_STATUS_CHANGED', requestingUserId, {
-      electionId,
-      newStatus: 'ACTIVE',
-    });
-
-    await this._updateLedger(electionId);
 
     return updated;
   }

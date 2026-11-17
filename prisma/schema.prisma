@@ -419,3 +419,27 @@ model ElectorPasswordRecoveryCode {
   @@index([elector_id])
   @@map("elector_password_recovery_codes")
 }
+
+enum AuditLogsBlockchainStatus {
+  SUCCESS
+  PARTIAL_SUCCESS
+  FAILED
+  PENDING
+  COMPENSATED
+}
+
+model AuditLogsBlockchain {
+  id          BigInt                    @id @default(autoincrement())
+  actor_id    String                    @db.VarChar(36)
+  action_type String                    @db.VarChar(50)
+  entity_type String                    @db.VarChar(50)
+  entity_id   String                    @db.VarChar(36)
+  status      AuditLogsBlockchainStatus @default(PENDING)
+  details     Json                      @default("{}")
+  created_at  DateTime                  @default(now()) @db.Timestamptz
+
+  @@index([actor_id])
+  @@index([entity_id, entity_type])
+  @@index([action_type])
+  @@map("audit_logs_blockchain")
+}

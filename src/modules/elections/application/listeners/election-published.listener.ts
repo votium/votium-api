@@ -14,7 +14,7 @@ export class ElectionPublishedListener {
   async handle(event: ElectionPublishedEvent): Promise<void> {
     try {
       this.logger.log('[LISTENER] ElectionPublishedListener inicializado');
-      await this.syncElectionResultsUseCase.execute(event.electionId);
+      await this.syncElectionResultsUseCase.execute(event.electionId, event.actorId);
     } catch (error) {
       this.logger.error(
         `Error procesando la elección ${event.electionId}`,
