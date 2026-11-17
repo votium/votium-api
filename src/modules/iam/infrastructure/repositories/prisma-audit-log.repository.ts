@@ -32,7 +32,7 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
         where,
         select: {
           id: true,
-          user_id: true,
+          user: { select: { first_name: true, last_name: true } },
           action: true,
           reason: true,
           details: true,
@@ -47,7 +47,7 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
     return {
       logs: rows.map((row) => ({
         id: row.id,
-        userId: row.user_id,
+        userName: `${row.user.first_name} ${row.user.last_name}`,
         action: row.action,
         reason: row.reason,
         details: row.details,

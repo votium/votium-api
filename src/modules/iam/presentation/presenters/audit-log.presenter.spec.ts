@@ -4,7 +4,7 @@ import type { AuditLogRecord } from '../../domain/repositories/audit-log.reposit
 describe('AuditLogPresenter', () => {
   const record: AuditLogRecord = {
     id: 'log-1',
-    userId: 'user-1',
+    userName: 'Ana Pérez',
     action: 'USER_CREATED',
     reason: 'reason text',
     details: '{"userId":"user-1","a":1}',
@@ -15,7 +15,7 @@ describe('AuditLogPresenter', () => {
     const dto = AuditLogPresenter.toResponse(record);
 
     expect(dto.id).toBe('log-1');
-    expect(dto.userId).toBe('user-1');
+    expect(dto.userName).toBe('Ana Pérez');
     expect(dto.action).toBe('USER_CREATED');
     expect(dto.reason).toBe('reason text');
     expect(dto.details).toBe('{"userId":"user-1","a":1}');
@@ -57,7 +57,7 @@ describe('AuditLogPresenter', () => {
       'id',
       'reason',
       'timestamp',
-      'userId',
+      'userName',
     ]);
   });
 });
