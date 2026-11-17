@@ -14,7 +14,7 @@ export class ElectionValidatedListener {
   async handle(event: ElectionValidatedEvent): Promise<void> {
     try {
       this.logger.log('[LISTENER] ElectionValidatedListener inicializado');
-      await this.registerElectionUseCase.execute(event.electionId);
+      await this.registerElectionUseCase.execute(event.electionId, event.actorId);
     } catch (error) {
       this.logger.error(
         `Error procesando la elección ${event.electionId}`,

@@ -39,20 +39,36 @@ export class FabricElectionLedgerAdapter implements ElectionLedgerPort {
     return CreateElectionLedgerMapper.toApplicationResult(response);
   }
 
-  async start(electionId: string): Promise<void> {
-    await this.electionsService.startElection(electionId);
+  async start(electionId: string): Promise<{ txId: string; blockNumber: number }> {
+    const response = await this.electionsService.startElection(electionId);
+    return {
+      txId: response.txId,
+      blockNumber: response.blockNumber ?? 0,
+    };
   }
 
-  async close(electionId: string): Promise<void> {
-    await this.electionsService.closeElection(electionId);
+  async close(electionId: string): Promise<{ txId: string; blockNumber: number }> {
+    const resopnse = await this.electionsService.closeElection(electionId);
+    return {
+      txId: resopnse.txId,
+      blockNumber: resopnse.blockNumber ?? 0,
+    };
   }
 
-  async publish(electionId: string): Promise<void> {
-    await this.electionsService.publishElection(electionId);
+  async publish(electionId: string): Promise<{ txId: string; blockNumber: number }> {
+    const response = await this.electionsService.publishElection(electionId);
+    return {
+      txId: response.txId,
+      blockNumber: response.blockNumber ?? 0,
+    };
   }
 
-  async cancel(electionId: string): Promise<void> {
-    await this.electionsService.cancelElection(electionId);
+  async cancel(electionId: string): Promise<{ txId: string; blockNumber: number }> {
+    const response = await this.electionsService.cancelElection(electionId);
+    return {
+      txId: response.txId,
+      blockNumber: response.blockNumber ?? 0,
+    };
   }
 
   async get(electionId: string): Promise<ElectionLedgerDto> {

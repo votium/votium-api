@@ -11,13 +11,13 @@ import {
 export abstract class ElectionLedgerPort {
   abstract create(input: CreateElectionLedgerDto): Promise<CreateElectionLedgerResultDto>;
 
-  abstract start(electionId: string): Promise<void>;
+  abstract start(electionId: string): Promise<{ txId: string; blockNumber: number }>;
 
-  abstract close(electionId: string): Promise<void>;
+  abstract close(electionId: string): Promise<{ txId: string; blockNumber: number }>;
 
-  abstract publish(electionId: string): Promise<void>;
+  abstract publish(electionId: string): Promise<{ txId: string; blockNumber: number }>;
 
-  abstract cancel(electionId: string): Promise<void>;
+  abstract cancel(electionId: string): Promise<{ txId: string; blockNumber: number }>;
 
   abstract get(electionId: string): Promise<ElectionLedgerDto>;
 
