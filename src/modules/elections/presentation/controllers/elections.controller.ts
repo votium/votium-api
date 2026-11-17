@@ -40,6 +40,7 @@ import { ListElectionsQueryDto } from '../dtos/list-elections-query.dto';
 import { GetElectionResultsUseCase } from '../../application/use-cases/get-election-results.use-case';
 import { ElectionResultsResponseDto } from '../dtos/election-results-response.dto';
 import { ElectionResultsPresenter } from '../presenters/election-results.presenter';
+import { SyncElectionResultsUseCase } from '../../application/use-cases/sync-election-results.use-case';
 
 type AuthenticatedRequest = Request & {
   user: {
@@ -65,6 +66,7 @@ export class ElectionsController {
     private readonly closeElection: CloseElectionUseCase,
     private readonly cancelElection: CancelElectionUseCase,
     private readonly getElectionResults: GetElectionResultsUseCase,
+    private readonly syncElectionResults: SyncElectionResultsUseCase,
   ) {}
 
   @Get()
@@ -400,5 +402,42 @@ export class ElectionsController {
   async getResults(@Param('id', ParseUUIDPipe) id: string): Promise<ElectionResultsResponseDto> {
     const results = await this.getElectionResults.execute(id);
     return ElectionResultsPresenter.toResponse(results);
+  }
+
+  @Get(':id/results/synchronize')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Synchronize election results',
+    description:
+      'Synchronizes the results of a completed election with the external ledger. Requires authentication.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique identifier of the election.', example: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Election results synchronized successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          example: 'Election results synchronization initiated successfully.',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 404, description: 'Election not found or results not available.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Election is not completed or results are not available.',
+  })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RoleName.ADMINISTRATOR)
+  async synchronizeResults(@Param('id', ParseUUIDPipe) id: string): Promise<{ message: string }> {
+    await this.syncElectionResults.execute(id);
+    return {
+      message: 'Election results synchronization initiated successfully.',
+    };
   }
 }

@@ -64,4 +64,27 @@ export class PrismaResultsRepository implements ResultsRepository {
       candidacies: Array.from(candidacies.values()),
     });
   }
+
+  async saveResult(result: ResultEntity): Promise<void> {
+    const candidacyRows = result.candidacies;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const candidacy of candidacyRows) {
+        await tx.result.upsert({
+          where: {
+            election_id_candidacy_id: {
+              election_id: result.electionId,
+              candidacy_id: candidacy.candidateId,
+            },
+          },
+          create: {
+            election_id: result.electionId,
+            candidacy_id: candidacy.candidateId,
+            votes: candidacy.votes,
+          },
+          update: { votes: candidacy.votes },
+        });
+      }
+    });
+  }
 }

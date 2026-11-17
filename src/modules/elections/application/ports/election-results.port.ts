@@ -1,16 +1,5 @@
-export interface ElectionTallyEntry {
-  candidateId: string;
-  name: string;
-  votes: number;
-}
+import { ElectionTallyLedgerDto } from '../dtos';
 
-export interface ElectionTally {
-  status: string;
-  total: number;
-  results: ElectionTallyEntry[];
-}
-
-// Abstract class (same pattern as ElectionLedgerPort) so it can be bound with useExisting.
 export abstract class ElectionResultsPort {
-  abstract tally(electionId: string): Promise<ElectionTally>;
+  abstract tally(electionId: string): Promise<ElectionTallyLedgerDto>;
 }
