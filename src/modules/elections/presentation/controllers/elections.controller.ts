@@ -434,8 +434,11 @@ export class ElectionsController {
   })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RoleName.ADMINISTRATOR)
-  async synchronizeResults(@Param('id', ParseUUIDPipe) id: string): Promise<{ message: string }> {
-    await this.syncElectionResults.execute(id);
+  async synchronizeResults(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ message: string }> {
+    await this.syncElectionResults.execute(id, req.user.sub);
     return {
       message: 'Election results synchronization initiated successfully.',
     };

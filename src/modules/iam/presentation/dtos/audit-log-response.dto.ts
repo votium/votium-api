@@ -4,8 +4,11 @@ export class AuditLogResponseDto {
   @ApiProperty({ example: 'uuid' })
   id!: string;
 
-  @ApiProperty({ example: 'uuid', description: 'User that produced the event (user_id).' })
-  userId!: string;
+  @ApiProperty({
+    example: 'Ana Pérez',
+    description: 'Full name of the user that produced the event.',
+  })
+  userName!: string;
 
   @ApiProperty({ example: 'USER_CREATED' })
   action!: string;

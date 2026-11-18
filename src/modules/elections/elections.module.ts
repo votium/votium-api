@@ -82,6 +82,8 @@ import { PrismaResultsRepository } from './infrastructure/repositories/prisma-re
 import { FabricElectionResultsAdapter } from './infrastructure/adapters/fabric-election-results.adapter';
 import { ElectionResultsPort } from './application/ports/election-results.port';
 import { ElectionPublishedListener } from './application/listeners/election-published.listener';
+import { ElectionAuditPort } from './application/ports/election-audit.port';
+import { AuditingModuleAdapter } from './infrastructure/adapters/auditing-module.adapter';
 
 @Module({
   imports: [
@@ -102,6 +104,8 @@ import { ElectionPublishedListener } from './application/listeners/election-publ
     FabricElectionResultsAdapter,
     ElectionValidatedListener,
     ElectionPublishedListener,
+    AuditingModuleAdapter,
+    { provide: ElectionAuditPort, useExisting: AuditingModuleAdapter },
     { provide: ElectionResultsPort, useExisting: FabricElectionResultsAdapter },
     { provide: RESULTS_REPOSITORY, useClass: PrismaResultsRepository },
     { provide: ElectionLedgerPort, useExisting: FabricElectionLedgerAdapter },
@@ -158,8 +162,9 @@ import { ElectionPublishedListener } from './application/listeners/election-publ
         elections: ElectionRepository,
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
-      ) => new StartElectionUseCase(elections, audit, ledger),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort],
+        auditPort: ElectionAuditPort,
+      ) => new StartElectionUseCase(elections, audit, ledger, auditPort),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, ElectionAuditPort],
     },
     {
       provide: PublishElectionUseCase,
@@ -168,8 +173,15 @@ import { ElectionPublishedListener } from './application/listeners/election-publ
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
         events: EventEmitter2,
-      ) => new PublishElectionUseCase(elections, audit, ledger, events),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, EventEmitter2],
+        auditPort: ElectionAuditPort,
+      ) => new PublishElectionUseCase(elections, audit, ledger, events, auditPort),
+      inject: [
+        ELECTION_REPOSITORY,
+        AUDIT_LOG_PORT,
+        ElectionLedgerPort,
+        EventEmitter2,
+        ElectionAuditPort,
+      ],
     },
     {
       provide: CloseElectionUseCase,
@@ -178,8 +190,15 @@ import { ElectionPublishedListener } from './application/listeners/election-publ
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
         marks: PendingMarksPort,
-      ) => new CloseElectionUseCase(elections, audit, ledger, marks),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, PendingMarksPort],
+        auditPort: ElectionAuditPort,
+      ) => new CloseElectionUseCase(elections, audit, ledger, marks, auditPort),
+      inject: [
+        ELECTION_REPOSITORY,
+        AUDIT_LOG_PORT,
+        ElectionLedgerPort,
+        PendingMarksPort,
+        ElectionAuditPort,
+      ],
     },
     {
       provide: CancelElectionUseCase,
@@ -187,8 +206,9 @@ import { ElectionPublishedListener } from './application/listeners/election-publ
         elections: ElectionRepository,
         audit: AuditLogPort,
         ledger: ElectionLedgerPort,
-      ) => new CancelElectionUseCase(elections, audit, ledger),
-      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort],
+        auditPort: ElectionAuditPort,
+      ) => new CancelElectionUseCase(elections, audit, ledger, auditPort),
+      inject: [ELECTION_REPOSITORY, AUDIT_LOG_PORT, ElectionLedgerPort, ElectionAuditPort],
     },
     {
       provide: CloseExpiredElectionsUseCase,
@@ -280,6 +300,7 @@ import { ElectionPublishedListener } from './application/listeners/election-publ
         ledger: ElectionLedgerPort,
         signingKey: ElectionSigningKeyPort,
         voterHasher: VoterHasherPort,
+        auditPort: ElectionAuditPort,
       ) =>
         new RegisterElectionToBlockchainUseCase(
           electionRepo,
@@ -288,6 +309,7 @@ import { ElectionPublishedListener } from './application/listeners/election-publ
           ledger,
           signingKey,
           voterHasher,
+          auditPort,
         ),
       inject: [
         ELECTION_REPOSITORY,
@@ -296,6 +318,7 @@ import { ElectionPublishedListener } from './application/listeners/election-publ
         ElectionLedgerPort,
         ElectionSigningKeyPort,
         VOTER_HASHER_PORT,
+        ElectionAuditPort,
       ],
     },
   ],

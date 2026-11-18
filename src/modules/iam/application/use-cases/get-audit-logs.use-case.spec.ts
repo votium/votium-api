@@ -9,7 +9,7 @@ describe('GetAuditLogsUseCase', () => {
 
   const record = {
     id: 'log-1',
-    userId: 'user-1',
+    userName: 'Ana Pérez',
     action: 'USER_CREATED',
     reason: 'reason text',
     details: '{"userId":"user-1","a":1}',

@@ -65,7 +65,10 @@ export class FinalizeElectionUseCase {
       newStatus: 'FINALIZING',
     });
 
-    this.eventEmitter.emit('election.validated', new ElectionValidatedEvent(electionId));
+    this.eventEmitter.emit(
+      'election.validated',
+      new ElectionValidatedEvent(electionId, requestingUserId),
+    );
 
     return updated;
   }

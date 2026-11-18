@@ -6,16 +6,17 @@ import type { ElectionRepository } from '../../domain/repositories/election.repo
 import { ElectionLedgerPort } from '../ports/election-ledger.port';
 import type { EventEmitter2 } from '@nestjs/event-emitter';
 import { ElectionPublishedEvent } from '../events/election-published.event';
+import { ElectionAuditPort } from '../ports/election-audit.port';
 
-// Publication is the CLOSED -> PUBLISHED edge (D2): once an election has closed, an
-// administrator publishes it. CLOSED is the only prerequisite — no roll, candidacy or
-// schedule checks — because a closed election has necessarily passed all of them.
 export class PublishElectionUseCase {
+  private auditLog: { id: number } = { id: 0 };
+
   constructor(
     private readonly elections: Pick<ElectionRepository, 'findById' | 'updateStatus'>,
     private readonly audit: AuditLogPort,
     private readonly ledger: ElectionLedgerPort,
     private readonly events: Pick<EventEmitter2, 'emit'>,
+    private readonly auditPort: ElectionAuditPort,
   ) {}
 
   async execute(input: { electionId: string; requestingUserId: string }): Promise<ElectionEntity> {
@@ -24,24 +25,8 @@ export class PublishElectionUseCase {
     const election = await this.elections.findById(electionId);
     if (!election) throw new ElectionNotFoundError(electionId);
 
-    // Only CLOSED may be published. A CREATED election must close first, and repeated
-    // publication of an already-PUBLISHED election is refused, not silently accepted (D5).
     if (election.currentStatus !== 'CLOSED') {
       throw new ElectionStatusTransitionError(election.currentStatus, 'PUBLISHED');
-    }
-
-    // Guarded write: only applies while still CLOSED, so concurrent publishers cannot
-    // both record a PUBLISHED transition.
-    const updated = await this.elections.updateStatus(
-      electionId,
-      'PUBLISHED',
-      requestingUserId,
-      'CLOSED',
-    );
-    // A null result here means the guarded write lost the race (the election is no
-    // longer CLOSED), not that it vanished — report the same 409 as a refused move.
-    if (!updated) {
-      throw new ElectionStatusTransitionError('CLOSED', 'PUBLISHED');
     }
 
     await this.audit.log('ELECTION_STATUS_CHANGED', requestingUserId, {
@@ -49,9 +34,58 @@ export class PublishElectionUseCase {
       newStatus: 'PUBLISHED',
     });
 
-    await this._updateLedger(electionId);
+    try {
+      this.auditLog = await this.auditPort.recordBlockchainAction({
+        actorId: requestingUserId,
+        actionType: 'PUBLISH_ELECTION',
+        electionId: electionId,
+        status: 'PENDING',
+        summary: `Publicando la elección con ID ${electionId} en Hyperledger Fabric`,
+        transactions: [],
+      });
+      const ledgerResponse = await this._updateLedger(electionId);
 
-    this.events.emit('election.published', new ElectionPublishedEvent(electionId));
+      await this.auditPort.updateBlockchainActionStatus(this.auditLog.id, 'SUCCESS', [
+        {
+          step: 'PUBLISH_ELECTION',
+          txId: ledgerResponse.txId,
+          status: 'SUCCESS',
+          blockNumber: ledgerResponse.blockNumber,
+        },
+      ]);
+    } catch {
+      await this.auditPort.updateBlockchainActionStatus(this.auditLog.id, 'FAILED', [
+        {
+          step: 'PUBLISH_ELECTION',
+          txId: '',
+          status: 'FAILED',
+          blockNumber: 0,
+          errorMessage: `Ocurrió un error al publicar la elección con ID ${electionId} en Hyperledger Fabric`,
+        },
+      ]);
+      throw new Error(`Failed to publish election with ID ${electionId} on the Hyperledger Fabric`);
+    }
+
+    const updated = await this.elections.updateStatus(
+      electionId,
+      'PUBLISHED',
+      requestingUserId,
+      'CLOSED',
+    );
+
+    if (!updated) {
+      throw new ElectionStatusTransitionError('CLOSED', 'PUBLISHED');
+    }
+
+    this.events.emit(
+      'election.published',
+      new ElectionPublishedEvent(electionId, requestingUserId),
+    );
+
+    this.events.emit(
+      'election.published',
+      new ElectionPublishedEvent(electionId, requestingUserId),
+    );
 
     return updated;
   }

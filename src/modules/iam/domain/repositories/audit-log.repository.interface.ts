@@ -2,7 +2,7 @@ export const AUDIT_LOG_REPOSITORY = 'AuditLogRepository';
 
 export type AuditLogRecord = {
   id: string;
-  userId: string; // mapped from user_id
+  userName: string; // first_name + ' ' + last_name of the related user
   action: string;
   reason: string | null;
   details: string | null; // raw JSON string, preserved verbatim

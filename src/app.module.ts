@@ -15,6 +15,7 @@ import { BlindSignatureModule } from './shared/blind-signature/blind-signature.m
 import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from './shared/shared.module';
 import { PrismaModule } from './shared/database/prisma.module';
+import { AuditingModule } from './modules/auditing/auditing.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { PrismaModule } from './shared/database/prisma.module';
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
     SharedModule,
+    AuditingModule,
     PrismaModule,
     IamModule,
     AuthModule,
