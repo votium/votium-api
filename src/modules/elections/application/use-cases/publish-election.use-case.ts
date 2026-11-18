@@ -82,6 +82,11 @@ export class PublishElectionUseCase {
       new ElectionPublishedEvent(electionId, requestingUserId),
     );
 
+    this.events.emit(
+      'election.published',
+      new ElectionPublishedEvent(electionId, requestingUserId),
+    );
+
     return updated;
   }
 
