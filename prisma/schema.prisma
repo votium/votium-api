@@ -304,10 +304,10 @@ model VoteCredential {
   voter_hash           String
   blinded_message_hash String
   blind_signature      String     @db.Text
-  markStatus           MakeStatus @default(NONE)
+  mark_status          MakeStatus @default(NONE)
 
   @@id([election_id, elector_id])
-  @@index([election_id, markStatus])
+  @@index([election_id, mark_status])
   @@map("vote_credentials")
 }
 
