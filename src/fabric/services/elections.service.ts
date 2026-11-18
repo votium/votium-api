@@ -35,7 +35,7 @@ export class ElectionsService {
     return this.transition('StartElection', electionId, 'ACTIVE');
   }
   cancelElection(electionId: string): Promise<TxResult<Election>> {
-    return this.transition('CancelElection', electionId, 'CANCELED');
+    return this.transition('CancelElection', electionId, 'CANCELLED');
   }
   closeElection(electionId: string): Promise<TxResult<Election>> {
     return this.transition('CloseElection', electionId, 'CLOSED');
