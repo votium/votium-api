@@ -330,13 +330,6 @@ export class PrismaElectionRepository implements ElectionRepository {
     return count > 0;
   }
 
-  async hasVotes(electionId: string): Promise<boolean> {
-    const count = await this.prisma.voteMetadata.count({
-      where: { election_id: electionId },
-    });
-    return count > 0;
-  }
-
   async delete(id: string): Promise<void> {
     try {
       await this.prisma.$transaction(async (tx) => {
@@ -350,7 +343,6 @@ export class PrismaElectionRepository implements ElectionRepository {
         await tx.certificate.deleteMany({ where: { election: { id } } });
         await tx.electoralRoll.deleteMany({ where: { election_id: id } });
         await tx.result.deleteMany({ where: { election_id: id } });
-        await tx.voteMetadata.deleteMany({ where: { election_id: id } });
         await tx.candiday.deleteMany({ where: { election_id: id } });
         await tx.election.delete({ where: { id } });
       });
