@@ -8,10 +8,7 @@ import type { ElectionRepository } from '../../domain/repositories/election.repo
 import { ElectionLedgerPort } from '../ports/election-ledger.port';
 import { PendingMarksPort } from '../ports/pending-marks.port';
 import { Logger, ConflictException } from '@nestjs/common';
-<<<<<<< HEAD
 import { ElectionAuditPort } from '../ports/election-audit.port';
-=======
->>>>>>> main
 
 // Manual closure is the ACTIVE -> CLOSED edge, triggered by an administrator rather than
 // by the automatic scheduler. It reuses the same domain decision points as the automatic
