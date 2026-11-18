@@ -242,6 +242,8 @@ export class PrismaElectionRepository implements ElectionRepository {
   ): Promise<ElectionEntity | null> {
     try {
       const row = await this.prisma.$transaction(async (tx) => {
+        const changedAt = new Date();
+
         // Guarded branch: only transition if the election is STILL in the expected
         // status (conditional updateMany). Used by automatic closure
         // (ACTIVE -> CLOSED) for idempotency under concurrency — only one concurrent
@@ -249,7 +251,10 @@ export class PrismaElectionRepository implements ElectionRepository {
         if (expectedCurrentStatus !== undefined) {
           const res = await tx.election.updateMany({
             where: { id, current_status: expectedCurrentStatus },
-            data: { current_status: status },
+            data: {
+              current_status: status,
+              ...statusTimestampData(status, changedAt),
+            },
           });
           if (res.count === 0) return null; // already transitioned / not in expected status
 
@@ -259,6 +264,7 @@ export class PrismaElectionRepository implements ElectionRepository {
               user_id: requestingUserId, // null for system transitions
               old_status: expectedCurrentStatus,
               new_status: status,
+              changed_at: changedAt,
             },
           });
           return tx.election.findUnique({ where: { id } });
@@ -272,7 +278,10 @@ export class PrismaElectionRepository implements ElectionRepository {
 
         const updated = await tx.election.update({
           where: { id },
-          data: { current_status: status },
+          data: {
+            current_status: status,
+            ...statusTimestampData(status, changedAt),
+          },
         });
 
         // Record the transition. old_status is read from the row captured before the
@@ -283,6 +292,7 @@ export class PrismaElectionRepository implements ElectionRepository {
             user_id: requestingUserId,
             old_status: current.current_status,
             new_status: status,
+            changed_at: changedAt,
           },
         });
 
@@ -350,6 +360,30 @@ export class PrismaElectionRepository implements ElectionRepository {
       if (isRecordNotFoundError(error)) throw new ElectionNotFoundError(id);
       throw error;
     }
+  }
+}
+
+// Persists the lifecycle instant that corresponds to the new status. Statuses without
+// a dedicated timestamp (PENDING, CREATED, FINALIZING, SYNC_ERROR) leave all of them
+// untouched.
+function statusTimestampData(
+  status: ElectionStatus,
+  at: Date,
+): Pick<
+  Prisma.ElectionUpdateManyMutationInput,
+  'started_at' | 'closed_at' | 'published_at' | 'canceled_at'
+> {
+  switch (status) {
+    case 'ACTIVE':
+      return { started_at: at };
+    case 'CLOSED':
+      return { closed_at: at };
+    case 'PUBLISHED':
+      return { published_at: at };
+    case 'CANCELLED':
+      return { canceled_at: at };
+    default:
+      return {};
   }
 }
 

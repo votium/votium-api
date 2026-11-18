@@ -182,7 +182,11 @@ export class ElectionEntity {
       input.blankVoteEnabled,
       input.createdAt,
       input.signingPublicKey,
-      input.ledgerBlock,
+      input.canceledAt,
+      input.publishedAt,
+      input.closedAt,
+      input.startedAt,
+      input.updatedAt,
     );
   }
 
