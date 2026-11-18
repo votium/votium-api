@@ -4,7 +4,7 @@ export const ELECTION_STATUS_VALUES = [
   'ACTIVE',
   'CLOSED',
   'PUBLISHED',
-  'CANCELED',
+  'CANCELLED',
   'FINALIZING',
   'SYNC_ERROR',
 ] as const;
@@ -57,7 +57,7 @@ export class ElectionStatus {
   }
 
   public isCanceled(): boolean {
-    return this._value === 'CANCELED';
+    return this._value === 'CANCELLED';
   }
 
   public isFinalizing(): boolean {

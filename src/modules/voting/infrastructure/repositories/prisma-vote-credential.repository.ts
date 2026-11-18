@@ -53,10 +53,10 @@ export class PrismaVoteCredentialRepository implements VoteCredentialRepository 
           election_id: electionId,
           elector_id: electorId,
         },
-        markStatus: VOTE_CREDENTIAL_STATUS_VALUES[0], // 'NONE'
+        mark_status: VOTE_CREDENTIAL_STATUS_VALUES[0], // 'NONE'
       },
       data: {
-        markStatus: VOTE_CREDENTIAL_STATUS_VALUES[3], // 'REPORTED'
+        mark_status: VOTE_CREDENTIAL_STATUS_VALUES[3], // 'REPORTED'
       },
     });
   }
@@ -64,7 +64,7 @@ export class PrismaVoteCredentialRepository implements VoteCredentialRepository 
   async findReported(electionId?: string): Promise<{ electionId: string; voterHash: string }[]> {
     const rows = await this.prisma.voteCredential.findMany({
       where: {
-        markStatus: VOTE_CREDENTIAL_STATUS_VALUES[3],
+        mark_status: VOTE_CREDENTIAL_STATUS_VALUES[3],
         ...(electionId && { election_id: electionId }),
       },
       select: { election_id: true, voter_hash: true },
@@ -80,13 +80,13 @@ export class PrismaVoteCredentialRepository implements VoteCredentialRepository 
   ): Promise<void> {
     await this.prisma.voteCredential.updateMany({
       where: { election_id: electionId, voter_hash: { in: hashes } },
-      data: { markStatus: s },
+      data: { mark_status: s },
     });
   }
 
   async countReported(electionId: string): Promise<number> {
     const count = await this.prisma.voteCredential.count({
-      where: { election_id: electionId, markStatus: VOTE_CREDENTIAL_STATUS_VALUES[3] },
+      where: { election_id: electionId, mark_status: VOTE_CREDENTIAL_STATUS_VALUES[3] },
     });
     return count;
   }

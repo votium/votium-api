@@ -12,7 +12,7 @@ export interface ReadOptions {
   profile?: FabricProfile;
 }
 
-export type ElectionStatus = 'CREATED' | 'ACTIVE' | 'CLOSED' | 'PUBLISHED' | 'CANCELED';
+export type ElectionStatus = 'CREATED' | 'ACTIVE' | 'CLOSED' | 'PUBLISHED' | 'CANCELLED';
 
 export interface Election {
   docType: 'election';

@@ -8,7 +8,7 @@ export type PrismaVoteCredentialRow = {
   voter_hash: string;
   blinded_message_hash: string;
   blind_signature: string;
-  markStatus: string;
+  mark_status: string;
 };
 
 export class PrismaVoteCredentialMapper {
@@ -19,7 +19,7 @@ export class PrismaVoteCredentialMapper {
       voterHash: row.voter_hash,
       blindedMessageHash: row.blinded_message_hash,
       blindSignature: row.blind_signature,
-      status: row.markStatus as VoteCredentialStatusType,
+      status: row.mark_status as VoteCredentialStatusType,
     });
   }
 
@@ -30,7 +30,7 @@ export class PrismaVoteCredentialMapper {
       voter_hash: entity.voterHash,
       blinded_message_hash: entity.blindedMessageHash,
       blind_signature: entity.blindSignature,
-      markStatus: entity.status,
+      mark_status: entity.status,
     };
   }
 }

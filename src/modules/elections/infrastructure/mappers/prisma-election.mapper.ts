@@ -13,6 +13,12 @@ export type PrismaElectionRow = {
   current_status: string;
   blank_vote_enabled: boolean;
   created_at: Date;
+  signing_public_key?: string | null;
+  started_at?: Date | null;
+  closed_at?: Date | null;
+  published_at?: Date | null;
+  canceled_at?: Date | null;
+  updated_at?: Date | null;
 };
 
 export class PrismaElectionMapper {
@@ -29,6 +35,12 @@ export class PrismaElectionMapper {
       currentStatus: row.current_status as ElectionStatus,
       blankVoteEnabled: row.blank_vote_enabled,
       createdAt: row.created_at,
+      signingPublicKey: row.signing_public_key ?? undefined,
+      startedAt: row.started_at ?? undefined,
+      closedAt: row.closed_at ?? undefined,
+      publishedAt: row.published_at ?? undefined,
+      canceledAt: row.canceled_at ?? undefined,
+      updatedAt: row.updated_at ?? undefined,
     });
   }
 
