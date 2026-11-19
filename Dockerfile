@@ -1,70 +1,68 @@
-# ─────────────────────────────────────────
-# Stage 1: deps
-# Instala SOLO dependencias de producción
-# ─────────────────────────────────────────
-FROM node:22-alpine AS deps
+
+# --------------------------------------------------
+# Base
+# --------------------------------------------------
+FROM node:24.14.1-alpine AS base
 
 WORKDIR /app
 
-COPY package*.json ./
-COPY prisma/ ./prisma/
-
-RUN npm ci --only=production && \
-   npx prisma generate
+RUN apk add --no-cache openssl
 
 
-# ─────────────────────────────────────────
-# Stage 2: builder
-# Instala todo (dev deps) y compila TypeScript
-# ─────────────────────────────────────────
-FROM node:22-alpine AS builder
+# --------------------------------------------------
+# Stage 1: Production dependencies
+# --------------------------------------------------
+FROM base AS deps
 
-WORKDIR /app
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
 
-COPY package*.json ./
-COPY prisma/ ./prisma/
+RUN PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev
+
+
+# --------------------------------------------------
+# Stage 2: Build
+# --------------------------------------------------
+FROM base AS builder
+
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
 
 RUN npm ci
 
 COPY . .
 
-RUN npx prisma generate && \
-   npm run build
+RUN DATABASE_URL="postgresql://user:password@localhost:5432/votium?schema=public" \
+  npx prisma generate \
+  && npm run build
 
 
-# ─────────────────────────────────────────
-# Stage 3: runner
-# Imagen final — solo lo necesario para correr
-# ─────────────────────────────────────────
-FROM node:22-alpine AS runner
+# --------------------------------------------------
+# Stage 3: Production runner
+# --------------------------------------------------
+FROM base AS runner
 
-WORKDIR /app
+ENV NODE_ENV=production
 
-# Usuario no-root por seguridad
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup -S -g 10001 appgroup \
+  && adduser -S -u 10001 -G appgroup appuser
 
-# Copia dependencias de producción (sin dev deps)
-COPY --from=deps /app/node_modules ./node_modules
+# Production dependencies, including Prisma CLI
+COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
 
-# Copia cliente de Prisma generado
-COPY --from=builder /app/generated ./src/generated
+# Compiled application AND generated Prisma Client
+COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
 
-# Copia el schema para poder correr migraciones al iniciar
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+# Prisma schema, migrations and configuration
+COPY --from=builder --chown=appuser:appgroup /app/prisma ./prisma
+COPY --from=builder --chown=appuser:appgroup /app/prisma.config.ts ./prisma.config.ts
 
-# Copia el build compilado
-COPY --from=builder /app/dist ./dist
+COPY --chown=appuser:appgroup package.json ./
 
-# Copia package.json (NestJS lo necesita en runtime)
-COPY package.json ./
-
-# Aplica migraciones y levanta la app
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
-
-USER appuser
+USER 10001:10001
 
 EXPOSE 3000
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "dist/src/main.js"]
