@@ -432,4 +432,42 @@ describe('PrismaElectoralRollRepository integration', () => {
       });
     });
   });
+  describe('findCertificateRoll', () => {
+    it('CR-01: returns only the roll id and the vote timestamp', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await repository.createMany(electionId, [electorId]);
+      const votedAt = new Date('2026-10-01T10:15:00.000Z');
+      await prisma.electoralRoll.update({
+        where: { election_id_elector_id: { election_id: electionId, elector_id: electorId } },
+        data: { has_voted: true, last_vote_registered_at: votedAt },
+      });
+      const row = await prisma.electoralRoll.findUniqueOrThrow({
+        where: { election_id_elector_id: { election_id: electionId, elector_id: electorId } },
+      });
+
+      const result = await repository.findCertificateRoll(electionId, electorId);
+
+      expect(result).toEqual({ id: row.id, lastVoteRegisteredAt: votedAt });
+      expect(Object.keys(result!).sort()).toEqual(['id', 'lastVoteRegisteredAt']);
+    });
+
+    it('CR-02: returns a null lastVoteRegisteredAt when the column is null', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+      await repository.createMany(electionId, [electorId]);
+
+      const result = await repository.findCertificateRoll(electionId, electorId);
+
+      expect(result).not.toBeNull();
+      expect(result!.lastVoteRegisteredAt).toBeNull();
+    });
+
+    it('CR-03: returns null when the elector is not in the roll of the election', async () => {
+      const electionId = await seedElection();
+      const electorId = await seedElector();
+
+      await expect(repository.findCertificateRoll(electionId, electorId)).resolves.toBeNull();
+    });
+  });
 });

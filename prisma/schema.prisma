@@ -288,6 +288,7 @@ model Certificate {
   electoralRoll ElectoralRoll @relation(fields: [electoral_roll_id], references: [id])
   election      Election      @relation(fields: [election_id], references: [id])
 
+  @@unique([electoral_roll_id])
   @@map("certificates")
 }
 
