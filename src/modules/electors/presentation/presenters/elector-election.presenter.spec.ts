@@ -100,3 +100,37 @@ describe('ElectorElectionPresenter', () => {
     expect(detail).not.toHaveProperty('lastVoteCandidacyId');
   });
 });
+describe('ElectorElectionPresenter.toVoterCertificateListItem', () => {
+  const item = {
+    electionId: 'election-1',
+    electionName: 'Elección 2026',
+    votingDate: new Date('2026-11-17T15:04:05.000Z'),
+    verificationCode: '9f86d081884c7d659a2feaa0c55ad015',
+    issuedAt: new Date('2026-11-17T15:05:00.000Z'),
+  };
+
+  it('serializes dates to ISO and maps every field', () => {
+    expect({ ...ElectorElectionPresenter.toVoterCertificateListItem(item) }).toEqual({
+      electionId: 'election-1',
+      electionName: 'Elección 2026',
+      votingDate: '2026-11-17T15:04:05.000Z',
+      verificationCode: '9f86d081884c7d659a2feaa0c55ad015',
+      issuedAt: '2026-11-17T15:05:00.000Z',
+    });
+  });
+
+  it('adds no fields beyond the five of the contract', () => {
+    const dto = ElectorElectionPresenter.toVoterCertificateListItem({
+      ...item,
+      candidacyId: 'secret',
+    } as typeof item);
+
+    expect(Object.keys(dto).sort()).toEqual([
+      'electionId',
+      'electionName',
+      'issuedAt',
+      'verificationCode',
+      'votingDate',
+    ]);
+  });
+});
