@@ -22,8 +22,8 @@ export class ElectorElectionPresenter {
       verificationCode: result.verificationCode,
     });
   }
-  
-   static toVoterCertificateListItem(
+
+  static toVoterCertificateListItem(
     item: VoterCertificateSummary,
   ): VoterCertificateListItemResponseDto {
     return new VoterCertificateListItemResponseDto({
