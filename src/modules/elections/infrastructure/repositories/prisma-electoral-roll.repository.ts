@@ -6,11 +6,29 @@ import type {
   ElectionParticipationCount,
   ElectoralRollRepository,
 } from '../../domain/repositories/electoral-roll.repository.interface';
+import type {
+  CertificateRoll,
+  ElectoralRollCertificateReader,
+} from '../../domain/repositories/electoral-roll-certificate.reader';
 import { PrismaElectoralRollMapper } from '../mappers/prisma-electoral-roll.mapper';
 
 @Injectable()
-export class PrismaElectoralRollRepository implements ElectoralRollRepository {
+export class PrismaElectoralRollRepository
+  implements ElectoralRollRepository, ElectoralRollCertificateReader
+{
   constructor(private readonly prisma: PrismaService) {}
+
+  // Selects only the row id and the vote timestamp; ballot columns are never read.
+  async findCertificateRoll(
+    electionId: string,
+    electorId: string,
+  ): Promise<CertificateRoll | null> {
+    const row = await this.prisma.electoralRoll.findUnique({
+      where: { election_id_elector_id: { election_id: electionId, elector_id: electorId } },
+      select: { id: true, last_vote_registered_at: true },
+    });
+    return row ? { id: row.id, lastVoteRegisteredAt: row.last_vote_registered_at } : null;
+  }
 
   async findByElectionAndElectorIds(
     electionId: string,

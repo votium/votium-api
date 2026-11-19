@@ -22,6 +22,8 @@ import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guar
 import { ELECTION_STATUSES } from 'src/modules/elections/domain/entities/election.entity';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { GetElectorElectionsUseCase } from '../../application/use-cases/get-elector-elections.use-case';
+import { GetVotingCertificateUseCase } from '../../application/use-cases/get-voting-certificate.use-case';
+import { VotingCertificateResponseDto } from '../dtos/voting-certificate-response.dto';
 import { GetVoterActiveParticipationUseCase } from '../../application/use-cases/get-voter-active-participation.use-case';
 import { VoterParticipationResponseDto } from '../dtos/voter-participation-response.dto';
 import { GetVoterUpcomingElectionsUseCase } from '../../application/use-cases/get-voter-upcoming-elections.use-case';
@@ -46,6 +48,7 @@ export class ElectorElectionsController {
     private readonly getElectorElections: GetElectorElectionsUseCase,
     private readonly getVoterUpcomingElections: GetVoterUpcomingElectionsUseCase,
     private readonly getVoterActiveParticipation: GetVoterActiveParticipationUseCase,
+    private readonly getVotingCertificate: GetVotingCertificateUseCase,
   ) {}
 
   @Get('me/participation')
@@ -95,6 +98,51 @@ export class ElectorElectionsController {
   async upcoming(@Req() req: AuthenticatedRequest) {
     const items = await this.getVoterUpcomingElections.execute({ electorId: req.user.sub });
     return ElectorElectionPresenter.toUpcomingList(items);
+  }
+
+  // 4-segment route: does not collide with ':id/elections'.
+  @Get('me/elections/:electionId/certificate')
+  @UseGuards(JwtAuthGuard, ElectorGuard)
+  @ApiOperation({
+    summary: "Get the authenticated voter's participation certificate for an election",
+    description:
+      'Returns the data of the participation certificate of the authenticated voter. Issued ' +
+      'only when the ledger (Hyperledger Fabric) confirms the voter as VOTED. Identity comes ' +
+      'exclusively from the JWT, so a voter can only get their own certificate. The selected ' +
+      'candidacy and the ballot content are never exposed. The verification code is stable ' +
+      'across calls. The visual document (PDF/image) is built by the frontend.',
+  })
+  @ApiParam({
+    name: 'electionId',
+    description: 'Unique identifier of the election.',
+    example: 'uuid',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Certificate data retrieved successfully.',
+    type: VotingCertificateResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid election identifier.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires an elector principal.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Elector, election, or electoral-roll association not found.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The voter has no confirmed vote in the ledger (CERTIFICATE_NOT_AVAILABLE).',
+  })
+  @ApiResponse({ status: 503, description: 'Fabric is unavailable.' })
+  async certificate(
+    @Param('electionId', ParseUUIDPipe) electionId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const result = await this.getVotingCertificate.execute({
+      electorId: req.user.sub,
+      electionId,
+    });
+    return ElectorElectionPresenter.toVotingCertificate(result);
   }
 
   @Get(':id/elections')

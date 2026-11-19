@@ -6,9 +6,21 @@ import type { VoterActiveParticipationResult } from '../../application/use-cases
 import { VoterParticipationResponseDto } from '../dtos/voter-participation-response.dto';
 import type { VoterUpcomingElectionItem } from '../../application/use-cases/get-voter-upcoming-elections.use-case';
 import { VoterUpcomingElectionResponseDto } from '../dtos/voter-upcoming-election-response.dto';
+import type { VotingCertificateResult } from '../../application/use-cases/get-voting-certificate.use-case';
+import { VotingCertificateResponseDto } from '../dtos/voting-certificate-response.dto';
 import { ElectorElectionDetailResponseDto } from '../dtos/elector-election-detail-response.dto';
 
 export class ElectorElectionPresenter {
+  static toVotingCertificate(result: VotingCertificateResult): VotingCertificateResponseDto {
+    return new VotingCertificateResponseDto({
+      electionName: result.electionName,
+      votingDate: result.votingDate.toISOString(),
+      voterName: result.voterName,
+      voterCode: result.voterCode,
+      verificationCode: result.verificationCode,
+    });
+  }
+
   static toDetail(item: {
     election: ElectionEntity;
     statusHistory: ElectionStatusHistoryEntry[];
