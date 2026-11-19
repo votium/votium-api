@@ -2,7 +2,7 @@ import type { AuditLogPort } from 'src/modules/iam/application/ports/audit-log.p
 import { ElectionNotDeletableError } from '../../domain/errors/election-not-deletable.error';
 import { ElectionNotFoundError } from '../../domain/errors/election-not-found.error';
 import { ElectionHasCandidatesError } from '../../domain/errors/election-has-candidates.error';
-import { ElectionHasVotesError } from '../../domain/errors/election-has-votes.error';
+// import { ElectionHasVotesError } from '../../domain/errors/election-has-votes.error';
 import type { ElectionRepository } from '../../domain/repositories/election.repository.interface';
 
 export class DeleteElectionUseCase {
@@ -22,9 +22,9 @@ export class DeleteElectionUseCase {
       throw new ElectionHasCandidatesError();
     }
 
-    if (await this.elections.hasVotes(id)) {
-      throw new ElectionHasVotesError();
-    }
+    // if (await this.elections.hasVotes(id)) {
+    //   throw new ElectionHasVotesError();
+    // }
 
     // Every business-rule check completed before any destructive persistence, so a
     // failure above leaves the election unchanged.

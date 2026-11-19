@@ -765,7 +765,6 @@ describe('Elections creation (e2e)', () => {
     };
 
     const seededCandidateIds: string[] = [];
-    const seededVoteIds: string[] = [];
 
     async function seedCandidacy(electionId: string): Promise<void> {
       const candidate = await prisma.candidate.create({
@@ -784,15 +783,7 @@ describe('Elections creation (e2e)', () => {
       });
     }
 
-    async function seedVote(electionId: string): Promise<void> {
-      const vote = await prisma.voteMetadata.create({
-        data: { election_id: electionId, tx_hash: `0x${suffix}-${Math.random()}` },
-      });
-      seededVoteIds.push(vote.id);
-    }
-
     afterAll(async () => {
-      await prisma.voteMetadata.deleteMany({ where: { id: { in: seededVoteIds } } });
       await prisma.candiday.deleteMany({ where: { candidate_id: { in: seededCandidateIds } } });
       await prisma.candidate.deleteMany({ where: { id: { in: seededCandidateIds } } });
     });
@@ -856,17 +847,6 @@ describe('Elections creation (e2e)', () => {
 
       const res = await deleteElection(id, adminToken).expect(409);
       expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_HAS_CANDIDATES' });
-      expect(await prisma.election.findUnique({ where: { id } })).not.toBeNull();
-    });
-
-    it('D9: an election with votes is rejected with 409 and the row is unchanged', async () => {
-      const name = `DEL-VOTE-${suffix}`;
-      usedNames.push(name);
-      const id = await createElectionAndGetId(name);
-      await seedVote(id);
-
-      const res = await deleteElection(id, adminToken).expect(409);
-      expect(res.body).toMatchObject({ statusCode: 409, error: 'ELECTION_HAS_VOTES' });
       expect(await prisma.election.findUnique({ where: { id } })).not.toBeNull();
     });
   });

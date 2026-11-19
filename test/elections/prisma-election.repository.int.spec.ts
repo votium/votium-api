@@ -152,7 +152,7 @@ describe('PrismaElectionRepository integration', () => {
   describe('update', () => {
     it('persists editable fields and returns the updated entity', async () => {
       const name = `UPD-${suffix}`;
-      usedNames.push(name);
+      usedNames.push(name, `${name}-edited`);
       const saved = await repository.create(buildEntity(name));
       saved.update({ name: `${name}-edited`, description: 'Edited', blankVoteEnabled: true });
       const updated = await repository.update(saved);
@@ -1215,6 +1215,35 @@ describe('PrismaElectionRepository integration', () => {
       expect(history[0].timestamp).toBeInstanceOf(Date);
       expect(history[1].status).toBe('ACTIVE');
       expect(history[1].timestamp.getTime()).toBeGreaterThanOrEqual(history[0].timestamp.getTime());
+    });
+
+    it('IR-02b: persists the lifecycle instant matching each status transition', async () => {
+      const lifecycleName = `FH-LIFECYCLE-${suffix}`;
+      const cancelName = `FH-CANCEL-${suffix}`;
+      usedNames.push(lifecycleName, cancelName);
+
+      const userId = await seedUser();
+      const lifecycle = await repository.create(buildEntity(lifecycleName));
+      const canceled = await repository.create(buildEntity(cancelName));
+
+      await repository.updateStatus(lifecycle.id as string, 'ACTIVE', userId);
+      await repository.updateStatus(lifecycle.id as string, 'CLOSED', userId);
+      await repository.updateStatus(lifecycle.id as string, 'PUBLISHED', userId);
+      await repository.updateStatus(canceled.id as string, 'CANCELLED', userId);
+
+      const lifecycleRow = await prisma.election.findUnique({
+        where: { id: lifecycle.id as string },
+      });
+      const canceledRow = await prisma.election.findUnique({
+        where: { id: canceled.id as string },
+      });
+      const lifecycleHistory = await repository.findStatusHistory(lifecycle.id as string);
+      const canceledHistory = await repository.findStatusHistory(canceled.id as string);
+
+      expect(lifecycleRow!.started_at).toEqual(lifecycleHistory[0].timestamp);
+      expect(lifecycleRow!.closed_at).toEqual(lifecycleHistory[1].timestamp);
+      expect(lifecycleRow!.published_at).toEqual(lifecycleHistory[2].timestamp);
+      expect(canceledRow!.canceled_at).toEqual(canceledHistory[0].timestamp);
     });
 
     it('IR-03: orders directly seeded rows by changed_at ascending, exposing new_status as status', async () => {

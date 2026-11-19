@@ -1,5 +1,4 @@
 import { ElectionStatusTransitionError } from '../errors/election-status-transition.error';
-// import { ElectionCodeVO } from '../value-objects/election-code.vo';
 
 export const ELECTION_STATUSES = [
   'PENDING',
@@ -44,8 +43,6 @@ export interface CreateElectionInput {
   endTime: Date;
   blankVoteEnabled?: boolean;
   signingPublicKey?: string;
-  ledgerBlock?: number;
-  ledgerTxId?: string;
   canceledAt?: Date;
   publishedAt?: Date;
   closedAt?: Date;
@@ -65,8 +62,6 @@ export interface RestoreElectionInput {
   currentStatus: ElectionStatus;
   blankVoteEnabled: boolean;
   signingPublicKey?: string;
-  ledgerBlock?: number;
-  ledgerTxId?: string;
   createdAt: Date;
   canceledAt?: Date;
   publishedAt?: Date;
@@ -105,8 +100,6 @@ export class ElectionEntity {
     public blankVoteEnabled: boolean,
     public readonly createdAt: Date | null,
     public signingPublicKey?: string,
-    public ledgerBlock?: number,
-    public ledgerTxId?: string,
     public canceledAt?: Date,
     public publishedAt?: Date,
     public closedAt?: Date,
@@ -167,8 +160,6 @@ export class ElectionEntity {
       input.blankVoteEnabled ?? ElectionEntity.DEFAULT_BLANK_VOTE,
       new Date(),
       input.signingPublicKey,
-      input.ledgerBlock,
-      input.ledgerTxId,
       input.canceledAt,
       input.publishedAt,
       input.closedAt,
@@ -191,7 +182,11 @@ export class ElectionEntity {
       input.blankVoteEnabled,
       input.createdAt,
       input.signingPublicKey,
-      input.ledgerBlock,
+      input.canceledAt,
+      input.publishedAt,
+      input.closedAt,
+      input.startedAt,
+      input.updatedAt,
     );
   }
 
