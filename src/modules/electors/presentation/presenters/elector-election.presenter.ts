@@ -13,7 +13,17 @@ import { VoterCertificateListItemResponseDto } from '../dtos/voter-certificate-l
 import { ElectorElectionDetailResponseDto } from '../dtos/elector-election-detail-response.dto';
 
 export class ElectorElectionPresenter {
-  static toVoterCertificateListItem(
+  static toVotingCertificate(result: VotingCertificateResult): VotingCertificateResponseDto {
+    return new VotingCertificateResponseDto({
+      electionName: result.electionName,
+      votingDate: result.votingDate.toISOString(),
+      voterName: result.voterName,
+      voterCode: result.voterCode,
+      verificationCode: result.verificationCode,
+    });
+  }
+  
+   static toVoterCertificateListItem(
     item: VoterCertificateSummary,
   ): VoterCertificateListItemResponseDto {
     return new VoterCertificateListItemResponseDto({
@@ -22,16 +32,6 @@ export class ElectorElectionPresenter {
       votingDate: item.votingDate.toISOString(),
       verificationCode: item.verificationCode,
       issuedAt: item.issuedAt.toISOString(),
-    });
-  }
-
-  static toVotingCertificate(result: VotingCertificateResult): VotingCertificateResponseDto {
-    return new VotingCertificateResponseDto({
-      electionName: result.electionName,
-      votingDate: result.votingDate.toISOString(),
-      voterName: result.voterName,
-      voterCode: result.voterCode,
-      verificationCode: result.verificationCode,
     });
   }
 
