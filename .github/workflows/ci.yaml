@@ -258,15 +258,15 @@ jobs:
           cache-to: type=gha,mode=max
 
       # Start ECR vulnerability scanning after publication.
-      - name: Trigger ECR image scan
-        if: steps.exists.outputs.exists == 'false'
-        env:
-          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          aws ecr start-image-scan \
-            --repository-name "$REPOSITORY" \
-            --image-id imageTag="$VERSION"
+      # - name: Trigger ECR image scan
+      #   if: steps.exists.outputs.exists == 'false'
+      #   env:
+      #     REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      #     VERSION: ${{ steps.meta.outputs.version }}
+      #   run: |
+      #     aws ecr start-image-scan \
+      #       --repository-name "$REPOSITORY" \
+      #       --image-id imageTag="$VERSION"
 
       # Display release information in GitHub Actions.
       - name: Release summary
