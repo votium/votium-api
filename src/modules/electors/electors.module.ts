@@ -40,6 +40,11 @@ import { GetVoterUpcomingElectionsUseCase } from './application/use-cases/get-vo
 import { GetElectoralRegistryTemplateUseCase } from './application/use-cases/get-electoral-registry-template.use-case';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
+import { ListVoterCertificatesUseCase } from './application/use-cases/list-voter-certificates.use-case';
+import {
+  VOTER_CERTIFICATE_READER,
+  type VoterCertificateReader,
+} from './domain/repositories/voter-certificate.reader';
 import { GetVotingCertificateUseCase } from './application/use-cases/get-voting-certificate.use-case';
 import {
   VOTER_PARTICIPATION_PORT,
@@ -74,7 +79,15 @@ import { ElectorElectionsController } from './presentation/controllers/elector-e
   providers: [
     { provide: ELECTOR_REPOSITORY, useClass: PrismaElectorRepository },
     { provide: CSV_PARSER_PORT, useClass: CsvFileParserService },
-    { provide: CERTIFICATE_REPOSITORY, useClass: PrismaCertificateRepository },
+    PrismaCertificateRepository,
+    { provide: CERTIFICATE_REPOSITORY, useExisting: PrismaCertificateRepository },
+    { provide: VOTER_CERTIFICATE_READER, useExisting: PrismaCertificateRepository },
+    {
+      provide: ListVoterCertificatesUseCase,
+      useFactory: (electors: ElectorRepository, certificates: VoterCertificateReader) =>
+        new ListVoterCertificatesUseCase(electors, certificates),
+      inject: [ELECTOR_REPOSITORY, VOTER_CERTIFICATE_READER],
+    },
     { provide: VOTER_PARTICIPATION_PORT, useClass: FabricVoterParticipationAdapter },
     {
       provide: GetVotingCertificateUseCase,

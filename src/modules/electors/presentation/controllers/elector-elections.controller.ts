@@ -22,6 +22,9 @@ import { JwtAuthGuard } from 'src/modules/auth/presentation/guards/jwt-auth.guar
 import { ELECTION_STATUSES } from 'src/modules/elections/domain/entities/election.entity';
 import { PaginatedResponseDto } from 'src/shared/pagination/paginated-response.dto';
 import { GetElectorElectionsUseCase } from '../../application/use-cases/get-elector-elections.use-case';
+import { ListVoterCertificatesUseCase } from '../../application/use-cases/list-voter-certificates.use-case';
+import { ListVoterCertificatesQueryDto } from '../dtos/list-voter-certificates-query.dto';
+import { VoterCertificatesListResponseDto } from '../dtos/voter-certificates-list-response.dto';
 import { GetVotingCertificateUseCase } from '../../application/use-cases/get-voting-certificate.use-case';
 import { VotingCertificateResponseDto } from '../dtos/voting-certificate-response.dto';
 import { GetVoterActiveParticipationUseCase } from '../../application/use-cases/get-voter-active-participation.use-case';
@@ -49,6 +52,7 @@ export class ElectorElectionsController {
     private readonly getVoterUpcomingElections: GetVoterUpcomingElectionsUseCase,
     private readonly getVoterActiveParticipation: GetVoterActiveParticipationUseCase,
     private readonly getVotingCertificate: GetVotingCertificateUseCase,
+    private readonly listVoterCertificates: ListVoterCertificatesUseCase,
   ) {}
 
   @Get('me/participation')
@@ -98,6 +102,46 @@ export class ElectorElectionsController {
   async upcoming(@Req() req: AuthenticatedRequest) {
     const items = await this.getVoterUpcomingElections.execute({ electorId: req.user.sub });
     return ElectorElectionPresenter.toUpcomingList(items);
+  }
+
+  // 2 segments, but the second is not 'elections', so ':id/elections' does not capture it.
+  @Get('me/certificates')
+  @UseGuards(JwtAuthGuard, ElectorGuard)
+  @ApiOperation({
+    summary: "List the authenticated voter's issued certificates",
+    description:
+      'Returns a paginated list of the certificates already issued to the authenticated ' +
+      'voter, newest first. Identity comes exclusively from the JWT. Read-only: it does not ' +
+      'query Hyperledger Fabric, does not issue certificates and never exposes candidacy or ' +
+      'ballot content. Missing certificates are generated through the single-election ' +
+      'certificate endpoint.',
+  })
+  @ApiQuery({ name: 'page', required: false, example: 1, type: Number })
+  @ApiQuery({ name: 'limit', required: false, example: 10, type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Issued certificates retrieved successfully.',
+    type: VoterCertificatesListResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid pagination parameters.' })
+  @ApiResponse({ status: 401, description: 'Authentication is required.' })
+  @ApiResponse({ status: 403, description: 'Requires an elector principal.' })
+  @ApiResponse({
+    status: 404,
+    description: 'The authenticated identity is not an existing elector (ELECTOR_NOT_FOUND).',
+  })
+  async certificates(
+    @Query() query: ListVoterCertificatesQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const { items, total } = await this.listVoterCertificates.execute({
+      electorId: req.user.sub,
+      page: query.page,
+      limit: query.limit,
+    });
+
+    const data = items.map((item) => ElectorElectionPresenter.toVoterCertificateListItem(item));
+    return new PaginatedResponseDto({ data, total, page: query.page, limit: query.limit });
   }
 
   // 4-segment route: does not collide with ':id/elections'.

@@ -8,6 +8,8 @@ import type { VoterUpcomingElectionItem } from '../../application/use-cases/get-
 import { VoterUpcomingElectionResponseDto } from '../dtos/voter-upcoming-election-response.dto';
 import type { VotingCertificateResult } from '../../application/use-cases/get-voting-certificate.use-case';
 import { VotingCertificateResponseDto } from '../dtos/voting-certificate-response.dto';
+import type { VoterCertificateSummary } from '../../domain/repositories/voter-certificate.reader';
+import { VoterCertificateListItemResponseDto } from '../dtos/voter-certificate-list-item-response.dto';
 import { ElectorElectionDetailResponseDto } from '../dtos/elector-election-detail-response.dto';
 
 export class ElectorElectionPresenter {
@@ -18,6 +20,18 @@ export class ElectorElectionPresenter {
       voterName: result.voterName,
       voterCode: result.voterCode,
       verificationCode: result.verificationCode,
+    });
+  }
+  
+   static toVoterCertificateListItem(
+    item: VoterCertificateSummary,
+  ): VoterCertificateListItemResponseDto {
+    return new VoterCertificateListItemResponseDto({
+      electionId: item.electionId,
+      electionName: item.electionName,
+      votingDate: item.votingDate.toISOString(),
+      verificationCode: item.verificationCode,
+      issuedAt: item.issuedAt.toISOString(),
     });
   }
 

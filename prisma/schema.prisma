@@ -275,6 +275,7 @@ model ElectoralRoll {
   certificates Certificate[]
 
   @@unique([election_id, elector_id])
+  @@index([elector_id])
   @@map("electoral_rolls")
 }
 

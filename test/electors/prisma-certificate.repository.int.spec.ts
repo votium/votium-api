@@ -127,4 +127,193 @@ describe('PrismaCertificateRepository integration', () => {
       verificationCode: created.verificationCode,
     });
   });
+  describe('findByElectorId', () => {
+    async function seedElector(): Promise<string> {
+      const elector = await prisma.elector.create({
+        data: {
+          first_name: 'List',
+          last_name: 'Elector',
+          email: `cert-list-${suffix}-${Math.random()}@example.com`,
+          password_hash: 'pbkdf2$placeholder',
+          student_code: `CERTL-${suffix}-${Math.random().toString(36).slice(2, 8)}`,
+          program_code: '2710',
+          status: 'ACTIVE',
+        },
+      });
+      usedElectorIds.push(elector.id);
+      return elector.id;
+    }
+
+    async function seedElection(name: string): Promise<string> {
+      const election = await prisma.election.create({
+        data: {
+          electionCode: await nextTestElectionCode(prisma),
+          name: `${name}-${suffix}-${Math.random()}`,
+          description: 'Integration test election.',
+          start_date: new Date(Date.UTC(2026, 9, 1)),
+          start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
+          end_date: new Date(Date.UTC(2026, 9, 1)),
+          end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
+        },
+      });
+      usedElectionIds.push(election.id);
+      return election.id;
+    }
+
+    async function seedCertificate(
+      electorId: string,
+      electionId: string,
+      createdAt: Date,
+      votedAt: Date | null = null,
+    ): Promise<{ id: string; code: string }> {
+      const roll = await prisma.electoralRoll.create({
+        data: {
+          election_id: electionId,
+          elector_id: electorId,
+          has_voted: true,
+          last_vote_registered_at: votedAt,
+        },
+      });
+      const code = `${suffix}${Math.random().toString(16).slice(2)}`.slice(0, 32);
+      const certificate = await prisma.certificate.create({
+        data: {
+          electoral_roll_id: roll.id,
+          election_id: electionId,
+          verification_code: code,
+          created_at: createdAt,
+        },
+      });
+      return { id: certificate.id, code };
+    }
+
+    it('CL-01: maps every item field and uses last_vote_registered_at as votingDate', async () => {
+      const electorId = await seedElector();
+      const electionId = await seedElection('CL01');
+      const votedAt = new Date('2026-10-01T10:15:00.000Z');
+      const issuedAt = new Date('2026-10-01T10:16:00.000Z');
+      const { code } = await seedCertificate(electorId, electionId, issuedAt, votedAt);
+      const election = await prisma.election.findUniqueOrThrow({ where: { id: electionId } });
+
+      const result = await repository.findByElectorId({ electorId, page: 1, limit: 10 });
+
+      expect(result).toEqual({
+        items: [
+          {
+            electionId,
+            electionName: election.name,
+            votingDate: votedAt,
+            verificationCode: code,
+            issuedAt,
+          },
+        ],
+        total: 1,
+      });
+    });
+
+    it('CL-02: falls back to the scheduled election start when the vote time is null', async () => {
+      const electorId = await seedElector();
+      const electionId = await seedElection('CL02');
+      await seedCertificate(electorId, electionId, new Date('2026-10-02T00:00:00.000Z'));
+
+      const { items } = await repository.findByElectorId({ electorId, page: 1, limit: 10 });
+
+      expect(items[0].votingDate.toISOString()).toBe('2026-10-01T08:00:00.000Z');
+    });
+
+    it('CL-03: returns only the given elector certificates, even in a shared election', async () => {
+      const electorA = await seedElector();
+      const electorB = await seedElector();
+      const electionId = await seedElection('CL03');
+      const { code: codeA } = await seedCertificate(electorA, electionId, new Date());
+      await seedCertificate(electorB, electionId, new Date());
+
+      const result = await repository.findByElectorId({ electorId: electorA, page: 1, limit: 10 });
+
+      expect(result.total).toBe(1);
+      expect(result.items.map((i) => i.verificationCode)).toEqual([codeA]);
+    });
+
+    it('CL-04: orders by created_at desc and breaks ties by id desc', async () => {
+      const electorId = await seedElector();
+      const tie = new Date('2026-10-05T00:00:00.000Z');
+      const old = await seedCertificate(
+        electorId,
+        await seedElection('CL04a'),
+        new Date('2026-10-01T00:00:00.000Z'),
+      );
+      const t1 = await seedCertificate(electorId, await seedElection('CL04b'), tie);
+      const t2 = await seedCertificate(electorId, await seedElection('CL04c'), tie);
+      const recent = await seedCertificate(
+        electorId,
+        await seedElection('CL04d'),
+        new Date('2026-10-09T00:00:00.000Z'),
+      );
+
+      const { items } = await repository.findByElectorId({ electorId, page: 1, limit: 10 });
+
+      const tied = [t1, t2].sort((a, b) => (a.id < b.id ? 1 : -1));
+      expect(items.map((i) => i.verificationCode)).toEqual([
+        recent.code,
+        tied[0].code,
+        tied[1].code,
+        old.code,
+      ]);
+    });
+
+    it('CL-05: paginates with skip/take and counts the total without paging', async () => {
+      const electorId = await seedElector();
+      const codes: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const { code } = await seedCertificate(
+          electorId,
+          await seedElection(`CL05-${i}`),
+          new Date(Date.UTC(2026, 9, 10 - i)),
+        );
+        codes.push(code);
+      }
+
+      const page2 = await repository.findByElectorId({ electorId, page: 2, limit: 2 });
+      const page9 = await repository.findByElectorId({ electorId, page: 9, limit: 2 });
+
+      expect(page2.total).toBe(5);
+      expect(page2.items.map((i) => i.verificationCode)).toEqual([codes[2], codes[3]]);
+      expect(page9).toEqual({ items: [], total: 5 });
+    });
+
+    it('CL-06: returns an empty page when the elector has no certificates', async () => {
+      const electorId = await seedElector();
+      const electionId = await seedElection('CL06');
+      await prisma.electoralRoll.create({
+        data: { election_id: electionId, elector_id: electorId },
+      });
+
+      await expect(repository.findByElectorId({ electorId, page: 1, limit: 10 })).resolves.toEqual({
+        items: [],
+        total: 0,
+      });
+    });
+
+    it('CL-07: items carry only the five contract fields', async () => {
+      const electorId = await seedElector();
+      await seedCertificate(electorId, await seedElection('CL07'), new Date());
+
+      const { items } = await repository.findByElectorId({ electorId, page: 1, limit: 10 });
+
+      expect(Object.keys(items[0]).sort()).toEqual([
+        'electionId',
+        'electionName',
+        'issuedAt',
+        'verificationCode',
+        'votingDate',
+      ]);
+    });
+
+    it('CL-08: the electoral_rolls elector_id index exists', async () => {
+      const rows = await prisma.$queryRaw<{ indexname: string }[]>`
+        SELECT indexname FROM pg_indexes
+        WHERE tablename = 'electoral_rolls' AND indexname = 'electoral_rolls_elector_id_idx'`;
+
+      expect(rows).toHaveLength(1);
+    });
+  });
 });
