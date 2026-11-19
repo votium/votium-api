@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { FabricModule } from 'src/fabric/fabric.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { IamModule } from 'src/modules/iam/iam.module';
 import { CandidaciesModule } from 'src/modules/candidacies/candidacies.module';
@@ -7,6 +8,10 @@ import {
   type CandidacyRepository,
 } from 'src/modules/candidacies/domain/repositories/candidacy.repository.interface';
 import { ElectionsModule } from 'src/modules/elections/elections.module';
+import {
+  ELECTORAL_ROLL_CERTIFICATE_READER,
+  type ElectoralRollCertificateReader,
+} from 'src/modules/elections/domain/repositories/electoral-roll-certificate.reader';
 import {
   ELECTION_REPOSITORY,
   type ElectionRepository,
@@ -35,6 +40,17 @@ import { GetVoterUpcomingElectionsUseCase } from './application/use-cases/get-vo
 import { GetElectoralRegistryTemplateUseCase } from './application/use-cases/get-electoral-registry-template.use-case';
 import { ImportElectoralRegistryUseCase } from './application/use-cases/import-electoral-registry.use-case';
 import { SearchElectorsUseCase } from './application/use-cases/search-electors.use-case';
+import { GetVotingCertificateUseCase } from './application/use-cases/get-voting-certificate.use-case';
+import {
+  VOTER_PARTICIPATION_PORT,
+  type VoterParticipationPort,
+} from './application/ports/voter-participation.port';
+import {
+  CERTIFICATE_REPOSITORY,
+  type CertificateRepository,
+} from './domain/repositories/certificate.repository.interface';
+import { PrismaCertificateRepository } from './infrastructure/repositories/prisma-certificate.repository';
+import { FabricVoterParticipationAdapter } from './infrastructure/adapters/fabric-voter-participation.adapter';
 import { UpdateElectorUseCase } from './application/use-cases/update-elector.use-case';
 import { CSV_PARSER_PORT, type CsvParserPort } from './application/ports/csv-parser.port';
 import {
@@ -52,11 +68,38 @@ import { ElectorElectionsController } from './presentation/controllers/elector-e
     forwardRef(() => AuthModule),
     forwardRef(() => ElectionsModule),
     forwardRef(() => CandidaciesModule),
+    FabricModule,
   ],
   controllers: [ElectorsController, ElectorElectionsController],
   providers: [
     { provide: ELECTOR_REPOSITORY, useClass: PrismaElectorRepository },
     { provide: CSV_PARSER_PORT, useClass: CsvFileParserService },
+    { provide: CERTIFICATE_REPOSITORY, useClass: PrismaCertificateRepository },
+    { provide: VOTER_PARTICIPATION_PORT, useClass: FabricVoterParticipationAdapter },
+    {
+      provide: GetVotingCertificateUseCase,
+      useFactory: (
+        electors: ElectorRepository,
+        elections: ElectionRepository,
+        electoralRolls: ElectoralRollCertificateReader,
+        certificates: CertificateRepository,
+        participation: VoterParticipationPort,
+      ) =>
+        new GetVotingCertificateUseCase(
+          electors,
+          elections,
+          electoralRolls,
+          certificates,
+          participation,
+        ),
+      inject: [
+        ELECTOR_REPOSITORY,
+        ELECTION_REPOSITORY,
+        ELECTORAL_ROLL_CERTIFICATE_READER,
+        CERTIFICATE_REPOSITORY,
+        VOTER_PARTICIPATION_PORT,
+      ],
+    },
     {
       provide: ImportElectoralRegistryUseCase,
       useFactory: (

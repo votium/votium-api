@@ -47,6 +47,7 @@ import {
   type ElectoralRollRepository,
 } from './domain/repositories/electoral-roll.repository.interface';
 import { PrismaElectionRepository } from './infrastructure/repositories/prisma-election.repository';
+import { ELECTORAL_ROLL_CERTIFICATE_READER } from './domain/repositories/electoral-roll-certificate.reader';
 import { PrismaElectoralRollRepository } from './infrastructure/repositories/prisma-electoral-roll.repository';
 import { ElectoralRollCsvFileParserService } from './infrastructure/services/electoral-roll-csv-file-parser.service';
 import { ElectionClosureSchedulerService } from './infrastructure/services/election-closure-scheduler.service';
@@ -112,7 +113,9 @@ import { AuditingModuleAdapter } from './infrastructure/adapters/auditing-module
     { provide: ELECTION_RESULT_REPOSITORY, useClass: PrismaElectionResultRepository },
     { provide: ElectionSigningKeyPort, useExisting: SigningKeyAdapter },
     { provide: ELECTION_REPOSITORY, useClass: PrismaElectionRepository },
-    { provide: ELECTORAL_ROLL_REPOSITORY, useClass: PrismaElectoralRollRepository },
+    PrismaElectoralRollRepository,
+    { provide: ELECTORAL_ROLL_REPOSITORY, useExisting: PrismaElectoralRollRepository },
+    { provide: ELECTORAL_ROLL_CERTIFICATE_READER, useExisting: PrismaElectoralRollRepository },
     { provide: ELECTORAL_ROLL_CSV_PARSER_PORT, useClass: ElectoralRollCsvFileParserService },
     { provide: ELECTION_CANDIDATES_PORT, useClass: CandidaciesModuleAdapter },
     {
@@ -325,6 +328,7 @@ import { AuditingModuleAdapter } from './infrastructure/adapters/auditing-module
   exports: [
     ELECTION_REPOSITORY,
     ELECTORAL_ROLL_REPOSITORY,
+    ELECTORAL_ROLL_CERTIFICATE_READER,
     CloseExpiredElectionsUseCase,
     ElectionSigningKeyPort,
     ElectionLedgerPort,
