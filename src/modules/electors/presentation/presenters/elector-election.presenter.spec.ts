@@ -105,8 +105,9 @@ describe('ElectorElectionPresenter.toVoterCertificateListItem', () => {
     electionId: 'election-1',
     electionName: 'Elección 2026',
     votingDate: new Date('2026-11-17T15:04:05.000Z'),
-    verificationCode: '9f86d081884c7d659a2feaa0c55ad015',
-    issuedAt: new Date('2026-11-17T15:05:00.000Z'),
+    status: 'AVAILABLE' as const,
+    verificationCode: '9f86d081884c7d659a2feaa0c55ad015' as string | null,
+    issuedAt: new Date('2026-11-17T15:05:00.000Z') as Date | null,
   };
 
   it('serializes dates to ISO and maps every field', () => {
@@ -114,12 +115,24 @@ describe('ElectorElectionPresenter.toVoterCertificateListItem', () => {
       electionId: 'election-1',
       electionName: 'Elección 2026',
       votingDate: '2026-11-17T15:04:05.000Z',
+      status: 'AVAILABLE',
       verificationCode: '9f86d081884c7d659a2feaa0c55ad015',
       issuedAt: '2026-11-17T15:05:00.000Z',
     });
   });
 
-  it('adds no fields beyond the five of the contract', () => {
+  it('keeps null certificate fields until it is generated', () => {
+    const dto = ElectorElectionPresenter.toVoterCertificateListItem({
+      ...item,
+      verificationCode: null,
+      issuedAt: null,
+    });
+
+    expect(dto.verificationCode).toBeNull();
+    expect(dto.issuedAt).toBeNull();
+  });
+
+  it('adds no fields beyond the six of the contract', () => {
     const dto = ElectorElectionPresenter.toVoterCertificateListItem({
       ...item,
       candidacyId: 'secret',
@@ -129,6 +142,7 @@ describe('ElectorElectionPresenter.toVoterCertificateListItem', () => {
       'electionId',
       'electionName',
       'issuedAt',
+      'status',
       'verificationCode',
       'votingDate',
     ]);

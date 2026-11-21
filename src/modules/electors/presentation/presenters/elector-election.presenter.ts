@@ -30,8 +30,9 @@ export class ElectorElectionPresenter {
       electionId: item.electionId,
       electionName: item.electionName,
       votingDate: item.votingDate.toISOString(),
+      status: item.status,
       verificationCode: item.verificationCode,
-      issuedAt: item.issuedAt.toISOString(),
+      issuedAt: item.issuedAt?.toISOString() ?? null,
     });
   }
 

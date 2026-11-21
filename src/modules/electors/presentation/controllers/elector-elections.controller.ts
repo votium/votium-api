@@ -108,19 +108,19 @@ export class ElectorElectionsController {
   @Get('me/certificates')
   @UseGuards(JwtAuthGuard, ElectorGuard)
   @ApiOperation({
-    summary: "List the authenticated voter's issued certificates",
+    summary: "List the authenticated voter's available certificates",
     description:
-      'Returns a paginated list of the certificates already issued to the authenticated ' +
-      'voter, newest first. Identity comes exclusively from the JWT. Read-only: it does not ' +
+      'Returns a paginated list of the certificates the authenticated voter can generate, ' +
+      'by most recent election. AVAILABLE items can be downloaded and PROCESSING items await ' +
+      'ledger confirmation. Identity comes exclusively from the JWT. Read-only: it does not ' +
       'query Hyperledger Fabric, does not issue certificates and never exposes candidacy or ' +
-      'ballot content. Missing certificates are generated through the single-election ' +
-      'certificate endpoint.',
+      'ballot content. Certificates are generated through the single-election endpoint.',
   })
   @ApiQuery({ name: 'page', required: false, example: 1, type: Number })
   @ApiQuery({ name: 'limit', required: false, example: 10, type: Number })
   @ApiResponse({
     status: 200,
-    description: 'Issued certificates retrieved successfully.',
+    description: 'Available certificates retrieved successfully.',
     type: VoterCertificatesListResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid pagination parameters.' })
