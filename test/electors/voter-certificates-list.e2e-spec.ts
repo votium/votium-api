@@ -49,15 +49,15 @@ describe('GET /electors/me/certificates (e2e)', () => {
     return req;
   };
 
-  async function seedElection(label: string): Promise<string> {
+  async function seedElection(label: string, startDay = 1): Promise<string> {
     const row = await prisma.election.create({
       data: {
         electionCode: await nextTestElectionCode(prisma),
         name: `CERT-LIST-${label}-${suffix}`,
         description: 'Certificate list e2e election.',
-        start_date: new Date(Date.UTC(2026, 9, 1)),
+        start_date: new Date(Date.UTC(2026, 9, startDay)),
         start_time: new Date(Date.UTC(1970, 0, 1, 8, 0, 0)),
-        end_date: new Date(Date.UTC(2026, 9, 2)),
+        end_date: new Date(Date.UTC(2026, 9, 5)),
         end_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
         current_status: 'PUBLISHED',
         blank_vote_enabled: false,
@@ -136,9 +136,9 @@ describe('GET /electors/me/certificates (e2e)', () => {
     deletedElector = await seedElector('deleted', true);
 
     // Elector A: 3 certificates; the second one has no vote timestamp (fallback).
-    const e1 = await seedElection('1');
-    const e2 = await seedElection('2');
-    const e3 = await seedElection('3');
+    const e1 = await seedElection('1', 1);
+    const e2 = await seedElection('2', 2);
+    const e3 = await seedElection('3', 3);
     const c1 = await seedCertificate(
       electorA,
       e1,
@@ -178,17 +178,18 @@ describe('GET /electors/me/certificates (e2e)', () => {
         'electionId',
         'electionName',
         'issuedAt',
+        'status',
         'verificationCode',
         'votingDate',
       ]);
     }
     expect(body.data[0]).toMatchObject({
       electionName: `CERT-LIST-3-${suffix}`,
-      votingDate: '2026-10-03T08:59:00.000Z',
+      votingDate: '2026-10-03T08:00:00.000Z',
+      status: 'AVAILABLE',
       issuedAt: '2026-10-03T09:00:00.000Z',
     });
-    // Null vote timestamp falls back to the scheduled election start.
-    expect(body.data[1].votingDate).toBe('2026-10-01T08:00:00.000Z');
+    expect(body.data[1].votingDate).toBe('2026-10-02T08:00:00.000Z');
   });
 
   it('VCL-02: returns an empty page for a voter without certificates', async () => {
@@ -212,7 +213,7 @@ describe('GET /electors/me/certificates (e2e)', () => {
     expect(page5.meta.total).toBe(3);
   });
 
-  it.each(['page=0', 'page=-1', 'page=abc', 'limit=0', 'limit=-1', 'limit=abc'])(
+  it.each(['page=0', 'page=-1', 'page=abc', 'limit=0', 'limit=-1', 'limit=abc', 'limit=101'])(
     'VCL-04: returns 400 for %s',
     async (query) => {
       await get(`?${query}`, electorCookie(electorA)).expect(400);

@@ -23,40 +23,66 @@ const MAX_ATTEMPTS = 2;
 export class PrismaCertificateRepository implements CertificateRepository, VoterCertificateReader {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Paginated in the database. Selects only the item fields; ballot columns are never read.
+  // Lists issued certificates plus elections whose participation mark is reported or
+  // confirmed. Uses local state only and never reads ballot or vote-timing columns.
   async findByElectorId(params: FindVoterCertificatesParams): Promise<VoterCertificatePage> {
     const { electorId, page, limit } = params;
-    const where: Prisma.CertificateWhereInput = {
-      electoralRoll: { is: { elector_id: electorId } },
-    };
 
+    const rolls = await this.prisma.electoralRoll.findMany({
+      where: { elector_id: electorId },
+      select: { election_id: true, certificates: { select: { id: true }, take: 1 } },
+    });
+    const credentials = await this.prisma.voteCredential.findMany({
+      where: {
+        elector_id: electorId,
+        election_id: { in: rolls.map((roll) => roll.election_id) },
+        mark_status: { in: ['REPORTED', 'MARKED'] },
+      },
+      select: { election_id: true, mark_status: true },
+    });
+    const markByElection = new Map(credentials.map((c) => [c.election_id, c.mark_status]));
+    const listedElectionIds = rolls
+      .filter((roll) => roll.certificates.length > 0 || markByElection.has(roll.election_id))
+      .map((roll) => roll.election_id);
+
+    const where: Prisma.ElectoralRollWhereInput = {
+      elector_id: electorId,
+      election_id: { in: listedElectionIds },
+    };
     const [rows, total] = await this.prisma.$transaction([
-      this.prisma.certificate.findMany({
+      this.prisma.electoralRoll.findMany({
         where,
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        orderBy: [
+          { election: { start_date: 'desc' } },
+          { election: { start_time: 'desc' } },
+          { id: 'desc' },
+        ],
         skip: (page - 1) * limit,
         take: limit,
         select: {
           election_id: true,
-          verification_code: true,
-          created_at: true,
           election: { select: { name: true, start_date: true, start_time: true } },
-          electoralRoll: { select: { last_vote_registered_at: true } },
+          certificates: { select: { verification_code: true, created_at: true }, take: 1 },
         },
       }),
-      this.prisma.certificate.count({ where }),
+      this.prisma.electoralRoll.count({ where }),
     ]);
 
     return {
-      items: rows.map((row) => ({
-        electionId: row.election_id,
-        electionName: row.election.name,
-        votingDate:
-          row.electoralRoll.last_vote_registered_at ??
-          new Date(ElectionEntity.toInstant(row.election.start_date, row.election.start_time)),
-        verificationCode: row.verification_code,
-        issuedAt: row.created_at,
-      })),
+      items: rows.map((row) => {
+        const certificate = row.certificates[0];
+        const available = !!certificate || markByElection.get(row.election_id) === 'MARKED';
+        return {
+          electionId: row.election_id,
+          electionName: row.election.name,
+          votingDate: new Date(
+            ElectionEntity.toInstant(row.election.start_date, row.election.start_time),
+          ),
+          status: available ? ('AVAILABLE' as const) : ('PROCESSING' as const),
+          verificationCode: certificate?.verification_code ?? null,
+          issuedAt: certificate?.created_at ?? null,
+        };
+      }),
       total,
     };
   }
