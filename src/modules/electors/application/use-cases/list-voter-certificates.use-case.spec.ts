@@ -20,6 +20,7 @@ describe('ListVoterCertificatesUseCase', () => {
         electionId: 'election-1',
         electionName: 'Elección 2026',
         votingDate: new Date('2026-11-17T15:04:05.000Z'),
+        status: 'AVAILABLE',
         verificationCode: '9f86d081884c7d659a2feaa0c55ad015',
         issuedAt: new Date('2026-11-17T15:05:00.000Z'),
       },

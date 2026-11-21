@@ -1,11 +1,15 @@
 export const VOTER_CERTIFICATE_READER = 'VoterCertificateReader';
 
+export type VoterCertificateStatus = 'AVAILABLE' | 'PROCESSING';
+
 export interface VoterCertificateSummary {
   electionId: string;
   electionName: string;
   votingDate: Date;
-  verificationCode: string;
-  issuedAt: Date;
+  status: VoterCertificateStatus;
+  // Null until the elector generates the certificate.
+  verificationCode: string | null;
+  issuedAt: Date | null;
 }
 
 export interface FindVoterCertificatesParams {
@@ -19,7 +23,8 @@ export interface VoterCertificatePage {
   total: number;
 }
 
-// Read-only listing of certificates already issued to an elector (TS-253).
+// Read-only listing of the certificates an elector can generate, already issued or still
+// awaiting ledger confirmation.
 export interface VoterCertificateReader {
   findByElectorId(params: FindVoterCertificatesParams): Promise<VoterCertificatePage>;
 }

@@ -26,7 +26,7 @@ describe('ListVoterCertificatesQueryDto', () => {
     expect(await validate(build({ page: value }))).not.toHaveLength(0);
   });
 
-  it.each(['0', '-1', 'abc', '1.5'])('rejects limit=%s', async (value) => {
+  it.each(['0', '-1', 'abc', '1.5', '101'])('rejects limit=%s', async (value) => {
     expect(await validate(build({ limit: value }))).not.toHaveLength(0);
   });
 });

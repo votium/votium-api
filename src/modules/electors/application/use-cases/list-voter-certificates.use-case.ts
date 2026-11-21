@@ -11,8 +11,8 @@ export interface ListVoterCertificatesInput {
   limit: number;
 }
 
-// Read-only: lists the certificates already issued to the authenticated elector. Never
-// queries the ledger and never issues missing certificates.
+// Read-only: lists the certificates the authenticated elector can generate. Never queries
+// the ledger and never issues missing certificates.
 export class ListVoterCertificatesUseCase {
   constructor(
     private readonly electors: ElectorRepository,
