@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { LoginElectorUseCase } from '../../application/use-cases/login-elector.use-case';
+import { LoginElectorDirectUseCase } from '../../application/use-cases/login-elector-direct.use-case';
 import { VerifyElectorMfaUseCase } from '../../application/use-cases/verify-elector-mfa.use-case';
 import { ResendElectorMfaUseCase } from '../../application/use-cases/resend-elector-mfa.use-case';
 import { GetMeElectorUseCase } from '../../application/use-cases/get-me-elector.use-case';
@@ -52,6 +53,7 @@ export class ElectorAuthController {
     private readonly cookies: AuthCookieService,
     private readonly requestPasswordRecovery: RequestElectorPasswordRecoveryUseCase,
     private readonly resetPasswordUseCase: ResetElectorPasswordUseCase,
+    private readonly loginElectorDirect: LoginElectorDirectUseCase,
   ) {}
 
   @Post('forgot-password')
@@ -114,6 +116,29 @@ export class ElectorAuthController {
   async login(@Body() dto: ElectorLoginDto) {
     const result = await this.loginElector.execute(dto);
     return new ElectorMfaRequiredResponseDto(result);
+  }
+
+  @Post('login-direct')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Elector login without MFA (testing environment only)',
+    description:
+      'Validates credentials and sets the JWT as an HttpOnly cookie without an MFA challenge. ' +
+      'Only available when ELECTOR_DIRECT_LOGIN_ENABLED=true; otherwise responds 404.',
+  })
+  @ApiBody({ type: ElectorLoginDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Authentication completed. The JWT is set as an HttpOnly cookie.',
+    type: ElectorAuthResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid request data.' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials.' })
+  @ApiResponse({ status: 404, description: 'Direct login is disabled.' })
+  async loginDirect(@Body() dto: ElectorLoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.loginElectorDirect.execute(dto);
+    this.cookies.setAccessToken(res, result.accessToken, result.expiresIn);
+    return new ElectorAuthResponseDto({ expiresIn: result.expiresIn });
   }
 
   @Post('mfa/verify')

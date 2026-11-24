@@ -18,6 +18,7 @@ interface EnvVars {
   AUTH_COOKIE_DOMAIN?: string;
   CORS_ORIGINS: string;
   ELECTION_AUTO_CLOSE_ENABLED: boolean;
+  ELECTOR_DIRECT_LOGIN_ENABLED: boolean;
 }
 
 const envsSchema = joi
@@ -38,6 +39,7 @@ const envsSchema = joi
     AUTH_COOKIE_DOMAIN: joi.string().optional(),
     CORS_ORIGINS: joi.string().default('http://localhost:5173'),
     ELECTION_AUTO_CLOSE_ENABLED: joi.boolean().default(true),
+    ELECTOR_DIRECT_LOGIN_ENABLED: joi.boolean().default(false),
   })
   .unknown(true);
 
@@ -80,4 +82,5 @@ export const envs = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   electionAutoCloseEnabled: envsVars.ELECTION_AUTO_CLOSE_ENABLED,
+  electorDirectLoginEnabled: envsVars.ELECTOR_DIRECT_LOGIN_ENABLED,
 };
