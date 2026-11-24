@@ -7,6 +7,7 @@ import { LoginUseCase } from './application/use-cases/login.use-case';
 import { VerifyMfaUseCase } from './application/use-cases/verify-mfa.use-case';
 import { ResendMfaUseCase } from './application/use-cases/resend-mfa.use-case';
 import { LoginElectorUseCase } from './application/use-cases/login-elector.use-case';
+import { LoginElectorDirectUseCase } from './application/use-cases/login-elector-direct.use-case';
 import { VerifyElectorMfaUseCase } from './application/use-cases/verify-elector-mfa.use-case';
 import { ResendElectorMfaUseCase } from './application/use-cases/resend-elector-mfa.use-case';
 import { GetMeElectorUseCase } from './application/use-cases/get-me-elector.use-case';
@@ -126,6 +127,15 @@ import { AuthCookieService } from './presentation/services/auth-cookie.service';
         MFA_HASHER_PORT,
         ASYNC_EMAIL_SERVICE_PORT,
       ],
+    },
+    {
+      provide: LoginElectorDirectUseCase,
+      useFactory: (
+        electors: ElectorRepository,
+        hasher: PasswordHasherPort,
+        tokens: TokenServicePort,
+      ) => new LoginElectorDirectUseCase(electors, hasher, tokens, envs.electorDirectLoginEnabled),
+      inject: [ELECTOR_REPOSITORY, PASSWORD_HASHER_PORT, TOKEN_SERVICE_PORT],
     },
     {
       provide: VerifyElectorMfaUseCase,
